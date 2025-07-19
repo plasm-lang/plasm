@@ -1,2 +1,7 @@
+mod diagnostic;
 mod tokenizer;
-pub use tokenizer::{Bracket, Comment, Keyword, Number, Token, TokenStream, tokenize};
+mod token;
+
+pub use diagnostic::Span;
+pub use tokenizer::{TokenStream, Tokenzier};
+pub use token::{Bracket, Comment, Keyword, Number, SpecialSymbol, Token};
