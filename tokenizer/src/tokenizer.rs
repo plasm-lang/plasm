@@ -1,19 +1,19 @@
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Keyword {
     Fn,
     Let,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Number(pub String);
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum SpecialSymbol {
     Colon,  // :
     Equals, // =
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Bracket {
     RoundOpen,   // (
     RoundClose,  // )
@@ -23,13 +23,13 @@ pub enum Bracket {
     CurlyClose,  // }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Comment {
     SingleLine(String),
     MultiLine(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Token {
     Keyword(Keyword),
     Identifier(String),
@@ -218,29 +218,19 @@ where
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let a = match self.state {
+        match self.state {
             State::Default => self.lex_default(),
             State::InSingleComment => self.lex_single_comment(),
             State::InMultiComment => self.lex_multi_comment(),
-        };
-        println!("TokenStream::next() -> {:?}", a);
-        a
+        }
     }
 }
 
-pub struct Tokenizer;
-
-impl Tokenizer {
-    pub fn new() -> Self {
-        Self
-    }
-
-    pub fn tokenize<I>(&self, input: I) -> TokenStream<I::IntoIter>
-    where
-        I: IntoIterator<Item = char>,
-    {
-        TokenStream::new(input.into_iter())
-    }
+pub fn tokenize<I>(input: I) -> TokenStream<I::IntoIter>
+where
+    I: IntoIterator<Item = char>,
+{
+    TokenStream::new(input.into_iter())
 }
 
 #[cfg(test)]
@@ -270,10 +260,72 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let tokenizer = Tokenizer::new();
+        let tokens = tokenize(code.chars()).collect::<Vec<_>>();
 
-        let tokens = tokenizer.tokenize(code.chars()).collect::<Vec<_>>();
+        let expected = [
+            Token::Comment(Comment::SingleLine(" Basic inline comment".to_string())),
+            Token::NewLine,
+            Token::Comment(Comment::MultiLine(" Myltiline\ncomment\n".to_string())),
+            Token::NewLine,
+            Token::Keyword(Keyword::Fn),
+            Token::Whitespace(1),
+            Token::Identifier("main".to_string()),
+            Token::Bracket(Bracket::RoundOpen),
+            Token::Bracket(Bracket::RoundClose),
+            Token::Whitespace(1),
+            Token::Bracket(Bracket::CurlyOpen),
+            Token::NewLine,
+            Token::Whitespace(4),
+            Token::Keyword(Keyword::Let),
+            Token::Whitespace(1),
+            Token::Identifier("x".to_string()),
+            Token::SpecialSymbol(SpecialSymbol::Colon),
+            Token::Whitespace(1),
+            Token::Identifier("i32".to_string()),
+            Token::Whitespace(1),
+            Token::SpecialSymbol(SpecialSymbol::Equals),
+            Token::Whitespace(1),
+            Token::Number(Number("5".to_string())),
+            Token::NewLine,
+            Token::Whitespace(4),
+            Token::Identifier("print".to_string()),
+            Token::Bracket(Bracket::RoundOpen),
+            Token::Identifier("x".to_string()),
+            Token::Bracket(Bracket::RoundClose),
+            Token::NewLine,
+            Token::Bracket(Bracket::CurlyClose),
+        ];
 
-        println!("{:?}", tokens);
+        assert_eq!(tokens, expected);
+    }
+
+    #[test]
+    fn test_numbers_tokenization() {
+        let code = r#"
+            1_000_000.0
+            42.0
+            3.14
+        "#;
+
+        let code = code
+            .trim_start()
+            .trim_end()
+            .lines()
+            // remove 12 spaces
+            .map(|l| l.trim_start_matches("            "))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let tokens = tokenize(code.chars()).collect::<Vec<_>>();
+
+        let expected = [
+            Token::Number(Number("1_000_000.0".to_string())),
+            Token::NewLine,
+            Token::Number(Number("42.0".to_string())),
+            Token::NewLine,
+            Token::Number(Number("3.14".to_string())),
+        ];
+
+        assert_eq!(tokens, expected);
     }
 }
