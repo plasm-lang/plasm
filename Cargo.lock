@@ -17,10 +17,17 @@ version = "0.1.0"
 [[package]]
 name = "parser"
 version = "0.1.0"
+dependencies = [
+ "syntax_tree",
+ "tokenizer",
+]
 
 [[package]]
 name = "syntax_tree"
 version = "0.1.0"
+dependencies = [
+ "tokenizer",
+]
 
 [[package]]
 name = "tokenizer"

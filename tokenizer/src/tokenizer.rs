@@ -1,4 +1,4 @@
-use super::diagnostic::{Span, LinesTable};
+use super::diagnostic::{LinesTable, Span};
 use super::token::{Bracket, Comment, Keyword, Number, SpecialSymbol, Token};
 
 enum State {
@@ -101,7 +101,7 @@ where
                     return self.lex_multi_comment();
                 }
                 '\n' => {
-                    self.lines_table.add_line(i+1);
+                    self.lines_table.add_line(i + 1);
                     return Some((Token::NewLine, Span::new(i - 1, i)));
                 }
                 ch if ch.is_whitespace() => {
@@ -131,10 +131,16 @@ where
                     return Some((Token::Bracket(Bracket::SquareClose), Span::new(i - 1, i)));
                 }
                 ':' => {
-                    return Some((Token::SpecialSymbol(SpecialSymbol::Colon), Span::new(i - 1, i)));
+                    return Some((
+                        Token::SpecialSymbol(SpecialSymbol::Colon),
+                        Span::new(i - 1, i),
+                    ));
                 }
                 '=' => {
-                    return Some((Token::SpecialSymbol(SpecialSymbol::Equals), Span::new(i - 1, i)));
+                    return Some((
+                        Token::SpecialSymbol(SpecialSymbol::Equals),
+                        Span::new(i - 1, i),
+                    ));
                 }
                 ch if ch.is_alphanumeric() || ch == '_' => {
                     self.accumulated.push(ch);
@@ -253,7 +259,10 @@ mod tests {
             .join("\n");
 
         let mut tokenzier = Tokenzier::new();
-        let tokens = tokenzier.tokenize(code.chars()).map(|(token, _span)| token).collect::<Vec<_>>();
+        let tokens = tokenzier
+            .tokenize(code.chars())
+            .map(|(token, _span)| token)
+            .collect::<Vec<_>>();
 
         let expected = [
             Token::Comment(Comment::SingleLine(" Basic inline comment".to_string())),
@@ -314,11 +323,20 @@ mod tests {
         let tokens = tokenzier.tokenize(code.chars()).collect::<Vec<_>>();
 
         let expected = vec![
-            (Token::Number(Number("1_000_000.0".to_string())), Span { start: 0, end: 11 }),
+            (
+                Token::Number(Number("1_000_000.0".to_string())),
+                Span { start: 0, end: 11 },
+            ),
             (Token::NewLine, Span { start: 10, end: 11 }),
-            (Token::Number(Number("42.0".to_string())), Span { start: 12, end: 16 }),
+            (
+                Token::Number(Number("42.0".to_string())),
+                Span { start: 12, end: 16 },
+            ),
             (Token::NewLine, Span { start: 15, end: 16 }),
-            (Token::Number(Number("3.14".to_string())), Span { start: 16, end: 20 }),
+            (
+                Token::Number(Number("3.14".to_string())),
+                Span { start: 16, end: 20 },
+            ),
         ];
 
         assert_eq!(tokens, expected);
