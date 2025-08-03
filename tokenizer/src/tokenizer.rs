@@ -1,5 +1,37 @@
+use std::iter::{Enumerate, Peekable};
+
 use super::diagnostic::{LinesTable, Span};
 use super::token::{Bracket, Comment, Keyword, Number, SpecialSymbol, Token};
+
+// pub struct Tokenizer<I: Iterator<Item = char>> {
+//     chars: Peekable<Enumerate<I>>,
+// }
+
+// impl<I: Iterator<Item = char>> Tokenizer<I> {
+//     pub fn new(code_iter: I) -> Self {
+//         Tokenizer {
+//             chars: code_iter.enumerate().peekable(),
+//         }
+//     }
+
+//     pub fn tokenize(self) -> TokenIter<I> {
+//         TokenIter {
+//             chars: self.chars,
+//             state: State::Default,
+//             accumulated: String::new(),
+//             lines_table: LinesTable::new(),
+//         }
+//     }
+// }
+
+pub fn tokenize<I: Iterator<Item = char>>(chars: I) -> TokenIter<I> {
+    TokenIter {
+        chars: chars.enumerate().peekable(),
+        state: State::Default,
+        accumulated: String::new(),
+        lines_table: LinesTable::new(),
+    }
+}
 
 enum State {
     Default,
@@ -7,24 +39,16 @@ enum State {
     InMultiComment,
 }
 
-pub struct TokenStream<'a, I: Iterator<Item = char>> {
-    chars: std::iter::Peekable<std::iter::Enumerate<I>>,
+pub struct TokenIter<I: Iterator<Item = char>> {
+    chars: Peekable<Enumerate<I>>,
     state: State,
     accumulated: String,
-    lines_table: &'a mut LinesTable,
+    lines_table: LinesTable,
 }
 
-impl<'a, I> TokenStream<'a, I>
-where
-    I: Iterator<Item = char>,
-{
-    fn new(iter: I, lines_table: &'a mut LinesTable) -> Self {
-        Self {
-            chars: iter.enumerate().peekable(),
-            state: State::Default,
-            accumulated: String::new(),
-            lines_table,
-        }
+impl<I: Iterator<Item = char>> TokenIter<I> {
+    pub fn lines_table(&self) -> &LinesTable {
+        &self.lines_table
     }
 
     fn lex_whitespace(&mut self) -> Option<(Token, Span)> {
@@ -193,10 +217,7 @@ where
     }
 }
 
-impl<'a, I> Iterator for TokenStream<'a, I>
-where
-    I: Iterator<Item = char>,
-{
+impl<I: Iterator<Item = char>> Iterator for TokenIter<I> {
     type Item = (Token, Span);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -208,39 +229,27 @@ where
     }
 }
 
-pub struct Tokenzier {
-    lines_table: LinesTable,
-}
-
-impl Tokenzier {
-    pub fn new() -> Self {
-        Tokenzier {
-            lines_table: LinesTable::new(),
-        }
-    }
-
-    pub fn tokenize<I>(&mut self, input: I) -> TokenStream<'_, I::IntoIter>
-    where
-        I: IntoIterator<Item = char>,
-    {
-        TokenStream::new(input.into_iter(), &mut self.lines_table)
-    }
-
-    pub fn lines_table(&self) -> &LinesTable {
-        &self.lines_table
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn prepare_string(input: &str) -> String {
+        input
+            .trim_start()
+            .trim_end()
+            .lines()
+            // remove 12 spaces
+            .map(|l| l.trim_start_matches("            "))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 
     #[test]
     fn test_basic_code_tokenization() {
         let code = r#"
             // Basic inline comment
 
-            /* Myltiline
+            /* Multiline
             comment
             */
             fn main() {
@@ -249,25 +258,18 @@ mod tests {
             }
         "#;
 
-        let code = code
-            .trim_start()
-            .trim_end()
-            .lines()
-            // remove 12 spaces
-            .map(|l| l.trim_start_matches("            "))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let code = prepare_string(code);
 
-        let mut tokenzier = Tokenzier::new();
-        let tokens = tokenzier
-            .tokenize(code.chars())
+        let mut token_iter = tokenize(code.chars());
+        let tokens = token_iter
+            .by_ref()
             .map(|(token, _span)| token)
             .collect::<Vec<_>>();
 
         let expected = [
             Token::Comment(Comment::SingleLine(" Basic inline comment".to_string())),
             Token::NewLine,
-            Token::Comment(Comment::MultiLine(" Myltiline\ncomment\n".to_string())),
+            Token::Comment(Comment::MultiLine(" Multiline\ncomment\n".to_string())),
             Token::NewLine,
             Token::Keyword(Keyword::Fn),
             Token::Whitespace(1),
@@ -299,7 +301,7 @@ mod tests {
         ];
 
         assert_eq!(tokens, expected);
-        assert_eq!(tokenzier.lines_table().offsets().len(), 9);
+        assert_eq!(token_iter.lines_table().offsets().len(), 9);
     }
 
     #[test]
@@ -310,17 +312,10 @@ mod tests {
             3.14
         "#;
 
-        let code = code
-            .trim_start()
-            .trim_end()
-            .lines()
-            // remove 12 spaces
-            .map(|l| l.trim_start_matches("            "))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let code = prepare_string(code);
 
-        let mut tokenzier = Tokenzier::new();
-        let tokens = tokenzier.tokenize(code.chars()).collect::<Vec<_>>();
+        let mut token_iter = tokenize(code.chars());
+        let tokens = token_iter.by_ref().collect::<Vec<_>>();
 
         let expected = vec![
             (
@@ -340,6 +335,6 @@ mod tests {
         ];
 
         assert_eq!(tokens, expected);
-        assert_eq!(tokenzier.lines_table().offsets(), &[0, 12, 17]);
+        assert_eq!(token_iter.lines_table().offsets(), &[0, 12, 17]);
     }
 }

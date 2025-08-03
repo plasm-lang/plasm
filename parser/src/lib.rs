@@ -1,3 +1,5 @@
+mod error;
 mod parser;
 
-pub use parser::Parser;
+pub use error::{ParseError, Result};
+pub use parser::{ParseIter, parse};
