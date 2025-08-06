@@ -1,4 +1,5 @@
 use std::iter::{Enumerate, Peekable};
+use std::mem::take;
 
 use super::diagnostic::{LinesTable, Span};
 use super::token::{Bracket, Comment, Keyword, Number, SpecialSymbol, Token};
@@ -24,9 +25,9 @@ use super::token::{Bracket, Comment, Keyword, Number, SpecialSymbol, Token};
 //     }
 // }
 
-pub fn tokenize<I: Iterator<Item = char>>(chars: I) -> TokenIter<I> {
+pub fn tokenize<I: Iterator<Item = (usize, char)>>(chars: I) -> TokenIter<I> {
     TokenIter {
-        chars: chars.enumerate().peekable(),
+        chars: chars.peekable(),
         state: State::Default,
         accumulated: String::new(),
         lines_table: LinesTable::new(),
@@ -39,14 +40,14 @@ enum State {
     InMultiComment,
 }
 
-pub struct TokenIter<I: Iterator<Item = char>> {
-    chars: Peekable<Enumerate<I>>,
+pub struct TokenIter<I: Iterator<Item = (usize, char)>> {
+    chars: Peekable<I>,
     state: State,
     accumulated: String,
     lines_table: LinesTable,
 }
 
-impl<I: Iterator<Item = char>> TokenIter<I> {
+impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
     pub fn lines_table(&self) -> &LinesTable {
         &self.lines_table
     }
@@ -64,9 +65,9 @@ impl<I: Iterator<Item = char>> TokenIter<I> {
         }
 
         let whitespace_len = self.accumulated.len();
-        let span = Span::new(last_i - self.accumulated.len(), last_i);
+        let span = Span::new(last_i - self.accumulated.as_bytes().len(), last_i);
         self.accumulated.clear();
-        Some((Token::Whitespace(whitespace_len as u16), span))
+        Some((Token::Whitespace(whitespace_len), span))
     }
 
     fn lex_number(&mut self) -> Option<(Token, Span)> {
@@ -81,9 +82,12 @@ impl<I: Iterator<Item = char>> TokenIter<I> {
             }
         }
 
-        let number = Number(self.accumulated.clone());
-        let span = Span::new(last_i - self.accumulated.len(), last_i);
-        self.accumulated.clear();
+        let span = Span::new(last_i - self.accumulated.bytes().len(), last_i);
+        let number = if self.accumulated.contains('.') {
+            Number::Float(take(&mut self.accumulated))
+        } else {
+            Number::Integer(take(&mut self.accumulated))
+        };
         Some((Token::Number(number), span))
     }
 
@@ -101,10 +105,10 @@ impl<I: Iterator<Item = char>> TokenIter<I> {
 
         let token = match self.accumulated.as_str() {
             "fn" => Token::Keyword(Keyword::Fn),
-            "let" => Token::Keyword(Keyword::Let),
+            "new" => Token::Keyword(Keyword::New),
             _ => Token::Identifier(self.accumulated.clone()),
         };
-        let span = Span::new(last_i - self.accumulated.len(), last_i);
+        let span = Span::new(last_i - self.accumulated.as_bytes().len(), last_i);
         self.accumulated.clear();
         Some((token, span))
     }
@@ -122,11 +126,12 @@ impl<I: Iterator<Item = char>> TokenIter<I> {
                     self.state = State::InMultiComment;
                     self.accumulated.clear();
                     self.chars.next(); // consume the '*'
-                    return self.lex_multi_comment();
+                    return self.lex_multiline_comment();
                 }
                 '\n' => {
-                    self.lines_table.add_line(i + 1);
-                    return Some((Token::NewLine, Span::new(i - 1, i)));
+                    let char_len = ch.len_utf8();
+                    self.lines_table.add_line(i + char_len);
+                    return Some((Token::NewLine, Span::new(i, i + char_len)));
                 }
                 ch if ch.is_whitespace() => {
                     self.accumulated.push(ch);
@@ -137,33 +142,33 @@ impl<I: Iterator<Item = char>> TokenIter<I> {
                     return self.lex_number();
                 }
                 '{' => {
-                    return Some((Token::Bracket(Bracket::CurlyOpen), Span::new(i - 1, i)));
+                    return Some((Token::Bracket(Bracket::CurlyOpen), Span::new(i, i + ch.len_utf8())));
                 }
                 '}' => {
-                    return Some((Token::Bracket(Bracket::CurlyClose), Span::new(i - 1, i)));
+                    return Some((Token::Bracket(Bracket::CurlyClose), Span::new(i, i + ch.len_utf8())));
                 }
                 '(' => {
-                    return Some((Token::Bracket(Bracket::RoundOpen), Span::new(i - 1, i)));
+                    return Some((Token::Bracket(Bracket::RoundOpen), Span::new(i, i + ch.len_utf8())));
                 }
                 ')' => {
-                    return Some((Token::Bracket(Bracket::RoundClose), Span::new(i - 1, i)));
+                    return Some((Token::Bracket(Bracket::RoundClose), Span::new(i, i + ch.len_utf8())));
                 }
                 '[' => {
-                    return Some((Token::Bracket(Bracket::SquareOpen), Span::new(i - 1, i)));
+                    return Some((Token::Bracket(Bracket::SquareOpen), Span::new(i, i + ch.len_utf8())));
                 }
                 ']' => {
-                    return Some((Token::Bracket(Bracket::SquareClose), Span::new(i - 1, i)));
+                    return Some((Token::Bracket(Bracket::SquareClose), Span::new(i, i + ch.len_utf8())));
                 }
                 ':' => {
                     return Some((
                         Token::SpecialSymbol(SpecialSymbol::Colon),
-                        Span::new(i - 1, i),
+                        Span::new(i, i + ch.len_utf8()),
                     ));
                 }
                 '=' => {
                     return Some((
                         Token::SpecialSymbol(SpecialSymbol::Equals),
-                        Span::new(i - 1, i),
+                        Span::new(i, i + ch.len_utf8()),
                     ));
                 }
                 ch if ch.is_alphanumeric() || ch == '_' => {
@@ -182,12 +187,11 @@ impl<I: Iterator<Item = char>> TokenIter<I> {
     fn lex_single_comment(&mut self) -> Option<(Token, Span)> {
         while let Some((i, ch)) = self.chars.next() {
             if ch == '\n' {
-                let comment = Comment::SingleLine(self.accumulated.clone());
-                let span = Span::new(i - self.accumulated.len() - 2, i - 1);
-                self.accumulated.clear();
+                let span = Span::new(i - self.accumulated.as_bytes().len(), i);
+                let comment_text = take(&mut self.accumulated);
                 self.state = State::Default;
-                self.lines_table.add_line(i + 1);
-                return Some((Token::Comment(comment), span));
+                self.lines_table.add_line(i + ch.len_utf8());
+                return Some((Token::Comment(Comment::SingleLine(comment_text)), span));
             } else {
                 self.accumulated.push(ch);
             }
@@ -196,18 +200,17 @@ impl<I: Iterator<Item = char>> TokenIter<I> {
         None
     }
 
-    fn lex_multi_comment(&mut self) -> Option<(Token, Span)> {
+    fn lex_multiline_comment(&mut self) -> Option<(Token, Span)> {
         while let Some((i, ch)) = self.chars.next() {
             if ch == '*' && self.chars.peek().map(|(_, ch)| ch) == Some(&'/') {
                 self.chars.next(); // consume the '/'
-                let comment = Comment::MultiLine(self.accumulated.clone());
-                let span = Span::new(i - self.accumulated.len() - 2, i + 1);
-                self.accumulated.clear();
+                let span = Span::new(i - self.accumulated.as_bytes().len(), i);
+                let comment_text = take(&mut self.accumulated);
                 self.state = State::Default;
-                return Some((Token::Comment(comment), span));
+                return Some((Token::Comment(Comment::MultiLine(comment_text)), span));
             } else {
                 if ch == '\n' {
-                    self.lines_table.add_line(i + 1);
+                    self.lines_table.add_line(i + ch.len_utf8());
                 }
                 self.accumulated.push(ch);
             }
@@ -217,14 +220,14 @@ impl<I: Iterator<Item = char>> TokenIter<I> {
     }
 }
 
-impl<I: Iterator<Item = char>> Iterator for TokenIter<I> {
+impl<I: Iterator<Item = (usize, char)>> Iterator for TokenIter<I> {
     type Item = (Token, Span);
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.state {
             State::Default => self.lex_default(),
             State::InSingleComment => self.lex_single_comment(),
-            State::InMultiComment => self.lex_multi_comment(),
+            State::InMultiComment => self.lex_multiline_comment(),
         }
     }
 }
@@ -253,14 +256,14 @@ mod tests {
             comment
             */
             fn main() {
-                let x: i32 = 5
+                new x: i32 = 5
                 print(x)
             }
         "#;
 
         let code = prepare_string(code);
 
-        let mut token_iter = tokenize(code.chars());
+        let mut token_iter = tokenize(code.char_indices());
         let tokens = token_iter
             .by_ref()
             .map(|(token, _span)| token)
@@ -280,7 +283,7 @@ mod tests {
             Token::Bracket(Bracket::CurlyOpen),
             Token::NewLine,
             Token::Whitespace(4),
-            Token::Keyword(Keyword::Let),
+            Token::Keyword(Keyword::New),
             Token::Whitespace(1),
             Token::Identifier("x".to_string()),
             Token::SpecialSymbol(SpecialSymbol::Colon),
@@ -289,7 +292,7 @@ mod tests {
             Token::Whitespace(1),
             Token::SpecialSymbol(SpecialSymbol::Equals),
             Token::Whitespace(1),
-            Token::Number(Number("5".to_string())),
+            Token::Number(Number::Integer("5".to_string())),
             Token::NewLine,
             Token::Whitespace(4),
             Token::Identifier("print".to_string()),
@@ -308,33 +311,38 @@ mod tests {
     fn test_numbers_tokenization() {
         let code = r#"
             1_000_000.0
-            42.0
+            42
             3.14
         "#;
 
         let code = prepare_string(code);
 
-        let mut token_iter = tokenize(code.chars());
+        let mut token_iter = tokenize(code.char_indices());
         let tokens = token_iter.by_ref().collect::<Vec<_>>();
 
         let expected = vec![
             (
-                Token::Number(Number("1_000_000.0".to_string())),
+                Token::Number(Number::Float("1_000_000.0".to_string())),
                 Span { start: 0, end: 11 },
             ),
-            (Token::NewLine, Span { start: 10, end: 11 }),
+            (Token::NewLine, Span { start: 11, end: 12 }),
             (
-                Token::Number(Number("42.0".to_string())),
-                Span { start: 12, end: 16 },
+                Token::Number(Number::Integer("42".to_string())),
+                Span { start: 12, end: 14 },
             ),
-            (Token::NewLine, Span { start: 15, end: 16 }),
+            (Token::NewLine, Span { start: 14, end: 15 }),
             (
-                Token::Number(Number("3.14".to_string())),
-                Span { start: 16, end: 20 },
+                Token::Number(Number::Float("3.14".to_string())),
+                Span { start: 14, end: 18 },
             ),
         ];
+        
+        println!("{:#?}", tokens);
 
+        for (token, span) in tokens.iter() {
+            println!("Token: {:?}, by span: {:?}", token, &code[span.start..span.end])
+        }
         assert_eq!(tokens, expected);
-        assert_eq!(token_iter.lines_table().offsets(), &[0, 12, 17]);
+        assert_eq!(token_iter.lines_table().offsets(), &[0, 12, 15]);
     }
 }

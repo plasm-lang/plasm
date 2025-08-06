@@ -1,169 +1,205 @@
-use std::mem::take;
+use std::iter::{Filter, Peekable};
 
-use syntax_tree::cst::{CST, CSTNode, CSTNodeKind};
-use tokenizer::{tokenize, Keyword, LinesTable, Span, Token, TokenIter};
+use syntax_tree::ast::{AST, Block, Expr, Function, Literal, PrimitiveType, Statment, Type};
+use tokenizer::{tokenize, Bracket, Keyword, LinesTable, Number, Span, SpecialSymbol, Token, TokenIter};
 
 use crate::error::{ParseError, Result};
 
-pub fn parse<I: Iterator<Item = char>>(mut token_iter: TokenIter<I>) -> (CST, Vec<ParseError>) {
-    let mut errors = Vec::new();
-    let mut cst = CST::new();
+pub struct ASTParser<I: Iterator<Item = (Token, Span)>> {
+    iter: Peekable<Filter<I, fn(&(Token, Span)) -> bool>>,
+    pub errors: Vec<ParseError>,
+}
 
-    loop {
-        let Some((token, span)) = token_iter.next() else {
-            return (cst, errors);
+impl<I> ASTParser<I>
+where
+    I: Iterator<Item = (Token, Span)>,
+{
+    pub fn new(token_iter: I) -> Self {
+        let pred: fn(&(Token, Span)) -> bool = |(token, _)| {
+            !matches!(
+                token,
+                Token::Comment(_) | Token::Whitespace(_) | Token::NewLine
+            )
         };
+        ASTParser {
+            iter: token_iter.filter(pred).peekable(),
+            errors: Vec::new(),
+        }
+    }
 
-        match token {
-            Token::Comment(comment) => {
-                cst.add_node(CSTNode::Token { token: Token::Comment(comment), span });
+    fn expect(&mut self, expected: Token) -> Option<()> {
+        match self.iter.next() {
+            Some((token, span)) => {
+                if token == expected {
+                    Some(())
+                } else {
+                    self.errors.push(ParseError::UnexpectedToken {
+                        token,
+                        span,
+                        expected: format!("{:?}", expected),
+                    });
+                    None
+                }
             }
-            Token::Whitespace(amount) => {
-                cst.add_node(CSTNode::Token { token: Token::Whitespace(amount), span });
-            }
-            Token::NewLine => {
-                cst.add_node(CSTNode::Token { token: Token::NewLine, span });
-            }
-            Token::Keyword(Keyword::Fn) => {
-                let (func_node, func_errors) = parse_function(&mut token_iter);
-                cst.add_node(func_node);
-                errors.extend(func_errors);
-            }
-            _ => {
-                let err =  ParseError::UnexpectedToken {
-                    token,
-                    span,
-                    lines_table: token_iter.lines_table().clone(),
-                    // code: self.token_iter.code.clone(),
-                    expected: "function or comment".to_string(),
-                };
-                errors.push(err);
+            None => {
+                self.errors.push(ParseError::UnexpectedEOF {
+                    expected: format!("{:?}", expected),
+                });
+                None
             }
         }
     }
-}
 
-macro_rules! expect {
-    ($iter:expr, $span:expr, $children:expr, $errors:expr, $pat:pat) => {
-        {
-            match $iter.next() {
-                Some((token, span)) => {
-                    match token {
-                        $pat => (token, span),
-                        _ => {
-                            $errors.push(ParseError::UnexpectedToken {
-                                token,
-                                span,
-                                lines_table: $iter.lines_table().clone(),
-                                expected: stringify!($pat).to_string(),
-                            });
-                            return (CSTNode::Node {
-                                kind: CSTNodeKind::Function,
-                                children: $children,
-                                span,
-                            }, $errors);
-                        }
+    fn expect_extract<F, T>(&mut self, extract: F, expected: &str) -> Option<(T, Span)>
+    where
+        F: FnOnce(Token) -> Option<T>,
+    {
+        match self.iter.next() {
+            Some((token, span)) => match extract(token.clone()) {
+                Some(val) => Some((val, span)),
+                None => {
+                    self.errors.push(ParseError::UnexpectedToken {
+                        token,
+                        span,
+                        expected: expected.to_string(),
+                    });
+                    None
+                }
+            },
+            None => {
+                self.errors.push(ParseError::UnexpectedEOF {
+                    expected: expected.to_string(),
+                });
+                None
+            }
+        }
+    }
+
+    fn expect_ident(&mut self) -> Option<(String, Span)> {
+        self.expect_extract(
+            |t| match t {
+                Token::Identifier(s) => Some(s),
+                _ => None,
+            },
+            "identifier",
+        )
+    }
+
+    fn expect_number(&mut self) -> Option<(Number, Span)> {
+        self.expect_extract(
+            |t| match t {
+                Token::Number(n) => Some(n),
+                _ => None,
+            },
+            "number",
+        )
+    }
+
+    pub fn parse(mut self) -> (AST, Vec<ParseError>) {
+        let mut ast = AST::new();
+
+        while let Some((token, _)) = self.iter.peek() {
+            match token {
+                Token::Keyword(Keyword::Fn) => {
+                    if let Some(func) = self.parse_function() {
+                        ast.add_function(func);
                     }
                 }
-                None => {
-                    $errors.push(ParseError::UnexpectedEOF {
-                        expected: stringify!($pat).to_string(),
-                    });
-                    return (CSTNode::Node {
-                        kind: CSTNodeKind::Function,
-                        children: $children,
-                        span: $span,
-                    }, $errors);
+                _ => {
+                    let Some((token, span)) = self.iter.next() else {
+                        continue;
+                    };
+                    let err = ParseError::UnexpectedToken {
+                        token,
+                        span,
+                        expected: "function".to_string(),
+                    };
+                    self.errors.push(err);
                 }
             }
         }
-    };
+
+        (ast, self.errors)
+    }
+
+    fn parse_function(&mut self) -> Option<Function> {
+        self.expect(Token::Keyword(Keyword::Fn))?;
+        let (func_name, _func_name_span) = self.expect_ident()?;
+        self.expect(Token::Bracket(Bracket::RoundOpen))?;
+        self.expect(Token::Bracket(Bracket::RoundClose))?;
+        let block = self.parse_block()?;
+
+        let func = Function {
+            name: func_name,
+            args: vec![],
+            return_type: Type::Primitive(PrimitiveType::Void),
+            body: block,
+        };
+        return Some(func);
+    }
+
+    fn parse_block(&mut self) -> Option<Block> {
+        self.expect(Token::Bracket(Bracket::CurlyOpen))?;
+        let mut block = Vec::new();
+
+        loop {
+            match self.iter.peek() {
+                Some((token, _span)) => match token {
+                    Token::Keyword(Keyword::New) => {
+                        let Some(stmt) = self.parse_variable_declaration() else {
+                            continue;
+                        };
+                        block.push(stmt);
+                    }
+                    Token::Bracket(Bracket::CurlyClose) => {
+                        self.iter.next();
+                        break Some(block)
+                    },
+                    _ => {
+                        let Some((token, span)) = self.iter.next() else {
+                            continue;
+                        };
+                        self.errors.push(ParseError::UnexpectedToken {
+                            token,
+                            span,
+                            expected: "statment or end of the block".to_string(),
+                        })
+                    }
+                },
+                None => {
+                    self.errors.push(ParseError::UnexpectedEOF {
+                        expected: "statment or end of the block".to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    fn parse_variable_declaration(&mut self) -> Option<Statment> {
+        self.expect(Token::Keyword(Keyword::New))?;
+        let (var_name, _var_name_span) = self.expect_ident()?;
+        self.expect(Token::SpecialSymbol(SpecialSymbol::Colon))?;
+        let (type_name, _type_name_span) = self.expect_ident()?;
+        let type_ = Type::from_str(&type_name);
+        self.expect(Token::SpecialSymbol(SpecialSymbol::Equals))?;
+        let expr = self.parse_expression()?;
+
+        let stmt = Statment::VariableDeclaration {
+            name: var_name,
+            type_,
+            value: expr,
+        };
+        Some(stmt)
+    }
+
+    fn parse_expression(&mut self) -> Option<Expr> {
+        let (number, _number_span) = self.expect_number()?;
+        Some(Expr::Literal(Literal::from_number(number)))
+    }
 }
-
-fn parse_function<I: Iterator<Item = char>>(
-    token_iter: &mut TokenIter<I>
-) -> (CSTNode, Vec<ParseError>) {
-    let mut errors = Vec::new();
-    let mut children = Vec::new();
-    let mut span = Span::new(0, 0);
-
-    let (space_1, space_1_span) = expect!(token_iter, span, children, errors, Token::Whitespace(_));
-    children.push(CSTNode::Token { token: space_1, span: space_1_span });
-
-    let (func_name, func_name_span) = expect!(token_iter, span, children, errors, Token::Identifier(_));
-    children.push(CSTNode::Token { token: func_name, span: func_name_span });
-
-    let (space_2, space_2_span) = expect!(token_iter, span, children, errors, Token::Whitespace(_));
-    children.push(CSTNode::Token { token: space_2, span: space_2_span });
-
-    (CSTNode::Node {
-        kind: CSTNodeKind::Function,
-        children,
-        span,
-    }, errors)
-}
-
-pub struct ParseIter<I: Iterator<Item = char>> {
-    token_iter: TokenIter<I>,
-    cst: CST,
-    done: bool,
-}
-
-// impl <I: Iterator<Item = char>> ParseIter<I> {
-//     pub fn new(token_iter: TokenIter<I>) -> Self {
-//         Self {
-//             token_iter,
-//             cst: CST::new(),
-//             done: false,
-//         }
-//     }
-// }
-
-// impl<I: Iterator<Item = char>> Iterator for ParseIter<I> {
-//     type Item = Result<CST>;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         if self.done {
-//             return None;
-//         }
-
-//         loop {
-//             let Some((token, span)) = self.token_iter.next() else {
-//                 self.done = true;
-//                 return Some(Ok(take(&mut self.cst)));
-//             };
-
-//             match token {
-//                 Token::Comment(comment) => {
-//                     self.cst.add_node(CSTNode::Token { token: Token::Comment(comment), span });
-//                 }
-//                 Token::Whitespace(amount) => {
-//                     self.cst.add_node(CSTNode::Token { token: Token::Whitespace(amount), span });
-//                 }
-//                 Token::NewLine => {
-//                     self.cst.add_node(CSTNode::Token { token: Token::NewLine, span });
-//                 }
-//                 Token::Keyword(Keyword::Fn) => {
-//                     let func_name = expect!(self, Token::Identifier(_));
-//                 }
-//                 _ => {
-//                     return Some(Err(ParseError::UnexpectedToken {
-//                         token,
-//                         span,
-//                         lines_table: self.token_iter.lines_table().clone(),
-//                         // code: self.token_iter.code.clone(),
-//                         expected: "function or comment".to_string(),
-//                     }));
-//                 }
-//             }
-//         }
-//     }
-// }
 
 #[cfg(test)]
 mod tests {
-    use syntax_tree::cst;
-
     use super::*;
 
     fn prepare_string(input: &str) -> String {
@@ -186,17 +222,15 @@ mod tests {
             comment
             */
             fn main() {
-                let x: i32 = 5
+                new x: i32 = 5
                 print(x)
             }
         "#;
 
         let code = prepare_string(code);
-        let token_iter = tokenize(code.chars());
-        let (cst, errors) = parse(token_iter);
-        println!("{:#?}", cst);
+        let token_iter = tokenize(code.char_indices());
+        let (ast, errors) = ASTParser::new(token_iter).parse();
+        println!("{:#?}", ast);
         println!("Errors: {:#?}", errors);
-        // let cst = parse_iter.find_map(Result::ok).unwrap();
-        // println!("{:#?}", cst);
     }
 }

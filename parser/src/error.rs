@@ -7,7 +7,7 @@ pub enum ParseError {
     UnexpectedToken {
         token: Token,
         span: Span,
-        lines_table: LinesTable,
+        // lines_table: LinesTable,
         // code: String,
         expected: String,
     },
@@ -22,7 +22,7 @@ impl std::fmt::Display for ParseError {
             ParseError::UnexpectedToken {
                 token,
                 span,
-                lines_table,
+                // lines_table,
                 // code,
                 expected,
             } => {

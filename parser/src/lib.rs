@@ -2,4 +2,4 @@ mod error;
 mod parser;
 
 pub use error::{ParseError, Result};
-pub use parser::{ParseIter, parse};
+pub use parser::ASTParser;
