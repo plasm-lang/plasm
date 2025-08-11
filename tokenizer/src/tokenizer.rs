@@ -1,29 +1,8 @@
-use std::iter::{Enumerate, Peekable};
+use std::iter::Peekable;
 use std::mem::take;
 
 use super::diagnostic::{LinesTable, Span};
 use super::token::{Bracket, Comment, Keyword, Number, SpecialSymbol, Token};
-
-// pub struct Tokenizer<I: Iterator<Item = char>> {
-//     chars: Peekable<Enumerate<I>>,
-// }
-
-// impl<I: Iterator<Item = char>> Tokenizer<I> {
-//     pub fn new(code_iter: I) -> Self {
-//         Tokenizer {
-//             chars: code_iter.enumerate().peekable(),
-//         }
-//     }
-
-//     pub fn tokenize(self) -> TokenIter<I> {
-//         TokenIter {
-//             chars: self.chars,
-//             state: State::Default,
-//             accumulated: String::new(),
-//             lines_table: LinesTable::new(),
-//         }
-//     }
-// }
 
 pub fn tokenize<I: Iterator<Item = (usize, char)>>(chars: I) -> TokenIter<I> {
     TokenIter {
@@ -52,52 +31,61 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
         &self.lines_table
     }
 
-    fn lex_whitespace(&mut self) -> Option<(Token, Span)> {
-        let mut last_i = 0;
-        while let Some((i, ch)) = self.chars.peek() {
-            last_i = *i;
+    fn lex_whitespace_from(&mut self, start_i: usize, first_ch: char) -> Option<(Token, Span)> {
+        self.accumulated.clear();
+        self.accumulated.push(first_ch);
+        let mut end_i = start_i + first_ch.len_utf8();
+
+        while let Some(&(i, ch)) = self.chars.peek() {
             if ch.is_whitespace() {
-                self.accumulated.push(*ch);
-                self.chars.next(); // consume the whitespace character
+                end_i = i + ch.len_utf8();
+                self.accumulated.push(ch);
+                self.chars.next();
             } else {
                 break;
             }
         }
 
-        let whitespace_len = self.accumulated.len();
-        let span = Span::new(last_i - self.accumulated.as_bytes().len(), last_i);
+        let span = Span::new(start_i, end_i);
+        let whitespace_len = self.accumulated.chars().count();
         self.accumulated.clear();
         Some((Token::Whitespace(whitespace_len), span))
     }
 
-    fn lex_number(&mut self) -> Option<(Token, Span)> {
-        let mut last_i = 0;
-        while let Some((i, ch)) = self.chars.peek() {
-            last_i = *i;
-            if ch.is_digit(10) || *ch == '.' || *ch == '_' {
-                self.accumulated.push(*ch);
-                self.chars.next(); // consume the digit
+    fn lex_number_from(&mut self, start_i: usize, first_ch: char) -> Option<(Token, Span)> {
+        self.accumulated.clear();
+        self.accumulated.push(first_ch);
+        let mut end_i = start_i + first_ch.len_utf8();
+
+        while let Some(&(i, ch)) = self.chars.peek() {
+            if ch.is_ascii_digit() || ch == '.' || ch == '_' {
+                end_i = i + ch.len_utf8();
+                self.accumulated.push(ch);
+                self.chars.next();
             } else {
                 break;
             }
         }
 
-        let span = Span::new(last_i - self.accumulated.bytes().len(), last_i);
+        let span = Span::new(start_i, end_i);
         let number = if self.accumulated.contains('.') {
-            Number::Float(take(&mut self.accumulated))
+            Number::Float(std::mem::take(&mut self.accumulated))
         } else {
-            Number::Integer(take(&mut self.accumulated))
+            Number::Integer(std::mem::take(&mut self.accumulated))
         };
         Some((Token::Number(number), span))
     }
 
-    fn lex_alpahanumeric(&mut self) -> Option<(Token, Span)> {
-        let mut last_i = 0;
-        while let Some((i, ch)) = self.chars.peek() {
-            last_i = *i;
-            if ch.is_alphanumeric() || *ch == '_' {
-                self.accumulated.push(*ch);
-                self.chars.next(); // consume the alphanumeric character
+    fn lex_alphanumeric_from(&mut self, start_i: usize, first_ch: char) -> Option<(Token, Span)> {
+        self.accumulated.clear();
+        self.accumulated.push(first_ch);
+        let mut end_i = start_i + first_ch.len_utf8();
+
+        while let Some(&(i, ch)) = self.chars.peek() {
+            if ch.is_alphanumeric() || ch == '_' {
+                end_i = i + ch.len_utf8();
+                self.accumulated.push(ch);
+                self.chars.next();
             } else {
                 break;
             }
@@ -108,9 +96,67 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
             "new" => Token::Keyword(Keyword::New),
             _ => Token::Identifier(self.accumulated.clone()),
         };
-        let span = Span::new(last_i - self.accumulated.as_bytes().len(), last_i);
+        let span = Span::new(start_i, end_i);
         self.accumulated.clear();
         Some((token, span))
+    }
+
+    fn lex_single_comment(&mut self) -> Option<(Token, Span)> {
+        self.accumulated.clear();
+
+        let Some((start_i, ch0)) = self.chars.next() else {
+            return None;
+        };
+
+        if ch0 == '\n' {
+            return Some((
+                Token::Comment(Comment::SingleLine("".to_string())),
+                Span::new(start_i, start_i),
+            ));
+        }
+
+        self.accumulated.push(ch0);
+
+        while let Some((i, ch)) = self.chars.next() {
+            if ch == '\n' {
+                let span = Span::new(start_i, i);
+                let comment_text = take(&mut self.accumulated);
+                self.state = State::Default;
+                self.lines_table.add_line(i + ch.len_utf8());
+                return Some((Token::Comment(Comment::SingleLine(comment_text)), span));
+            } else {
+                self.accumulated.push(ch);
+            }
+        }
+
+        None
+    }
+
+    fn lex_multiline_comment(&mut self) -> Option<(Token, Span)> {
+        self.accumulated.clear();
+
+        let Some((start_i, ch0)) = self.chars.next() else {
+            return None;
+        };
+
+        self.accumulated.push(ch0);
+
+        while let Some((i, ch)) = self.chars.next() {
+            if ch == '*' && self.chars.peek().map(|(_, ch)| ch) == Some(&'/') {
+                self.chars.next(); // consume the '/'
+                let span = Span::new(start_i, i);
+                let comment_text = take(&mut self.accumulated);
+                self.state = State::Default;
+                return Some((Token::Comment(Comment::MultiLine(comment_text)), span));
+            } else {
+                if ch == '\n' {
+                    self.lines_table.add_line(i + ch.len_utf8());
+                }
+                self.accumulated.push(ch);
+            }
+        }
+
+        None
     }
 
     fn lex_default(&mut self) -> Option<(Token, Span)> {
@@ -118,13 +164,11 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
             match ch {
                 '/' if self.chars.peek().map(|(_, ch)| ch) == Some(&'/') => {
                     self.state = State::InSingleComment;
-                    self.accumulated.clear();
                     self.chars.next(); // consume the second '/'
                     return self.lex_single_comment();
                 }
                 '/' if self.chars.peek().map(|(_, ch)| ch) == Some(&'*') => {
                     self.state = State::InMultiComment;
-                    self.accumulated.clear();
                     self.chars.next(); // consume the '*'
                     return self.lex_multiline_comment();
                 }
@@ -134,30 +178,47 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
                     return Some((Token::NewLine, Span::new(i, i + char_len)));
                 }
                 ch if ch.is_whitespace() => {
-                    self.accumulated.push(ch);
-                    return self.lex_whitespace();
+                    return self.lex_whitespace_from(i, ch);
                 }
-                ch if ch.is_digit(10) => {
+                ch if ch.is_ascii_digit() => {
                     self.accumulated.push(ch);
-                    return self.lex_number();
+                    return self.lex_number_from(i, ch);
                 }
                 '{' => {
-                    return Some((Token::Bracket(Bracket::CurlyOpen), Span::new(i, i + ch.len_utf8())));
+                    return Some((
+                        Token::Bracket(Bracket::CurlyOpen),
+                        Span::new(i, i + ch.len_utf8()),
+                    ));
                 }
                 '}' => {
-                    return Some((Token::Bracket(Bracket::CurlyClose), Span::new(i, i + ch.len_utf8())));
+                    return Some((
+                        Token::Bracket(Bracket::CurlyClose),
+                        Span::new(i, i + ch.len_utf8()),
+                    ));
                 }
                 '(' => {
-                    return Some((Token::Bracket(Bracket::RoundOpen), Span::new(i, i + ch.len_utf8())));
+                    return Some((
+                        Token::Bracket(Bracket::RoundOpen),
+                        Span::new(i, i + ch.len_utf8()),
+                    ));
                 }
                 ')' => {
-                    return Some((Token::Bracket(Bracket::RoundClose), Span::new(i, i + ch.len_utf8())));
+                    return Some((
+                        Token::Bracket(Bracket::RoundClose),
+                        Span::new(i, i + ch.len_utf8()),
+                    ));
                 }
                 '[' => {
-                    return Some((Token::Bracket(Bracket::SquareOpen), Span::new(i, i + ch.len_utf8())));
+                    return Some((
+                        Token::Bracket(Bracket::SquareOpen),
+                        Span::new(i, i + ch.len_utf8()),
+                    ));
                 }
                 ']' => {
-                    return Some((Token::Bracket(Bracket::SquareClose), Span::new(i, i + ch.len_utf8())));
+                    return Some((
+                        Token::Bracket(Bracket::SquareClose),
+                        Span::new(i, i + ch.len_utf8()),
+                    ));
                 }
                 ':' => {
                     return Some((
@@ -172,47 +233,11 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
                     ));
                 }
                 ch if ch.is_alphanumeric() || ch == '_' => {
-                    self.accumulated.push(ch);
-                    return self.lex_alpahanumeric();
+                    return self.lex_alphanumeric_from(i, ch);
                 }
                 ch => {
                     todo!("Handle unrecognized character: '{}'", ch);
                 }
-            }
-        }
-
-        None
-    }
-
-    fn lex_single_comment(&mut self) -> Option<(Token, Span)> {
-        while let Some((i, ch)) = self.chars.next() {
-            if ch == '\n' {
-                let span = Span::new(i - self.accumulated.as_bytes().len(), i);
-                let comment_text = take(&mut self.accumulated);
-                self.state = State::Default;
-                self.lines_table.add_line(i + ch.len_utf8());
-                return Some((Token::Comment(Comment::SingleLine(comment_text)), span));
-            } else {
-                self.accumulated.push(ch);
-            }
-        }
-
-        None
-    }
-
-    fn lex_multiline_comment(&mut self) -> Option<(Token, Span)> {
-        while let Some((i, ch)) = self.chars.next() {
-            if ch == '*' && self.chars.peek().map(|(_, ch)| ch) == Some(&'/') {
-                self.chars.next(); // consume the '/'
-                let span = Span::new(i - self.accumulated.as_bytes().len(), i);
-                let comment_text = take(&mut self.accumulated);
-                self.state = State::Default;
-                return Some((Token::Comment(Comment::MultiLine(comment_text)), span));
-            } else {
-                if ch == '\n' {
-                    self.lines_table.add_line(i + ch.len_utf8());
-                }
-                self.accumulated.push(ch);
             }
         }
 
@@ -235,44 +260,31 @@ impl<I: Iterator<Item = (usize, char)>> Iterator for TokenIter<I> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use indoc::indoc;
 
-    fn prepare_string(input: &str) -> String {
-        input
-            .trim_start()
-            .trim_end()
-            .lines()
-            // remove 12 spaces
-            .map(|l| l.trim_start_matches("            "))
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
+    const BASIC_CODE: &str = indoc! {"
+        // Basic inline comment 1
+
+        /* Multiline
+        comment 0123
+        */
+        fn main() {
+            new x: i32 = 5
+            print(x)
+        }"};
 
     #[test]
     fn test_basic_code_tokenization() {
-        let code = r#"
-            // Basic inline comment
-
-            /* Multiline
-            comment
-            */
-            fn main() {
-                new x: i32 = 5
-                print(x)
-            }
-        "#;
-
-        let code = prepare_string(code);
-
-        let mut token_iter = tokenize(code.char_indices());
+        let mut token_iter = tokenize(BASIC_CODE.char_indices());
         let tokens = token_iter
             .by_ref()
             .map(|(token, _span)| token)
             .collect::<Vec<_>>();
 
         let expected = [
-            Token::Comment(Comment::SingleLine(" Basic inline comment".to_string())),
+            Token::Comment(Comment::SingleLine(" Basic inline comment 1".to_string())),
             Token::NewLine,
-            Token::Comment(Comment::MultiLine(" Multiline\ncomment\n".to_string())),
+            Token::Comment(Comment::MultiLine(" Multiline\ncomment 0123\n".to_string())),
             Token::NewLine,
             Token::Keyword(Keyword::Fn),
             Token::Whitespace(1),
@@ -308,14 +320,57 @@ mod tests {
     }
 
     #[test]
+    fn test_spans() {
+        let token_iter = tokenize(BASIC_CODE.char_indices());
+        for (token, span) in token_iter {
+            let str_by_span = &BASIC_CODE[span.start..span.end];
+            match token {
+                Token::Keyword(keyword) => match keyword {
+                    Keyword::Fn => assert_eq!(str_by_span, "fn"),
+                    Keyword::New => assert_eq!(str_by_span, "new"),
+                },
+                Token::Identifier(id) => assert_eq!(id, str_by_span),
+                Token::Number(number) => assert_eq!(number.raw_value(), str_by_span),
+                Token::SpecialSymbol(special_symbol) => match special_symbol {
+                    SpecialSymbol::Colon => assert_eq!(str_by_span, ":"),
+                    SpecialSymbol::Equals => assert_eq!(str_by_span, "="),
+                },
+                Token::Bracket(bracket) => match bracket {
+                    Bracket::RoundOpen => assert_eq!(str_by_span, "("),
+                    Bracket::RoundClose => assert_eq!(str_by_span, ")"),
+                    Bracket::SquareOpen => assert_eq!(str_by_span, "["),
+                    Bracket::SquareClose => assert_eq!(str_by_span, "]"),
+                    Bracket::CurlyOpen => assert_eq!(str_by_span, "{"),
+                    Bracket::CurlyClose => assert_eq!(str_by_span, "}"),
+                },
+                Token::Whitespace(amount) => assert_eq!(str_by_span.len(), amount),
+                Token::Comment(comment) => assert_eq!(comment.raw_value(), str_by_span),
+                Token::NewLine => assert_eq!(str_by_span, "\n"),
+                Token::Impossible(value) => {
+                    todo!("Imposible token ({value:?}) during test is imposible!")
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_lines_table() {
+        let mut token_iter = tokenize(BASIC_CODE.char_indices());
+        let _ = token_iter.by_ref().collect::<Vec<_>>();
+        let mut offsets_iter = token_iter.lines_table().offsets().iter();
+        assert_eq!(offsets_iter.next(), Some(0).as_ref());
+        for &i in offsets_iter {
+            assert_eq!(&BASIC_CODE[i - 1..i], "\n");
+        }
+    }
+
+    #[test]
     fn test_numbers_tokenization() {
-        let code = r#"
+        let code = indoc! {"
             1_000_000.0
             42
             3.14
-        "#;
-
-        let code = prepare_string(code);
+            1"};
 
         let mut token_iter = tokenize(code.char_indices());
         let tokens = token_iter.by_ref().collect::<Vec<_>>();
@@ -333,16 +388,16 @@ mod tests {
             (Token::NewLine, Span { start: 14, end: 15 }),
             (
                 Token::Number(Number::Float("3.14".to_string())),
-                Span { start: 14, end: 18 },
+                Span { start: 15, end: 19 },
+            ),
+            (Token::NewLine, Span { start: 19, end: 20 }),
+            (
+                Token::Number(Number::Integer("1".to_string())),
+                Span { start: 20, end: 21 },
             ),
         ];
-        
-        println!("{:#?}", tokens);
 
-        for (token, span) in tokens.iter() {
-            println!("Token: {:?}, by span: {:?}", token, &code[span.start..span.end])
-        }
         assert_eq!(tokens, expected);
-        assert_eq!(token_iter.lines_table().offsets(), &[0, 12, 15]);
+        assert_eq!(token_iter.lines_table().offsets(), &[0, 12, 15, 20]);
     }
 }

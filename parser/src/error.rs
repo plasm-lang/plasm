@@ -2,7 +2,7 @@ use tokenizer::{LinesTable, Span, Token, TokenIter};
 
 pub type Result<T> = std::result::Result<T, ParseError>;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ParseError {
     UnexpectedToken {
         token: Token,

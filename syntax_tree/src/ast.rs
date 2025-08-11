@@ -1,6 +1,6 @@
 use tokenizer::Number;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct AST {
     pub items: Vec<Item>,
 }
@@ -15,12 +15,12 @@ impl AST {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Item {
     Function(Function),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Function {
     pub name: String,
     pub args: Vec<Argument>,
@@ -28,7 +28,7 @@ pub struct Function {
     pub body: Block,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Argument {
     pub name: String,
     pub type_: Type,
@@ -38,31 +38,35 @@ pub type Block = Vec<Statment>;
 
 /// Represents a statement in the AST
 /// A statement is a line of code that does something, special language construction, it has no type, cannot be returned
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Statment {
     VariableDeclaration {
         name: String,
         type_: Type,
         value: Expr,
     },
+    FunctionCall(FunctionCall),
     // Assignment,
     Return(Expr),
 }
 
 /// Represents an expression in the AST
 /// Fundametally, an expression is a value that can be evaluated, returned, has returning type
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
     Literal(Literal),
     Variable(String),
-    Call {
-        name: String,
-        args: Vec<CallArgument>,
-    },
+    FunctionCall(FunctionCall),
     Block(Block),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
+pub struct FunctionCall {
+    pub name: String,
+    pub args: Vec<CallArgument>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum Literal {
     Integer(String),
     Float(String),
@@ -77,13 +81,13 @@ impl Literal {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct CallArgument {
     pub name: Option<String>,
     pub value: Expr,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Type {
     Primitive(PrimitiveType),
     // String, // TODO
@@ -92,15 +96,15 @@ pub enum Type {
 
 impl Type {
     pub fn from_str(identifier: &str) -> Self {
-        if let Some(_type) = PrimitiveType::from_str(identifier) {
-            return Self::Primitive(_type);
+        if let Some(type_) = PrimitiveType::from_str(identifier) {
+            return Self::Primitive(type_);
         }
 
         todo!()
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum PrimitiveType {
     Void,
     Bool,

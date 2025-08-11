@@ -1,9 +1,13 @@
 use std::iter::{Filter, Peekable};
 
-use syntax_tree::ast::{AST, Block, Expr, Function, Literal, PrimitiveType, Statment, Type};
-use tokenizer::{tokenize, Bracket, Keyword, LinesTable, Number, Span, SpecialSymbol, Token, TokenIter};
+use syntax_tree::ast::{
+    AST, Block, CallArgument, Expr, Function, FunctionCall, Literal, PrimitiveType, Statment, Type,
+};
+use tokenizer::{
+    Bracket, Keyword, Number, Span, SpecialSymbol, Token,
+};
 
-use crate::error::{ParseError, Result};
+use crate::error::ParseError;
 
 pub struct ASTParser<I: Iterator<Item = (Token, Span)>> {
     iter: Peekable<Filter<I, fn(&(Token, Span)) -> bool>>,
@@ -145,25 +149,15 @@ where
         loop {
             match self.iter.peek() {
                 Some((token, _span)) => match token {
-                    Token::Keyword(Keyword::New) => {
-                        let Some(stmt) = self.parse_variable_declaration() else {
+                    Token::Bracket(Bracket::CurlyClose) => {
+                        self.iter.next();
+                        break Some(block);
+                    }
+                    _ => {
+                        let Some(stmt) = self.parse_statment() else {
                             continue;
                         };
                         block.push(stmt);
-                    }
-                    Token::Bracket(Bracket::CurlyClose) => {
-                        self.iter.next();
-                        break Some(block)
-                    },
-                    _ => {
-                        let Some((token, span)) = self.iter.next() else {
-                            continue;
-                        };
-                        self.errors.push(ParseError::UnexpectedToken {
-                            token,
-                            span,
-                            expected: "statment or end of the block".to_string(),
-                        })
                     }
                 },
                 None => {
@@ -173,6 +167,100 @@ where
                 }
             }
         }
+    }
+
+    fn parse_statment(&mut self) -> Option<Statment> {
+        match self.iter.peek() {
+            Some((token, _span)) => match token {
+                Token::Keyword(Keyword::New) => self.parse_variable_declaration(),
+                Token::Identifier(_) => {
+                    let Some((Token::Identifier(id), _span)) = self.iter.next() else {
+                        return None; // Unreachable code as we picked value before and it's Identifier
+                    };
+                    match self.iter.peek() {
+                        Some((token, _span)) => match token {
+                            Token::Bracket(Bracket::RoundOpen) => {
+                                self.parse_function_call(id).map(Statment::FunctionCall)
+                            }
+                            Token::SpecialSymbol(SpecialSymbol::Equals) => todo!(), // Variable assignment
+                            _ => {
+                                let (token, span) = self.iter.next()?;
+                                let err = ParseError::UnexpectedToken {
+                                    token,
+                                    span,
+                                    expected: "'(' or '='".to_string(),
+                                };
+                                self.errors.push(err);
+                                None
+                            }
+                        },
+                        None => {
+                            self.iter.next();
+                            let err = ParseError::UnexpectedEOF {
+                                expected: "'(' or '='".to_string(),
+                            };
+                            self.errors.push(err);
+                            None
+                        }
+                    }
+                }
+                _ => {
+                    let (token, span) = self.iter.next()?;
+                    let err = ParseError::UnexpectedToken {
+                        token,
+                        span,
+                        expected: "statment (function call, new variable, return, etc.)"
+                            .to_string(),
+                    };
+                    self.errors.push(err);
+                    None
+                }
+            },
+            None => {
+                self.iter.next();
+                self.errors.push(ParseError::UnexpectedEOF {
+                    expected: "statment (function call, new variable, return, etc.)".to_string(),
+                });
+                None
+            }
+        }
+    }
+
+    fn parse_function_call(&mut self, id: String) -> Option<FunctionCall> {
+        self.expect(Token::Bracket(Bracket::RoundOpen))?;
+        let mut arguments = Vec::new();
+        loop {
+            match self.iter.peek() {
+                Some((token, _span)) => match token {
+                    Token::Bracket(Bracket::RoundClose) => {
+                        self.iter.next();
+                        break;
+                    }
+                    _ => {
+                        let Some(expr) = self.parse_expression() else {
+                            continue;
+                        };
+                        let arg = CallArgument {
+                            name: None,
+                            value: expr,
+                        };
+                        arguments.push(arg);
+                    }
+                },
+                None => {
+                    self.iter.next();
+                    self.errors.push(ParseError::UnexpectedEOF {
+                        expected: "function argument or ')'".to_string(),
+                    });
+                    return None;
+                }
+            }
+        }
+
+        Some(FunctionCall {
+            name: id,
+            args: arguments,
+        })
     }
 
     fn parse_variable_declaration(&mut self) -> Option<Statment> {
@@ -193,29 +281,67 @@ where
     }
 
     fn parse_expression(&mut self) -> Option<Expr> {
+        match self.iter.peek() {
+            Some((token, _span)) => match token {
+                Token::Identifier(_) => {
+                    let Some((Token::Identifier(id), _span)) = self.iter.next() else {
+                        return None; // Unreachable code as we picked value before and it's Identifier
+                    };
+                    match self.iter.peek() {
+                        Some((token, _span)) => match token {
+                            Token::Bracket(Bracket::RoundOpen) => {
+                                self.parse_function_call(id).map(Expr::FunctionCall)
+                            }
+                            _ => Some(Expr::Variable(id)),
+                        },
+                        None => {
+                            self.iter.next();
+                            let err = ParseError::UnexpectedEOF {
+                                expected: "'(' or '='".to_string(),
+                            };
+                            self.errors.push(err);
+                            None
+                        }
+                    }
+                }
+                Token::Number(_) => self.parse_number().map(Expr::Literal),
+                _ => {
+                    let (token, span) = self.iter.next()?;
+                    let err = ParseError::UnexpectedToken {
+                        token,
+                        span,
+                        expected: "expression".to_string(),
+                    };
+                    self.errors.push(err);
+                    None
+                }
+            },
+            None => {
+                self.iter.next();
+                self.errors.push(ParseError::UnexpectedEOF {
+                    expected: "expression".to_string(),
+                });
+                None
+            }
+        }
+    }
+
+    fn parse_number(&mut self) -> Option<Literal> {
         let (number, _number_span) = self.expect_number()?;
-        Some(Expr::Literal(Literal::from_number(number)))
+        Some(Literal::from_number(number))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn prepare_string(input: &str) -> String {
-        input
-            .trim_start()
-            .trim_end()
-            .lines()
-            // remove 12 spaces
-            .map(|l| l.trim_start_matches("            "))
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
+    use indoc::indoc;
+    use syntax_tree::ast::Item;
+    use tokenizer::tokenize;
 
     #[test]
     fn test_basic_code_cst_parsing() {
-        let code = r#"
+        let code = indoc! {"
             // Basic inline comment
 
             /* Multiline
@@ -224,13 +350,33 @@ mod tests {
             fn main() {
                 new x: i32 = 5
                 print(x)
-            }
-        "#;
+            }"};
 
-        let code = prepare_string(code);
         let token_iter = tokenize(code.char_indices());
         let (ast, errors) = ASTParser::new(token_iter).parse();
-        println!("{:#?}", ast);
-        println!("Errors: {:#?}", errors);
+
+        let expected = AST {
+            items: vec![Item::Function(Function {
+                name: "main".to_string(),
+                args: vec![],
+                return_type: Type::Primitive(PrimitiveType::Void),
+                body: vec![
+                    Statment::VariableDeclaration {
+                        name: "x".to_string(),
+                        type_: Type::Primitive(PrimitiveType::I32),
+                        value: Expr::Literal(Literal::Integer("5".to_string())),
+                    },
+                    Statment::FunctionCall(FunctionCall {
+                        name: "print".to_string(),
+                        args: vec![CallArgument {
+                            name: None,
+                            value: Expr::Variable("x".to_string()),
+                        }],
+                    }),
+                ],
+            })],
+        };
+        assert_eq!(ast, expected);
+        assert_eq!(errors, vec![]);
     }
 }

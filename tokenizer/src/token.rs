@@ -10,26 +10,52 @@ pub enum Number {
     Float(String),
 }
 
+impl Number {
+    pub fn raw_value(&self) -> &str {
+        match self {
+            Self::Integer(value) => value,
+            Self::Float(value) => value,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SpecialSymbol {
-    Colon,  // :
-    Equals, // =
+    /// :
+    Colon,
+    /// =
+    Equals,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Bracket {
-    RoundOpen,   // (
-    RoundClose,  // )
-    SquareOpen,  // [
-    SquareClose, // ]
-    CurlyOpen,   // {
-    CurlyClose,  // }
+    /// (
+    RoundOpen,
+    /// )
+    RoundClose,
+    /// [
+    SquareOpen,
+    /// ]
+    SquareClose,
+    /// {
+    CurlyOpen,
+    /// }
+    CurlyClose,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Comment {
     SingleLine(String),
     MultiLine(String),
+}
+
+impl Comment {
+    pub fn raw_value(&self) -> &str {
+        match self {
+            Self::SingleLine(value) => value,
+            Self::MultiLine(value) => value,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
