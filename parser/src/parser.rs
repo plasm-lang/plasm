@@ -1,7 +1,7 @@
 use std::iter::{Filter, Peekable};
 
 use syntax_tree::ast::{
-    AST, Block, CallArgument, Expr, Function, FunctionCall, Literal, PrimitiveType, Statment, Type,
+    AST, Block, CallArgument, Expr, Function, FunctionCall, Literal, PrimitiveType, Statement, Type,
 };
 use tokenizer::{
     Bracket, Keyword, Number, Span, SpecialSymbol, Token,
@@ -154,7 +154,7 @@ where
                         break Some(block);
                     }
                     _ => {
-                        let Some(stmt) = self.parse_statment() else {
+                        let Some(stmt) = self.parse_statement() else {
                             continue;
                         };
                         block.push(stmt);
@@ -162,14 +162,14 @@ where
                 },
                 None => {
                     self.errors.push(ParseError::UnexpectedEOF {
-                        expected: "statment or end of the block".to_string(),
+                        expected: "statement or end of the block".to_string(),
                     });
                 }
             }
         }
     }
 
-    fn parse_statment(&mut self) -> Option<Statment> {
+    fn parse_statement(&mut self) -> Option<Statement> {
         match self.iter.peek() {
             Some((token, _span)) => match token {
                 Token::Keyword(Keyword::New) => self.parse_variable_declaration(),
@@ -180,7 +180,7 @@ where
                     match self.iter.peek() {
                         Some((token, _span)) => match token {
                             Token::Bracket(Bracket::RoundOpen) => {
-                                self.parse_function_call(id).map(Statment::FunctionCall)
+                                self.parse_function_call(id).map(Statement::FunctionCall)
                             }
                             Token::SpecialSymbol(SpecialSymbol::Equals) => todo!(), // Variable assignment
                             _ => {
@@ -209,7 +209,7 @@ where
                     let err = ParseError::UnexpectedToken {
                         token,
                         span,
-                        expected: "statment (function call, new variable, return, etc.)"
+                        expected: "statement (function call, new variable, return, etc.)"
                             .to_string(),
                     };
                     self.errors.push(err);
@@ -219,7 +219,7 @@ where
             None => {
                 self.iter.next();
                 self.errors.push(ParseError::UnexpectedEOF {
-                    expected: "statment (function call, new variable, return, etc.)".to_string(),
+                    expected: "statement (function call, new variable, return, etc.)".to_string(),
                 });
                 None
             }
@@ -263,7 +263,7 @@ where
         })
     }
 
-    fn parse_variable_declaration(&mut self) -> Option<Statment> {
+    fn parse_variable_declaration(&mut self) -> Option<Statement> {
         self.expect(Token::Keyword(Keyword::New))?;
         let (var_name, _var_name_span) = self.expect_ident()?;
         self.expect(Token::SpecialSymbol(SpecialSymbol::Colon))?;
@@ -272,7 +272,7 @@ where
         self.expect(Token::SpecialSymbol(SpecialSymbol::Equals))?;
         let expr = self.parse_expression()?;
 
-        let stmt = Statment::VariableDeclaration {
+        let stmt = Statement::VariableDeclaration {
             name: var_name,
             type_,
             value: expr,
@@ -297,7 +297,7 @@ where
                         None => {
                             self.iter.next();
                             let err = ParseError::UnexpectedEOF {
-                                expected: "'(' or '='".to_string(),
+                                expected: "'('".to_string(),
                             };
                             self.errors.push(err);
                             None
@@ -361,12 +361,12 @@ mod tests {
                 args: vec![],
                 return_type: Type::Primitive(PrimitiveType::Void),
                 body: vec![
-                    Statment::VariableDeclaration {
+                    Statement::VariableDeclaration {
                         name: "x".to_string(),
                         type_: Type::Primitive(PrimitiveType::I32),
                         value: Expr::Literal(Literal::Integer("5".to_string())),
                     },
-                    Statment::FunctionCall(FunctionCall {
+                    Statement::FunctionCall(FunctionCall {
                         name: "print".to_string(),
                         args: vec![CallArgument {
                             name: None,

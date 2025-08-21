@@ -33,6 +33,6 @@ impl LinesTable {
     }
 
     pub fn last(&self) -> usize {
-        self.offsets().last().map(|v| *v).unwrap_or(0)
+        self.offsets().last().copied().unwrap_or(0)
     }
 }

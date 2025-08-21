@@ -34,12 +34,12 @@ pub struct Argument {
     pub type_: Type,
 }
 
-pub type Block = Vec<Statment>;
+pub type Block = Vec<Statement>;
 
 /// Represents a statement in the AST
 /// A statement is a line of code that does something, special language construction, it has no type, cannot be returned
 #[derive(Debug, PartialEq, Eq)]
-pub enum Statment {
+pub enum Statement {
     VariableDeclaration {
         name: String,
         type_: Type,
