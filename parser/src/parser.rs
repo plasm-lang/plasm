@@ -3,9 +3,7 @@ use std::iter::{Filter, Peekable};
 use syntax_tree::ast::{
     AST, Block, CallArgument, Expr, Function, FunctionCall, Literal, PrimitiveType, Statement, Type,
 };
-use tokenizer::{
-    Bracket, Keyword, Number, Span, SpecialSymbol, Token,
-};
+use tokenizer::{Bracket, Keyword, Number, Span, SpecialSymbol, Token};
 
 use crate::error::ParseError;
 
@@ -217,7 +215,6 @@ where
                 }
             },
             None => {
-                self.iter.next();
                 self.errors.push(ParseError::UnexpectedEOF {
                     expected: "statement (function call, new variable, return, etc.)".to_string(),
                 });
@@ -248,7 +245,6 @@ where
                     }
                 },
                 None => {
-                    self.iter.next();
                     self.errors.push(ParseError::UnexpectedEOF {
                         expected: "function argument or ')'".to_string(),
                     });
@@ -295,7 +291,6 @@ where
                             _ => Some(Expr::Variable(id)),
                         },
                         None => {
-                            self.iter.next();
                             let err = ParseError::UnexpectedEOF {
                                 expected: "'('".to_string(),
                             };
@@ -317,7 +312,6 @@ where
                 }
             },
             None => {
-                self.iter.next();
                 self.errors.push(ParseError::UnexpectedEOF {
                     expected: "expression".to_string(),
                 });

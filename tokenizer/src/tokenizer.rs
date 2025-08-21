@@ -181,7 +181,6 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
                     return self.lex_whitespace_from(i, ch);
                 }
                 ch if ch.is_ascii_digit() => {
-                    self.accumulated.push(ch);
                     return self.lex_number_from(i, ch);
                 }
                 '{' => {
