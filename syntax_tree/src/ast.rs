@@ -51,7 +51,7 @@ pub enum Statement {
 }
 
 /// Represents an expression in the AST
-/// Fundametally, an expression is a value that can be evaluated, returned, has returning type
+/// Fundamentally, an expression is a value that can be evaluated, returned, has returning type
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
     Literal(Literal),

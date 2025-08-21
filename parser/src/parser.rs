@@ -137,7 +137,7 @@ where
             return_type: Type::Primitive(PrimitiveType::Void),
             body: block,
         };
-        return Some(func);
+        Some(func)
     }
 
     fn parse_block(&mut self) -> Option<Block> {
@@ -173,7 +173,7 @@ where
                 Token::Keyword(Keyword::New) => self.parse_variable_declaration(),
                 Token::Identifier(_) => {
                     let Some((Token::Identifier(id), _span)) = self.iter.next() else {
-                        return None; // Unreachable code as we picked value before and it's Identifier
+                        unreachable!(); // Unreachable: we peeked and saw Identifier
                     };
                     match self.iter.peek() {
                         Some((token, _span)) => match token {
@@ -281,7 +281,7 @@ where
             Some((token, _span)) => match token {
                 Token::Identifier(_) => {
                     let Some((Token::Identifier(id), _span)) = self.iter.next() else {
-                        return None; // Unreachable code as we picked value before and it's Identifier
+                        unreachable!(); // Unreachable: we peeked and saw Identifier
                     };
                     match self.iter.peek() {
                         Some((token, _span)) => match token {
