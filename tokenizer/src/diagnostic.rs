@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
     pub start: usize,
     pub end: usize,
@@ -10,7 +10,7 @@ impl Span {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LinesTable {
     offsets: Vec<usize>,
 }
@@ -30,5 +30,9 @@ impl LinesTable {
 
     pub fn add_line(&mut self, start_offset: usize) {
         self.offsets.push(start_offset);
+    }
+
+    pub fn last(&self) -> usize {
+        self.offsets().last().copied().unwrap_or(0)
     }
 }

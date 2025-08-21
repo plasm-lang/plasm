@@ -7,3 +7,6 @@ members = [
     "syntax_tree",
     "tokenizer",
 ]
+
+[workspace.dependencies]
+indoc = { version = "2.0.6"}

@@ -1,35 +1,64 @@
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Keyword {
     Fn,
-    Let,
+    New,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct Number(pub String);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Number {
+    Integer(String),
+    Float(String),
+}
 
-#[derive(Debug, PartialEq, Eq)]
+impl Number {
+    pub fn raw_value(&self) -> &str {
+        match self {
+            Self::Integer(value) => value,
+            Self::Float(value) => value,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SpecialSymbol {
-    Colon,  // :
-    Equals, // =
+    /// :
+    Colon,
+    /// =
+    Equals,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Bracket {
-    RoundOpen,   // (
-    RoundClose,  // )
-    SquareOpen,  // [
-    SquareClose, // ]
-    CurlyOpen,   // {
-    CurlyClose,  // }
+    /// (
+    RoundOpen,
+    /// )
+    RoundClose,
+    /// [
+    SquareOpen,
+    /// ]
+    SquareClose,
+    /// {
+    CurlyOpen,
+    /// }
+    CurlyClose,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Comment {
     SingleLine(String),
     MultiLine(String),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+impl Comment {
+    pub fn raw_value(&self) -> &str {
+        match self {
+            Self::SingleLine(value) => value,
+            Self::MultiLine(value) => value,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
     Keyword(Keyword),
     Identifier(String),
@@ -37,7 +66,7 @@ pub enum Token {
     // StringLiteral(String),
     SpecialSymbol(SpecialSymbol),
     Bracket(Bracket),
-    Whitespace(u16),
+    Whitespace(usize),
     Comment(Comment),
     NewLine,
     Impossible(String), // For unhandled cases
