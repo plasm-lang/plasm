@@ -1,9 +1,10 @@
 use std::iter::{Filter, Peekable};
 
 use super::ast::{
-    AST, Block, CallArgument, Expr, Function, FunctionCall, Literal, PrimitiveType, Statement, Type,
+    AST, Block, CallArgument, Expr, Function, FunctionCall, Literal, Statement, Type,
+    VariableDeclaration,
 };
-use tokenizer::{Bracket, Keyword, Number, Span, SpecialSymbol, Token};
+use tokenizer::{Bracket, Keyword, Number, Span, Spanned, SpecialSymbol, Token};
 
 use crate::error::ParseError;
 
@@ -128,15 +129,15 @@ where
 
     fn parse_function(&mut self) -> Option<Function> {
         self.expect(Token::Keyword(Keyword::Fn))?;
-        let (func_name, _func_name_span) = self.expect_ident()?;
+        let (func_name, func_name_span) = self.expect_ident()?;
         self.expect(Token::Bracket(Bracket::RoundOpen))?;
         self.expect(Token::Bracket(Bracket::RoundClose))?;
         let block = self.parse_block()?;
 
         let func = Function {
-            name: func_name,
+            name: Spanned::new(func_name, func_name_span),
             args: vec![],
-            return_type: Type::Primitive(PrimitiveType::Void),
+            return_type: None,
             body: block,
         };
         Some(func)
@@ -174,14 +175,14 @@ where
             Some((token, _span)) => match token {
                 Token::Keyword(Keyword::New) => self.parse_variable_declaration(),
                 Token::Identifier(_) => {
-                    let Some((Token::Identifier(id), _span)) = self.iter.next() else {
+                    let Some((Token::Identifier(id), span)) = self.iter.next() else {
                         unreachable!(); // Unreachable: we peeked and saw Identifier
                     };
                     match self.iter.peek() {
                         Some((token, _span)) => match token {
-                            Token::Bracket(Bracket::RoundOpen) => {
-                                self.parse_function_call(id).map(Statement::FunctionCall)
-                            }
+                            Token::Bracket(Bracket::RoundOpen) => self
+                                .parse_function_call(id, span)
+                                .map(Statement::FunctionCall),
                             Token::SpecialSymbol(SpecialSymbol::Equals) => todo!(), // Variable assignment
                             _ => {
                                 let (token, span) = self.iter.next()?;
@@ -225,7 +226,7 @@ where
         }
     }
 
-    fn parse_function_call(&mut self, id: String) -> Option<FunctionCall> {
+    fn parse_function_call(&mut self, id: String, span: Span) -> Option<FunctionCall> {
         self.expect(Token::Bracket(Bracket::RoundOpen))?;
         let mut arguments = Vec::new();
         loop {
@@ -256,41 +257,41 @@ where
         }
 
         Some(FunctionCall {
-            name: id,
+            name: Spanned::new(id, span),
             args: arguments,
         })
     }
 
     fn parse_variable_declaration(&mut self) -> Option<Statement> {
         self.expect(Token::Keyword(Keyword::New))?;
-        let (var_name, _var_name_span) = self.expect_ident()?;
+        let (var_name, var_name_span) = self.expect_ident()?;
         self.expect(Token::SpecialSymbol(SpecialSymbol::Colon))?;
-        let (type_name, _type_name_span) = self.expect_ident()?;
-        let type_ = Type::from_str(&type_name);
+        let (type_name, type_name_span) = self.expect_ident()?;
+        let ty = Type::from_str(&type_name);
         self.expect(Token::SpecialSymbol(SpecialSymbol::Equals))?;
         let expr = self.parse_expression()?;
 
-        let stmt = Statement::VariableDeclaration {
-            name: var_name,
-            type_,
+        let stmt = VariableDeclaration {
+            name: Spanned::new(var_name, var_name_span),
+            ty: Some(Spanned::new(ty, type_name_span)),
             value: expr,
         };
-        Some(stmt)
+        Some(Statement::VariableDeclaration(stmt))
     }
 
     fn parse_expression(&mut self) -> Option<Expr> {
         match self.iter.peek() {
             Some((token, _span)) => match token {
                 Token::Identifier(_) => {
-                    let Some((Token::Identifier(id), _span)) = self.iter.next() else {
+                    let Some((Token::Identifier(id), span)) = self.iter.next() else {
                         unreachable!(); // Unreachable: we peeked and saw Identifier
                     };
                     match self.iter.peek() {
                         Some((token, _span)) => match token {
                             Token::Bracket(Bracket::RoundOpen) => {
-                                self.parse_function_call(id).map(Expr::FunctionCall)
+                                self.parse_function_call(id, span).map(Expr::FunctionCall)
                             }
-                            _ => Some(Expr::Variable(id)),
+                            _ => Some(Expr::Variable(Spanned::new(id, span))),
                         },
                         None => {
                             let err = ParseError::UnexpectedEOF {
@@ -323,14 +324,14 @@ where
     }
 
     fn parse_number(&mut self) -> Option<Literal> {
-        let (number, _number_span) = self.expect_number()?;
-        Some(Literal::from_number(number))
+        let (number, number_span) = self.expect_number()?;
+        Some(Literal::from_number(number, number_span))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::ast::Item;
+    use super::super::ast::{Item, PrimitiveType};
     use super::*;
     use indoc::indoc;
     use tokenizer::tokenize;
@@ -353,25 +354,44 @@ mod tests {
 
         let expected = AST {
             items: vec![Item::Function(Function {
-                name: "main".to_string(),
+                name: Spanned {
+                    node: "main".to_string(),
+                    span: Span { start: 52, end: 56 },
+                },
                 args: vec![],
-                return_type: Type::Primitive(PrimitiveType::Void),
+                return_type: None,
                 body: vec![
-                    Statement::VariableDeclaration {
-                        name: "x".to_string(),
-                        type_: Type::Primitive(PrimitiveType::I32),
-                        value: Expr::Literal(Literal::Integer("5".to_string())),
-                    },
+                    Statement::VariableDeclaration(VariableDeclaration {
+                        name: Spanned {
+                            node: "x".to_string(),
+                            span: Span { start: 69, end: 70 },
+                        },
+                        ty: Some(Spanned {
+                            node: Type::Primitive(PrimitiveType::I32),
+                            span: Span { start: 72, end: 75 },
+                        }),
+                        value: Expr::Literal(Literal::Integer(Spanned {
+                            node: "5".to_string(),
+                            span: Span { start: 78, end: 79 },
+                        })),
+                    }),
                     Statement::FunctionCall(FunctionCall {
-                        name: "print".to_string(),
+                        name: Spanned {
+                            node: "print".to_string(),
+                            span: Span { start: 84, end: 89 },
+                        },
                         args: vec![CallArgument {
                             name: None,
-                            value: Expr::Variable("x".to_string()),
+                            value: Expr::Variable(Spanned {
+                                node: "x".to_string(),
+                                span: Span { start: 90, end: 91 },
+                            }),
                         }],
                     }),
                 ],
             })],
         };
+
         assert_eq!(ast, expected);
         assert_eq!(errors, vec![]);
     }

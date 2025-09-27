@@ -1,4 +1,8 @@
-use tokenizer::{Number, Span};
+use std::str::FromStr;
+
+use tokenizer::{Number, Span, Spanned};
+
+pub type S<T> = Spanned<T>;
 
 #[derive(Debug, PartialEq, Eq, Default)]
 pub struct AST {
@@ -22,16 +26,16 @@ pub enum Item {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Function {
-    pub name: String,
-    pub args: Vec<Argument>,
-    pub return_type: Type,
+    pub name: S<String>,
+    pub args: Vec<S<Argument>>,
+    pub return_type: Option<S<Type>>,
     pub body: Block,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Argument {
-    pub name: String,
-    pub type_: Type,
+    pub name: S<String>,
+    pub ty: S<Type>,
 }
 
 pub type Block = Vec<Statement>;
@@ -40,14 +44,17 @@ pub type Block = Vec<Statement>;
 /// A statement is a line of code that does something, special language construction, it has no type, cannot be returned
 #[derive(Debug, PartialEq, Eq)]
 pub enum Statement {
-    VariableDeclaration {
-        name: String,
-        type_: Type,
-        value: Expr,
-    },
+    VariableDeclaration(VariableDeclaration),
     FunctionCall(FunctionCall),
     // Assignment,
     Return(Expr),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct VariableDeclaration {
+    pub name: S<String>,
+    pub ty: Option<S<Type>>,
+    pub value: Expr,
 }
 
 /// Represents an expression in the AST
@@ -55,35 +62,35 @@ pub enum Statement {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
     Literal(Literal),
-    Variable(String),
+    Variable(S<String>),
     FunctionCall(FunctionCall),
     Block(Block),
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct FunctionCall {
-    pub name: String,
+    pub name: S<String>,
     pub args: Vec<CallArgument>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Literal {
-    Integer(String),
-    Float(String),
+    Integer(S<String>),
+    Float(S<String>),
 }
 
 impl Literal {
-    pub fn from_number(number: Number) -> Self {
+    pub fn from_number(number: Number, span: Span) -> Self {
         match number {
-            Number::Integer(s) => Self::Integer(s),
-            Number::Float(s) => Self::Float(s),
+            Number::Integer(s) => Self::Integer(S::new(s, span)),
+            Number::Float(s) => Self::Float(S::new(s, span)),
         }
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct CallArgument {
-    pub name: Option<String>,
+    pub name: Option<S<String>>,
     pub value: Expr,
 }
 
@@ -96,8 +103,8 @@ pub enum Type {
 
 impl Type {
     pub fn from_str(identifier: &str) -> Self {
-        if let Some(type_) = PrimitiveType::from_str(identifier) {
-            return Self::Primitive(type_);
+        if let Ok(ty) = PrimitiveType::from_str(identifier) {
+            return Self::Primitive(ty);
         }
 
         todo!()
@@ -137,40 +144,42 @@ pub enum PrimitiveType {
     F1024,
 }
 
-impl PrimitiveType {
-    pub fn from_str(identifier: &str) -> Option<Self> {
-        match identifier {
-            "void" => Some(Self::Void),
-            "bool" => Some(Self::Bool),
+impl FromStr for PrimitiveType {
+    type Err = ();
 
-            "i8" => Some(Self::I8),
-            "i16" => Some(Self::I16),
-            "i32" => Some(Self::I32),
-            "i64" => Some(Self::I64),
-            "i128" => Some(Self::I128),
-            "i256" => Some(Self::I256),
-            "i512" => Some(Self::I512),
-            "i1024" => Some(Self::I1024),
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "void" => Ok(Self::Void),
+            "bool" => Ok(Self::Bool),
 
-            "u8" => Some(Self::U8),
-            "u16" => Some(Self::U16),
-            "u32" => Some(Self::U32),
-            "u64" => Some(Self::U64),
-            "u128" => Some(Self::U128),
-            "u256" => Some(Self::U256),
-            "u512" => Some(Self::U512),
-            "u1024" => Some(Self::U1024),
+            "i8" => Ok(Self::I8),
+            "i16" => Ok(Self::I16),
+            "i32" => Ok(Self::I32),
+            "i64" => Ok(Self::I64),
+            "i128" => Ok(Self::I128),
+            "i256" => Ok(Self::I256),
+            "i512" => Ok(Self::I512),
+            "i1024" => Ok(Self::I1024),
 
-            "f8" => Some(Self::F8),
-            "f16" => Some(Self::F16),
-            "f32" => Some(Self::F32),
-            "f64" => Some(Self::F64),
-            "f128" => Some(Self::F128),
-            "f256" => Some(Self::F256),
-            "f512" => Some(Self::F512),
-            "f1024" => Some(Self::F1024),
+            "u8" => Ok(Self::U8),
+            "u16" => Ok(Self::U16),
+            "u32" => Ok(Self::U32),
+            "u64" => Ok(Self::U64),
+            "u128" => Ok(Self::U128),
+            "u256" => Ok(Self::U256),
+            "u512" => Ok(Self::U512),
+            "u1024" => Ok(Self::U1024),
 
-            _ => None,
+            "f8" => Ok(Self::F8),
+            "f16" => Ok(Self::F16),
+            "f32" => Ok(Self::F32),
+            "f64" => Ok(Self::F64),
+            "f128" => Ok(Self::F128),
+            "f256" => Ok(Self::F256),
+            "f512" => Ok(Self::F512),
+            "f1024" => Ok(Self::F1024),
+
+            _ => Err(()),
         }
     }
 }
