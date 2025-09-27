@@ -1,14 +1,16 @@
 use std::iter::{Filter, Peekable};
 
-use syntax_tree::ast::{
+use super::ast::{
     AST, Block, CallArgument, Expr, Function, FunctionCall, Literal, PrimitiveType, Statement, Type,
 };
 use tokenizer::{Bracket, Keyword, Number, Span, SpecialSymbol, Token};
 
 use crate::error::ParseError;
 
+type FilterFn = fn(&(Token, Span)) -> bool;
+
 pub struct ASTParser<I: Iterator<Item = (Token, Span)>> {
-    iter: Peekable<Filter<I, fn(&(Token, Span)) -> bool>>,
+    iter: Peekable<Filter<I, FilterFn>>,
     pub errors: Vec<ParseError>,
 }
 
@@ -38,14 +40,14 @@ where
                     self.errors.push(ParseError::UnexpectedToken {
                         token,
                         span,
-                        expected: format!("{:?}", expected),
+                        expected: format!("{expected:?}"),
                     });
                     None
                 }
             }
             None => {
                 self.errors.push(ParseError::UnexpectedEOF {
-                    expected: format!("{:?}", expected),
+                    expected: format!("{expected:?}"),
                 });
                 None
             }
@@ -328,9 +330,9 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::super::ast::Item;
     use super::*;
     use indoc::indoc;
-    use syntax_tree::ast::Item;
     use tokenizer::tokenize;
 
     #[test]

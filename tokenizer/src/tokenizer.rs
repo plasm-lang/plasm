@@ -104,9 +104,7 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
     fn lex_single_comment(&mut self) -> Option<(Token, Span)> {
         self.accumulated.clear();
 
-        let Some((start_i, ch0)) = self.chars.next() else {
-            return None;
-        };
+        let (start_i, ch0) = self.chars.next()?;
 
         if ch0 == '\n' {
             return Some((
@@ -117,7 +115,7 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
 
         self.accumulated.push(ch0);
 
-        while let Some((i, ch)) = self.chars.next() {
+        for (i, ch) in self.chars.by_ref() {
             if ch == '\n' {
                 let span = Span::new(start_i, i);
                 let comment_text = take(&mut self.accumulated);
@@ -135,9 +133,7 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
     fn lex_multiline_comment(&mut self) -> Option<(Token, Span)> {
         self.accumulated.clear();
 
-        let Some((start_i, ch0)) = self.chars.next() else {
-            return None;
-        };
+        let (start_i, ch0) = self.chars.next()?;
 
         self.accumulated.push(ch0);
 

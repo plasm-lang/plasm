@@ -2,8 +2,7 @@
 members = [
     "cli",
     "codegen",
-    "ir",
-    "parser",
+    "hir",
     "syntax_tree",
     "tokenizer",
 ]

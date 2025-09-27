@@ -28,11 +28,21 @@ impl LinesTable {
         self.offsets.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 1
+    }
+
     pub fn add_line(&mut self, start_offset: usize) {
         self.offsets.push(start_offset);
     }
 
     pub fn last(&self) -> usize {
         self.offsets().last().copied().unwrap_or(0)
+    }
+}
+
+impl Default for LinesTable {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -1,6 +1,6 @@
-use tokenizer::Number;
+use tokenizer::{Number, Span};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Default)]
 pub struct AST {
     pub items: Vec<Item>,
 }

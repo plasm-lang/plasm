@@ -5,3 +5,6 @@ edition = "2024"
 
 [dependencies]
 tokenizer = { path = "../tokenizer" }
+
+[dev-dependencies]
+indoc.workspace = true
