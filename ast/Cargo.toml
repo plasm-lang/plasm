@@ -1,10 +1,11 @@
 [package]
-name = "syntax_tree"
+name = "ast"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 tokenizer = { path = "../tokenizer" }
+serde.workspace = true
 
 [dev-dependencies]
 indoc.workspace = true

@@ -1,4 +1,4 @@
-use tokenizer::{LinesTable, Span, Token, TokenIter};
+use tokenizer::{Span, Token};
 
 pub type Result<T> = std::result::Result<T, ParseError>;
 

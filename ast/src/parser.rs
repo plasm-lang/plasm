@@ -20,7 +20,7 @@ where
     I: Iterator<Item = (Token, Span)>,
 {
     pub fn new(token_iter: I) -> Self {
-        let pred: fn(&(Token, Span)) -> bool = |(token, _)| {
+        let pred: FilterFn = |(token, _)| {
             !matches!(
                 token,
                 Token::Comment(_) | Token::Whitespace(_) | Token::NewLine

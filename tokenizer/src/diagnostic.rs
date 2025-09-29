@@ -1,7 +1,9 @@
 use std::borrow::{Borrow, BorrowMut};
 use std::ops::{Deref, DerefMut};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+use serde::Serialize;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 pub struct Span {
     pub start: usize,
     pub end: usize,
@@ -20,13 +22,19 @@ impl Span {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
 pub struct Spanned<T> {
     pub node: T,
     pub span: Span,
 }
 
 impl<T: Copy> Copy for Spanned<T> {}
+
+impl<T: std::fmt::Display> std::fmt::Display for Spanned<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.node)
+    }
+}
 
 impl<T> Spanned<T> {
     #[inline]

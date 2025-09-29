@@ -156,87 +156,88 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
     }
 
     fn lex_default(&mut self) -> Option<(Token, Span)> {
-        while let Some((i, ch)) = self.chars.next() {
-            match ch {
-                '/' if self.chars.peek().map(|(_, ch)| ch) == Some(&'/') => {
-                    self.state = State::InSingleComment;
-                    self.chars.next(); // consume the second '/'
-                    return self.lex_single_comment();
-                }
-                '/' if self.chars.peek().map(|(_, ch)| ch) == Some(&'*') => {
-                    self.state = State::InMultiComment;
-                    self.chars.next(); // consume the '*'
-                    return self.lex_multiline_comment();
-                }
-                '\n' => {
-                    let char_len = ch.len_utf8();
-                    self.lines_table.add_line(i + char_len);
-                    return Some((Token::NewLine, Span::new(i, i + char_len)));
-                }
-                ch if ch.is_whitespace() => {
-                    return self.lex_whitespace_from(i, ch);
-                }
-                ch if ch.is_ascii_digit() => {
-                    return self.lex_number_from(i, ch);
-                }
-                '{' => {
-                    return Some((
-                        Token::Bracket(Bracket::CurlyOpen),
-                        Span::new(i, i + ch.len_utf8()),
-                    ));
-                }
-                '}' => {
-                    return Some((
-                        Token::Bracket(Bracket::CurlyClose),
-                        Span::new(i, i + ch.len_utf8()),
-                    ));
-                }
-                '(' => {
-                    return Some((
-                        Token::Bracket(Bracket::RoundOpen),
-                        Span::new(i, i + ch.len_utf8()),
-                    ));
-                }
-                ')' => {
-                    return Some((
-                        Token::Bracket(Bracket::RoundClose),
-                        Span::new(i, i + ch.len_utf8()),
-                    ));
-                }
-                '[' => {
-                    return Some((
-                        Token::Bracket(Bracket::SquareOpen),
-                        Span::new(i, i + ch.len_utf8()),
-                    ));
-                }
-                ']' => {
-                    return Some((
-                        Token::Bracket(Bracket::SquareClose),
-                        Span::new(i, i + ch.len_utf8()),
-                    ));
-                }
-                ':' => {
-                    return Some((
-                        Token::SpecialSymbol(SpecialSymbol::Colon),
-                        Span::new(i, i + ch.len_utf8()),
-                    ));
-                }
-                '=' => {
-                    return Some((
-                        Token::SpecialSymbol(SpecialSymbol::Equals),
-                        Span::new(i, i + ch.len_utf8()),
-                    ));
-                }
-                ch if ch.is_alphanumeric() || ch == '_' => {
-                    return self.lex_alphanumeric_from(i, ch);
-                }
-                ch => {
-                    todo!("Handle unrecognized character: '{}'", ch);
-                }
+        let (i, ch) = self.chars.next()?;
+        match ch {
+            '/' if self.chars.peek().map(|(_, ch)| ch) == Some(&'/') => {
+                self.state = State::InSingleComment;
+                self.chars.next(); // consume the second '/'
+                self.lex_single_comment()
+            }
+            '/' if self.chars.peek().map(|(_, ch)| ch) == Some(&'*') => {
+                self.state = State::InMultiComment;
+                self.chars.next(); // consume the '*'
+                self.lex_multiline_comment()
+            }
+            '\n' => {
+                let char_len = ch.len_utf8();
+                self.lines_table.add_line(i + char_len);
+                Some((Token::NewLine, Span::new(i, i + char_len)))
+            }
+            ch if ch.is_whitespace() => {
+                self.lex_whitespace_from(i, ch)
+            }
+            ch if ch.is_ascii_digit() => {
+                self.lex_number_from(i, ch)
+            }
+            '{' => {
+                Some((
+                    Token::Bracket(Bracket::CurlyOpen),
+                    Span::new(i, i + ch.len_utf8()),
+                ))
+            }
+            '}' => {
+                Some((
+                    Token::Bracket(Bracket::CurlyClose),
+                    Span::new(i, i + ch.len_utf8()),
+                ))
+            }
+            '(' => {
+                Some((
+                    Token::Bracket(Bracket::RoundOpen),
+                    Span::new(i, i + ch.len_utf8()),
+                ))
+            }
+            ')' => {
+                Some((
+                    Token::Bracket(Bracket::RoundClose),
+                    Span::new(i, i + ch.len_utf8()),
+                ))
+            }
+            '[' => {
+                Some((
+                    Token::Bracket(Bracket::SquareOpen),
+                    Span::new(i, i + ch.len_utf8()),
+                ))
+            }
+            ']' => {
+                Some((
+                    Token::Bracket(Bracket::SquareClose),
+                    Span::new(i, i + ch.len_utf8()),
+                ))
+            }
+            ':' => {
+                Some((
+                    Token::SpecialSymbol(SpecialSymbol::Colon),
+                    Span::new(i, i + ch.len_utf8()),
+                ))
+            }
+            '=' => {
+                Some((
+                    Token::SpecialSymbol(SpecialSymbol::Equals),
+                    Span::new(i, i + ch.len_utf8()),
+                ))
+            }
+            ch if ch.is_alphanumeric() || ch == '_' => {
+                self.lex_alphanumeric_from(i, ch)
+            }
+            ch => {
+                Some((
+                    Token::Impossible(ch.to_string()),
+                    Span::new(i, i + ch.len_utf8()),
+                ))
+                // todo!("Handle unrecognized character: '{}'", ch);
             }
         }
-
-        None
     }
 }
 

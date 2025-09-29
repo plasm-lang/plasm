@@ -1,0 +1,9 @@
+// Basic inline comment 1
+
+/* Multiline
+comment 0123
+*/
+fn main() {
+    new x: i32 = 50
+    print(x)
+}

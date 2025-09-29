@@ -2,9 +2,11 @@ use std::str::FromStr;
 
 use tokenizer::{Number, Span, Spanned};
 
+use serde::Serialize;
+
 pub type S<T> = Spanned<T>;
 
-#[derive(Debug, PartialEq, Eq, Default)]
+#[derive(Debug, PartialEq, Eq, Default, Serialize)]
 pub struct AST {
     pub items: Vec<Item>,
 }
@@ -19,12 +21,12 @@ impl AST {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum Item {
     Function(Function),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct Function {
     pub name: S<String>,
     pub args: Vec<S<Argument>>,
@@ -32,7 +34,7 @@ pub struct Function {
     pub body: Block,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct Argument {
     pub name: S<String>,
     pub ty: S<Type>,
@@ -42,7 +44,7 @@ pub type Block = Vec<Statement>;
 
 /// Represents a statement in the AST
 /// A statement is a line of code that does something, special language construction, it has no type, cannot be returned
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum Statement {
     VariableDeclaration(VariableDeclaration),
     FunctionCall(FunctionCall),
@@ -50,7 +52,7 @@ pub enum Statement {
     Return(Expr),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct VariableDeclaration {
     pub name: S<String>,
     pub ty: Option<S<Type>>,
@@ -59,7 +61,7 @@ pub struct VariableDeclaration {
 
 /// Represents an expression in the AST
 /// Fundamentally, an expression is a value that can be evaluated, returned, has returning type
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum Expr {
     Literal(Literal),
     Variable(S<String>),
@@ -67,13 +69,13 @@ pub enum Expr {
     Block(Block),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct FunctionCall {
     pub name: S<String>,
     pub args: Vec<CallArgument>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum Literal {
     Integer(S<String>),
     Float(S<String>),
@@ -88,13 +90,13 @@ impl Literal {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct CallArgument {
     pub name: Option<S<String>>,
     pub value: Expr,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum Type {
     Primitive(PrimitiveType),
     // String, // TODO
@@ -111,7 +113,7 @@ impl Type {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum PrimitiveType {
     Void,
     Bool,

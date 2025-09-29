@@ -1,4 +1,5 @@
 pub mod ast;
+mod ast_display;
 mod error;
 mod parser;
 
