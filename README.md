@@ -11,3 +11,32 @@ For example, following command will parse `test.sky` file, stop on AST stage and
 ```shell
 cargo run emit test.sky --stage ast --format text
 ```
+
+
+## The compilation flow
+
+```
+                                 HIR                          Codegen (LLVM)
+                           ________________             __________________________
+                          |                |           |                          |
+ code -> tokens -> AST -> | OptHIR -> THIR | -> MIR -> | LLVM-IR -> ASM -> binary | -> linker -> Exe
+   |        |       |     |_____________|__|     |     |_____________|____________|
+   |        |----> CST                  |        |                   |
+   |                |                   |        |                   |
+   |                |                   |        |                   |
+Visible         Visible              Visible  Visible             Visible
+in IDE          in IDE               in IDE   in IDE              in IDE
+
+
+AST         Abstract Syntax Tree
+CST         Concrete Syntax Tree
+IR          Intermediate Representation
+HIR         High-level IR
+OptHIR      Optionally typed HIR
+THIR        Typed HIR
+MIR         Middle-level IR
+Codegen     Code Generation
+LLVM        A external compiler backend
+ASM         Assembler
+Exe         Executable file
+```
