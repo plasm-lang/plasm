@@ -35,7 +35,7 @@ struct EmitArgs {
     #[arg(value_name = "PATH", value_hint = ValueHint::AnyPath)]
     path: Option<PathBuf>,
     /// Stage to show
-    #[arg(value_enum, long)]
+    #[arg(value_enum, long, default_value_t = Stage::Ast)]
     stage: Stage,
     /// Output format
     #[arg(value_enum, long, default_value_t = Format::Text)]

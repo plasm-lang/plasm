@@ -1,8 +1,8 @@
 use std::iter::Peekable;
 use std::mem::take;
 
-use super::diagnostic::{LinesTable, Span};
 use super::token::{Bracket, Comment, Keyword, Number, SpecialSymbol, Token};
+use diagnostic::{LinesTable, Span};
 
 pub fn tokenize<I: Iterator<Item = (usize, char)>>(chars: I) -> TokenIter<I> {
     TokenIter {
@@ -27,7 +27,7 @@ pub struct TokenIter<I: Iterator<Item = (usize, char)>> {
 }
 
 impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
-    pub fn lines_table(&self) -> &LinesTable {
+    pub fn lines_table_ref(&self) -> &LinesTable {
         &self.lines_table
     }
 
@@ -173,63 +173,41 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
                 self.lines_table.add_line(i + char_len);
                 Some((Token::NewLine, Span::new(i, i + char_len)))
             }
-            ch if ch.is_whitespace() => {
-                self.lex_whitespace_from(i, ch)
-            }
-            ch if ch.is_ascii_digit() => {
-                self.lex_number_from(i, ch)
-            }
-            '{' => {
-                Some((
-                    Token::Bracket(Bracket::CurlyOpen),
-                    Span::new(i, i + ch.len_utf8()),
-                ))
-            }
-            '}' => {
-                Some((
-                    Token::Bracket(Bracket::CurlyClose),
-                    Span::new(i, i + ch.len_utf8()),
-                ))
-            }
-            '(' => {
-                Some((
-                    Token::Bracket(Bracket::RoundOpen),
-                    Span::new(i, i + ch.len_utf8()),
-                ))
-            }
-            ')' => {
-                Some((
-                    Token::Bracket(Bracket::RoundClose),
-                    Span::new(i, i + ch.len_utf8()),
-                ))
-            }
-            '[' => {
-                Some((
-                    Token::Bracket(Bracket::SquareOpen),
-                    Span::new(i, i + ch.len_utf8()),
-                ))
-            }
-            ']' => {
-                Some((
-                    Token::Bracket(Bracket::SquareClose),
-                    Span::new(i, i + ch.len_utf8()),
-                ))
-            }
-            ':' => {
-                Some((
-                    Token::SpecialSymbol(SpecialSymbol::Colon),
-                    Span::new(i, i + ch.len_utf8()),
-                ))
-            }
-            '=' => {
-                Some((
-                    Token::SpecialSymbol(SpecialSymbol::Equals),
-                    Span::new(i, i + ch.len_utf8()),
-                ))
-            }
-            ch if ch.is_alphanumeric() || ch == '_' => {
-                self.lex_alphanumeric_from(i, ch)
-            }
+            ch if ch.is_whitespace() => self.lex_whitespace_from(i, ch),
+            ch if ch.is_ascii_digit() => self.lex_number_from(i, ch),
+            '{' => Some((
+                Token::Bracket(Bracket::CurlyOpen),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+            '}' => Some((
+                Token::Bracket(Bracket::CurlyClose),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+            '(' => Some((
+                Token::Bracket(Bracket::RoundOpen),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+            ')' => Some((
+                Token::Bracket(Bracket::RoundClose),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+            '[' => Some((
+                Token::Bracket(Bracket::SquareOpen),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+            ']' => Some((
+                Token::Bracket(Bracket::SquareClose),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+            ':' => Some((
+                Token::SpecialSymbol(SpecialSymbol::Colon),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+            '=' => Some((
+                Token::SpecialSymbol(SpecialSymbol::Equals),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+            ch if ch.is_alphanumeric() || ch == '_' => self.lex_alphanumeric_from(i, ch),
             ch => {
                 Some((
                     Token::Impossible(ch.to_string()),
@@ -312,7 +290,7 @@ mod tests {
         ];
 
         assert_eq!(tokens, expected);
-        assert_eq!(token_iter.lines_table().offsets().len(), 9);
+        assert_eq!(token_iter.lines_table_ref().offsets().len(), 9);
     }
 
     #[test]
@@ -353,7 +331,7 @@ mod tests {
     fn test_lines_table() {
         let mut token_iter = tokenize(BASIC_CODE.char_indices());
         let _ = token_iter.by_ref().collect::<Vec<_>>();
-        let mut offsets_iter = token_iter.lines_table().offsets().iter();
+        let mut offsets_iter = token_iter.lines_table_ref().offsets().iter();
         assert_eq!(offsets_iter.next(), Some(0).as_ref());
         for &i in offsets_iter {
             assert_eq!(&BASIC_CODE[i - 1..i], "\n");
@@ -394,6 +372,6 @@ mod tests {
         ];
 
         assert_eq!(tokens, expected);
-        assert_eq!(token_iter.lines_table().offsets(), &[0, 12, 15, 20]);
+        assert_eq!(token_iter.lines_table_ref().offsets(), &[0, 12, 15, 20]);
     }
 }

@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 tokenizer = { path = "../tokenizer" }
+diagnostic = { path = "../diagnostic" }
 serde.workspace = true
 
 [dev-dependencies]

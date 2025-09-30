@@ -14,6 +14,10 @@ impl Span {
         Span { start, end }
     }
 
+    pub fn zero() -> Self {
+        Span { start: 0, end: 0 }
+    }
+
     pub fn join(self, other: Span) -> Span {
         Span {
             start: self.start.min(other.start),
@@ -69,6 +73,7 @@ impl<T> Spanned<T> {
 
 impl<T> Deref for Spanned<T> {
     type Target = T;
+
     #[inline]
     fn deref(&self) -> &Self::Target {
         &self.node
@@ -103,42 +108,5 @@ impl<T> Borrow<T> for Spanned<T> {
 impl<T> BorrowMut<T> for Spanned<T> {
     fn borrow_mut(&mut self) -> &mut T {
         &mut self.node
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct LinesTable {
-    offsets: Vec<usize>,
-}
-
-impl LinesTable {
-    pub fn new() -> Self {
-        LinesTable { offsets: vec![0] }
-    }
-
-    pub fn offsets(&self) -> &[usize] {
-        &self.offsets
-    }
-
-    pub fn len(&self) -> usize {
-        self.offsets.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 1
-    }
-
-    pub fn add_line(&mut self, start_offset: usize) {
-        self.offsets.push(start_offset);
-    }
-
-    pub fn last(&self) -> usize {
-        self.offsets().last().copied().unwrap_or(0)
-    }
-}
-
-impl Default for LinesTable {
-    fn default() -> Self {
-        Self::new()
     }
 }

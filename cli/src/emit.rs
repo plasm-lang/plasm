@@ -3,6 +3,7 @@ use std::io::BufReader;
 use std::path::PathBuf;
 
 use ast::ASTParser;
+use diagnostic::ErrorMessage;
 use tokenizer::{CharIndicesIter, tokenize};
 
 use crate::{Format, PathType, Stage};
@@ -17,12 +18,14 @@ pub fn emit(path: PathBuf, ty: PathType, format: Format, stage: Stage) {
 
             let reader = BufReader::new(file);
             let char_iter = CharIndicesIter::new(reader);
-            let token_iter = tokenize(char_iter);
+            let mut token_iter = tokenize(char_iter);
 
             match stage {
                 Stage::Ast => {
-                    let parser = ASTParser::new(token_iter);
-                    let (ast, errors) = parser.parse();
+                    let (ast, errors) = {
+                        let parser = ASTParser::new(&mut token_iter);
+                        parser.parse()
+                    };
 
                     if errors.is_empty() {
                         match format {
@@ -35,7 +38,24 @@ pub fn emit(path: PathBuf, ty: PathType, format: Format, stage: Stage) {
                             }
                         }
                     } else {
-                        unimplemented!();
+                        match format {
+                            Format::Json => {
+                                unimplemented!()
+                            }
+                            Format::Text => {
+                                for error in errors {
+                                    let Ok(error_message) = ErrorMessage::new(
+                                        error,
+                                        token_iter.lines_table_ref().clone(),
+                                        path.clone(),
+                                    ) else {
+                                        eprintln!("Failed to read {}", path.display());
+                                        continue;
+                                    };
+                                    eprintln!("{error_message}");
+                                }
+                            }
+                        }
                     }
                 }
                 _ => unimplemented!(),

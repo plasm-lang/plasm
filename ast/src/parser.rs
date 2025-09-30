@@ -4,52 +4,71 @@ use super::ast::{
     AST, Block, CallArgument, Expr, Function, FunctionCall, Literal, Statement, Type,
     VariableDeclaration,
 };
-use tokenizer::{Bracket, Keyword, Number, Span, Spanned, SpecialSymbol, Token};
+use diagnostic::{Span, Spanned};
+use tokenizer::{Bracket, Keyword, Number, SpecialSymbol, Token};
 
 use crate::error::ParseError;
 
 type FilterFn = fn(&(Token, Span)) -> bool;
 
-pub struct ASTParser<I: Iterator<Item = (Token, Span)>> {
-    iter: Peekable<Filter<I, FilterFn>>,
-    pub errors: Vec<ParseError>,
+pub struct ASTParser<'a, I: Iterator<Item = (Token, Span)>> {
+    iter: Peekable<Filter<&'a mut I, FilterFn>>,
+    errors: Vec<Spanned<ParseError>>,
+    last_span: Span,
 }
 
-impl<I> ASTParser<I>
+impl<'a, I> ASTParser<'a, I>
 where
     I: Iterator<Item = (Token, Span)>,
 {
-    pub fn new(token_iter: I) -> Self {
-        let pred: FilterFn = |(token, _)| {
-            !matches!(
-                token,
-                Token::Comment(_) | Token::Whitespace(_) | Token::NewLine
-            )
-        };
+    pub fn new(token_iter: &'a mut I) -> Self {
         ASTParser {
-            iter: token_iter.filter(pred).peekable(),
+            iter: token_iter
+                .by_ref()
+                .filter(Self::token_filter as FilterFn)
+                .peekable(),
             errors: Vec::new(),
+            last_span: Span::zero(),
         }
     }
 
+    fn token_filter(element: &(Token, Span)) -> bool {
+        !matches!(
+            element.0,
+            Token::Comment(_) | Token::Whitespace(_) | Token::NewLine
+        )
+    }
+
+    /// Take the next token and remember its span if it's not EOF.
+    fn take_next(&mut self) -> Option<(Token, Span)> {
+        let (token, span) = self.iter.next()?;
+        self.last_span = span;
+        Some((token, span))
+    }
+
     fn expect(&mut self, expected: Token) -> Option<()> {
-        match self.iter.next() {
+        match self.take_next() {
             Some((token, span)) => {
                 if token == expected {
                     Some(())
                 } else {
-                    self.errors.push(ParseError::UnexpectedToken {
-                        token,
+                    self.errors.push(Spanned::new(
+                        ParseError::UnexpectedToken {
+                            token,
+                            expected: format!("{expected:?}"),
+                        },
                         span,
-                        expected: format!("{expected:?}"),
-                    });
+                    ));
                     None
                 }
             }
             None => {
-                self.errors.push(ParseError::UnexpectedEOF {
-                    expected: format!("{expected:?}"),
-                });
+                self.errors.push(Spanned::new(
+                    ParseError::UnexpectedEOF {
+                        expected: format!("{expected:?}"),
+                    },
+                    self.last_span,
+                ));
                 None
             }
         }
@@ -59,22 +78,27 @@ where
     where
         F: FnOnce(Token) -> Option<T>,
     {
-        match self.iter.next() {
+        match self.take_next() {
             Some((token, span)) => match extract(token.clone()) {
                 Some(val) => Some((val, span)),
                 None => {
-                    self.errors.push(ParseError::UnexpectedToken {
-                        token,
+                    self.errors.push(Spanned::new(
+                        ParseError::UnexpectedToken {
+                            token,
+                            expected: expected.to_string(),
+                        },
                         span,
-                        expected: expected.to_string(),
-                    });
+                    ));
                     None
                 }
             },
             None => {
-                self.errors.push(ParseError::UnexpectedEOF {
-                    expected: expected.to_string(),
-                });
+                self.errors.push(Spanned::new(
+                    ParseError::UnexpectedEOF {
+                        expected: expected.to_string(),
+                    },
+                    self.last_span,
+                ));
                 None
             }
         }
@@ -100,7 +124,7 @@ where
         )
     }
 
-    pub fn parse(mut self) -> (AST, Vec<ParseError>) {
+    pub fn parse(mut self) -> (AST, Vec<Spanned<ParseError>>) {
         let mut ast = AST::new();
 
         while let Some((token, _)) = self.iter.peek() {
@@ -111,15 +135,14 @@ where
                     }
                 }
                 _ => {
-                    let Some((token, span)) = self.iter.next() else {
+                    let Some((token, span)) = self.take_next() else {
                         continue;
                     };
                     let err = ParseError::UnexpectedToken {
                         token,
-                        span,
                         expected: "function".to_string(),
                     };
-                    self.errors.push(err);
+                    self.errors.push(Spanned::new(err, span));
                 }
             }
         }
@@ -151,7 +174,7 @@ where
             match self.iter.peek() {
                 Some((token, _span)) => match token {
                     Token::Bracket(Bracket::CurlyClose) => {
-                        self.iter.next();
+                        self.take_next();
                         break Some(block);
                     }
                     _ => {
@@ -162,9 +185,12 @@ where
                     }
                 },
                 None => {
-                    self.errors.push(ParseError::UnexpectedEOF {
-                        expected: "statement or end of the block".to_string(),
-                    });
+                    self.errors.push(Spanned::new(
+                        ParseError::UnexpectedEOF {
+                            expected: "statement or end of the block".to_string(),
+                        },
+                        self.last_span,
+                    ));
                 }
             }
         }
@@ -175,7 +201,7 @@ where
             Some((token, _span)) => match token {
                 Token::Keyword(Keyword::New) => self.parse_variable_declaration(),
                 Token::Identifier(_) => {
-                    let Some((Token::Identifier(id), span)) = self.iter.next() else {
+                    let Some((Token::Identifier(id), span)) = self.take_next() else {
                         unreachable!(); // Unreachable: we peeked and saw Identifier
                     };
                     match self.iter.peek() {
@@ -185,42 +211,44 @@ where
                                 .map(Statement::FunctionCall),
                             Token::SpecialSymbol(SpecialSymbol::Equals) => todo!(), // Variable assignment
                             _ => {
-                                let (token, span) = self.iter.next()?;
+                                let (token, span) = self.take_next()?;
                                 let err = ParseError::UnexpectedToken {
                                     token,
-                                    span,
                                     expected: "'(' or '='".to_string(),
                                 };
-                                self.errors.push(err);
+                                self.errors.push(Spanned::new(err, span));
                                 None
                             }
                         },
                         None => {
-                            self.iter.next();
+                            self.take_next();
                             let err = ParseError::UnexpectedEOF {
                                 expected: "'(' or '='".to_string(),
                             };
-                            self.errors.push(err);
+                            self.errors.push(Spanned::new(err, self.last_span));
                             None
                         }
                     }
                 }
                 _ => {
-                    let (token, span) = self.iter.next()?;
+                    let (token, span) = self.take_next()?;
                     let err = ParseError::UnexpectedToken {
                         token,
-                        span,
                         expected: "statement (function call, new variable, return, etc.)"
                             .to_string(),
                     };
-                    self.errors.push(err);
+                    self.errors.push(Spanned::new(err, span));
                     None
                 }
             },
             None => {
-                self.errors.push(ParseError::UnexpectedEOF {
-                    expected: "statement (function call, new variable, return, etc.)".to_string(),
-                });
+                self.errors.push(Spanned::new(
+                    ParseError::UnexpectedEOF {
+                        expected: "statement (function call, new variable, return, etc.)"
+                            .to_string(),
+                    },
+                    self.last_span,
+                ));
                 None
             }
         }
@@ -233,7 +261,7 @@ where
             match self.iter.peek() {
                 Some((token, _span)) => match token {
                     Token::Bracket(Bracket::RoundClose) => {
-                        self.iter.next();
+                        self.take_next();
                         break;
                     }
                     _ => {
@@ -248,9 +276,12 @@ where
                     }
                 },
                 None => {
-                    self.errors.push(ParseError::UnexpectedEOF {
-                        expected: "function argument or ')'".to_string(),
-                    });
+                    self.errors.push(Spanned::new(
+                        ParseError::UnexpectedEOF {
+                            expected: "function argument or ')'".to_string(),
+                        },
+                        self.last_span,
+                    ));
                     return None;
                 }
             }
@@ -283,7 +314,7 @@ where
         match self.iter.peek() {
             Some((token, _span)) => match token {
                 Token::Identifier(_) => {
-                    let Some((Token::Identifier(id), span)) = self.iter.next() else {
+                    let Some((Token::Identifier(id), span)) = self.take_next() else {
                         unreachable!(); // Unreachable: we peeked and saw Identifier
                     };
                     match self.iter.peek() {
@@ -297,27 +328,29 @@ where
                             let err = ParseError::UnexpectedEOF {
                                 expected: "'('".to_string(),
                             };
-                            self.errors.push(err);
+                            self.errors.push(Spanned::new(err, self.last_span));
                             None
                         }
                     }
                 }
                 Token::Number(_) => self.parse_number().map(Expr::Literal),
                 _ => {
-                    let (token, span) = self.iter.next()?;
+                    let (token, span) = self.take_next()?;
                     let err = ParseError::UnexpectedToken {
                         token,
-                        span,
                         expected: "expression".to_string(),
                     };
-                    self.errors.push(err);
+                    self.errors.push(Spanned::new(err, span));
                     None
                 }
             },
             None => {
-                self.errors.push(ParseError::UnexpectedEOF {
-                    expected: "expression".to_string(),
-                });
+                self.errors.push(Spanned::new(
+                    ParseError::UnexpectedEOF {
+                        expected: "expression".to_string(),
+                    },
+                    self.last_span,
+                ));
                 None
             }
         }
@@ -349,8 +382,8 @@ mod tests {
                 print(x)
             }"};
 
-        let token_iter = tokenize(code.char_indices());
-        let (ast, errors) = ASTParser::new(token_iter).parse();
+        let mut token_iter = tokenize(code.char_indices());
+        let (ast, errors) = ASTParser::new(&mut token_iter).parse();
 
         let expected = AST {
             items: vec![Item::Function(Function {

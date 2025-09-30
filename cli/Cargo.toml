@@ -8,8 +8,9 @@ name = "sky"
 path = "src/main.rs"
 
 [dependencies]
-tokenizer = { path = "../tokenizer" }
 ast = { path = "../ast" }
+diagnostic = { path = "../diagnostic" }
+tokenizer = { path = "../tokenizer" }
 clap = { version = "4.5.48", features = ["derive"] }
 serde.workspace = true
 serde_json.workspace = true

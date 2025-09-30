@@ -1,10 +1,8 @@
 use std::fmt::{Display, Formatter, Result};
 
-use crate::ast::{CallArgument, PrimitiveType};
-
 use super::ast::{
-    AST, Argument, Expr, Function, FunctionCall, Item, Literal, Statement, Type,
-    VariableDeclaration,
+    AST, Argument, CallArgument, Expr, Function, FunctionCall, Item, Literal, PrimitiveType,
+    Statement, Type, VariableDeclaration,
 };
 
 impl Display for AST {

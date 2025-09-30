@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
-use tokenizer::{Number, Span, Spanned};
+use diagnostic::{Span, Spanned};
+use tokenizer::Number;
 
 use serde::Serialize;
 

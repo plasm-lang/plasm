@@ -6,6 +6,7 @@ members = [
     "mir",
     "ast",
     "tokenizer",
+    "diagnostic",
 ]
 
 [workspace.dependencies]
