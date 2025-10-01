@@ -1,7 +1,7 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Keyword {
     Fn,
-    New,
+    Let,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

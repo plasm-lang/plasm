@@ -22,7 +22,7 @@ impl Display for Keyword {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let s = match self {
             Keyword::Fn => "fn",
-            Keyword::New => "new",
+            Keyword::Let => "let",
         };
         write!(f, "{s}")
     }

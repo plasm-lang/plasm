@@ -93,7 +93,7 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
 
         let token = match self.accumulated.as_str() {
             "fn" => Token::Keyword(Keyword::Fn),
-            "new" => Token::Keyword(Keyword::New),
+            "let" => Token::Keyword(Keyword::Let),
             _ => Token::Identifier(self.accumulated.clone()),
         };
         let span = Span::new(start_i, end_i);
@@ -243,7 +243,7 @@ mod tests {
         comment 0123
         */
         fn main() {
-            new x: i32 = 5
+            let x: i32 = 5
             print(x)
         }"};
 
@@ -269,7 +269,7 @@ mod tests {
             Token::Bracket(Bracket::CurlyOpen),
             Token::NewLine,
             Token::Whitespace(4),
-            Token::Keyword(Keyword::New),
+            Token::Keyword(Keyword::Let),
             Token::Whitespace(1),
             Token::Identifier("x".to_string()),
             Token::SpecialSymbol(SpecialSymbol::Colon),
@@ -301,7 +301,7 @@ mod tests {
             match token {
                 Token::Keyword(keyword) => match keyword {
                     Keyword::Fn => assert_eq!(str_by_span, "fn"),
-                    Keyword::New => assert_eq!(str_by_span, "new"),
+                    Keyword::Let => assert_eq!(str_by_span, "let"),
                 },
                 Token::Identifier(id) => assert_eq!(id, str_by_span),
                 Token::Number(number) => assert_eq!(number.raw_value(), str_by_span),
@@ -321,7 +321,7 @@ mod tests {
                 Token::Comment(comment) => assert_eq!(comment.raw_value(), str_by_span),
                 Token::NewLine => assert_eq!(str_by_span, "\n"),
                 Token::Impossible(value) => {
-                    todo!("Impossible token ({value:?}) during test is impossible!")
+                    todo!("Impossible token ({value:?}) during test is impos    sible!")
                 }
             }
         }

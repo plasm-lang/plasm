@@ -187,10 +187,11 @@ where
                 None => {
                     self.errors.push(Spanned::new(
                         ParseError::UnexpectedEOF {
-                            expected: "statement or end of the block".to_string(),
+                            expected: "statement or `}`".to_string(),
                         },
                         self.last_span,
                     ));
+                    break Some(block);
                 }
             }
         }
@@ -199,7 +200,7 @@ where
     fn parse_statement(&mut self) -> Option<Statement> {
         match self.iter.peek() {
             Some((token, _span)) => match token {
-                Token::Keyword(Keyword::New) => self.parse_variable_declaration(),
+                Token::Keyword(Keyword::Let) => self.parse_variable_declaration(),
                 Token::Identifier(_) => {
                     let Some((Token::Identifier(id), span)) = self.take_next() else {
                         unreachable!(); // Unreachable: we peeked and saw Identifier
@@ -214,7 +215,7 @@ where
                                 let (token, span) = self.take_next()?;
                                 let err = ParseError::UnexpectedToken {
                                     token,
-                                    expected: "'(' or '='".to_string(),
+                                    expected: "`(` or `=`".to_string(),
                                 };
                                 self.errors.push(Spanned::new(err, span));
                                 None
@@ -223,7 +224,7 @@ where
                         None => {
                             self.take_next();
                             let err = ParseError::UnexpectedEOF {
-                                expected: "'(' or '='".to_string(),
+                                expected: "`(` or `=`".to_string(),
                             };
                             self.errors.push(Spanned::new(err, self.last_span));
                             None
@@ -294,7 +295,7 @@ where
     }
 
     fn parse_variable_declaration(&mut self) -> Option<Statement> {
-        self.expect(Token::Keyword(Keyword::New))?;
+        self.expect(Token::Keyword(Keyword::Let))?;
         let (var_name, var_name_span) = self.expect_ident()?;
         self.expect(Token::SpecialSymbol(SpecialSymbol::Colon))?;
         let (type_name, type_name_span) = self.expect_ident()?;
@@ -378,7 +379,7 @@ mod tests {
             comment
             */
             fn main() {
-                new x: i32 = 5
+                let x: i32 = 5
                 print(x)
             }"};
 

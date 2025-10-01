@@ -17,7 +17,7 @@ impl Display for ParseError {
                 write!(f, "Unexpected token `{token}`, expected {expected}")
             }
             ParseError::UnexpectedEOF { expected } => {
-                write!(f, "Unexpected end of file, expected {expected}")
+                write!(f, "Unexpected end of the file, expected {expected}")
             }
         }
     }

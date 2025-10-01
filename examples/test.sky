@@ -4,8 +4,6 @@
 comment 0123
 */
 fn main() {
-    new x: i32 = {
-        1 + 2 /* inline comment 2 */ + 3
-    }
+    let x: i32 = 5
     print(x)
 }

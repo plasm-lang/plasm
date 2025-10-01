@@ -103,9 +103,9 @@ impl Display for Statement {
 impl Display for VariableDeclaration {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if let Some(ty) = &self.ty {
-            write!(f, "new {}: {} = {}", self.name, ty, self.value)
+            write!(f, "let {}: {} = {}", self.name, ty, self.value)
         } else {
-            write!(f, "new {} = {}", self.name, self.value)
+            write!(f, "let {} = {}", self.name, self.value)
         }
     }
 }
