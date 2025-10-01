@@ -12,7 +12,7 @@ impl Display for Token {
             Token::Bracket(bracket) => write!(f, "{bracket}"),
             Token::Whitespace(whitespace) => write!(f, "{}", " ".repeat(*whitespace)),
             Token::Comment(comment) => write!(f, "{comment}"),
-            Token::NewLine => write!(f, "\\n"),
+            Token::NewLine => writeln!(f),
             Token::Impossible(s) => write!(f, "{s}"),
         }
     }

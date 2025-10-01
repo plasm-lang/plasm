@@ -5,6 +5,9 @@ use clap::{
 };
 
 mod emit;
+mod printer;
+mod theme;
+
 use emit::emit;
 
 const CONFIG_FILE_NAME: &str = "sky.toml";
@@ -40,6 +43,9 @@ struct EmitArgs {
     /// Output format
     #[arg(value_enum, long, default_value_t = Format::Text)]
     format: Format,
+    /// Enable ANSI colors
+    #[arg(value_enum, long, default_value_t = EnableAsni::Auto)]
+    ansi: EnableAsni,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -56,6 +62,13 @@ enum Stage {
 enum Format {
     Json,
     Text,
+}
+
+#[derive(Debug, Clone, ValueEnum)]
+pub enum EnableAsni {
+    Auto,
+    Always,
+    Never,
 }
 
 #[derive(Debug, Clone)]
@@ -103,7 +116,7 @@ fn main() {
                         .exit();
                 }
             };
-            emit(root, ty, args.format, args.stage);
+            emit(root, ty, args.format, args.stage, args.ansi);
         }
         _ => unimplemented!(),
     }

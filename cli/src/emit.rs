@@ -6,9 +6,12 @@ use ast::ASTParser;
 use diagnostic::ErrorMessage;
 use tokenizer::{CharIndicesIter, tokenize};
 
-use crate::{Format, PathType, Stage};
+use super::printer::Printer;
+use crate::{EnableAsni, Format, PathType, Stage};
 
-pub fn emit(path: PathBuf, ty: PathType, format: Format, stage: Stage) {
+pub fn emit(path: PathBuf, ty: PathType, format: Format, stage: Stage, ansi: EnableAsni) {
+    let mut printer = Printer::new(ansi);
+
     match ty {
         PathType::File => {
             let Ok(file) = File::open(&path) else {
@@ -44,15 +47,15 @@ pub fn emit(path: PathBuf, ty: PathType, format: Format, stage: Stage) {
                             }
                             Format::Text => {
                                 for error in errors {
-                                    let Ok(error_message) = ErrorMessage::new(
+                                    let error_message = ErrorMessage::new(
                                         error,
                                         token_iter.lines_table_ref().clone(),
                                         path.clone(),
-                                    ) else {
+                                    );
+                                    if printer.error(error_message).is_err() {
                                         eprintln!("Failed to read {}", path.display());
                                         continue;
                                     };
-                                    eprintln!("{error_message}");
                                 }
                             }
                         }

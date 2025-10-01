@@ -55,7 +55,7 @@ where
                     self.errors.push(Spanned::new(
                         ParseError::UnexpectedToken {
                             token,
-                            expected: format!("{expected:?}"),
+                            expected: format!("`{expected}`"),
                         },
                         span,
                     ));
@@ -65,7 +65,7 @@ where
             None => {
                 self.errors.push(Spanned::new(
                     ParseError::UnexpectedEOF {
-                        expected: format!("{expected:?}"),
+                        expected: format!("`{expected:?}`"),
                     },
                     self.last_span,
                 ));
@@ -140,7 +140,7 @@ where
                     };
                     let err = ParseError::UnexpectedToken {
                         token,
-                        expected: "function".to_string(),
+                        expected: "function definition".to_string(),
                     };
                     self.errors.push(Spanned::new(err, span));
                 }
