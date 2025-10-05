@@ -52,15 +52,40 @@ struct ASTTranslator {
     next_expr_id: ExprId,
 }
 
+fn print_func_stub(id: FuncId) -> Function<OT> {
+    Function {
+        id,
+        name: S::new("print".into(), Span::zero()),
+        args: vec![S::new(
+            Argument {
+                name: S::new("value".into(), Span::zero()),
+                local_id: LocalId::one(),
+                ty: S::new(
+                    HIRType::Primitive(ast::ast::PrimitiveType::I32),
+                    Span::zero(),
+                ),
+            },
+            Span::zero(),
+        )],
+        ret_ty: HIRType::Primitive(ast::ast::PrimitiveType::Void),
+        body: Block {
+            locals: vec![],
+            statements: vec![],
+        },
+        expr_arena: ExprArena::default(),
+    }
+}
+
 impl ASTTranslator {
     pub fn new() -> Self {
         // Temporary hardcode build-in functions
         // TODO: Load from stdlib
         let mut funcs_map = BiHashMap::new();
-        funcs_map.insert(S::new("print".into(), Span::zero()), FuncId::one());
+        let print_func_id = FuncId::one();
+        funcs_map.insert(S::new("print".into(), Span::zero()), print_func_id);
 
         Self {
-            hir: OptHIR::default(),
+            hir: OptHIR::default().with_function(print_func_stub(print_func_id)),
             errors: Vec::new(),
             funcs_map,
             next_func_id: FuncId::one().increment(),

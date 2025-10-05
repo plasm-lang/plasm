@@ -25,7 +25,7 @@ impl<T> Eq for Id<T> {}
 impl<T> PartialOrd for Id<T> {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        self.raw.partial_cmp(&other.raw)
+        Some(self.cmp(other))
     }
 }
 

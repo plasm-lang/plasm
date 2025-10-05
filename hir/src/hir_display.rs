@@ -1,158 +1,239 @@
-use std::fmt::{Display, Formatter, Result};
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 
-use super::hir::{
-    Argument, Block, Expr, ExprArena, ExprKind, Function, FunctionCall, HIR, HIRLocal, HIRType,
-    Item, Statement, VariableDeclaration,
+use crate::hir::{
+    Block, Expr, ExprArena, ExprKind, Function, FunctionCall, HIR, HIRType, Item, Statement,
 };
+use crate::ids::{ExprId, FuncId, LocalId};
 
-impl<T: DisplayHIRType> Display for HIR<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+/// Render type for THIR/OptHIR.
+pub trait RenderType {
+    fn render_ty(&self) -> String;
+}
+
+impl RenderType for HIRType {
+    fn render_ty(&self) -> String {
+        match self {
+            HIRType::Primitive(p) => format!("{p}"),
+        }
+    }
+}
+
+impl RenderType for Option<HIRType> {
+    fn render_ty(&self) -> String {
+        match self {
+            Some(t) => t.render_ty(),
+            None => "undefined".into(),
+        }
+    }
+}
+
+/// Fast access to Expr by id
+struct ArenaView<'a, T> {
+    by_id: HashMap<ExprId, &'a Expr<T>>,
+}
+
+impl<'a, T> ArenaView<'a, T> {
+    fn build(arena: &'a ExprArena<T>) -> Self {
+        let mut by_id = HashMap::with_capacity(arena.0.len());
+        for e in &arena.0 {
+            by_id.insert(e.id, e);
+        }
+        Self { by_id }
+    }
+
+    fn get(&self, id: &ExprId) -> Option<&'a Expr<T>> {
+        self.by_id.get(id).copied()
+    }
+}
+
+/// Context for printing a function
+struct FnCtx<'a, T> {
+    arena: ArenaView<'a, T>,
+    local_names: HashMap<LocalId, String>,
+    local_types: HashMap<LocalId, String>,
+    func_names: &'a HashMap<FuncId, String>,
+}
+
+impl<T: RenderType> Display for HIR<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let mut func_names = HashMap::<FuncId, String>::new();
+        for item in &self.items {
+            if let Item::Function(fun) = item {
+                func_names.insert(fun.id, fun.name.node.clone());
+            }
+        }
+
         for (i, item) in self.items.iter().enumerate() {
             if i > 0 {
                 writeln!(f)?;
             }
-            writeln!(f, "{item}")?;
-        }
-        Ok(())
-    }
-}
-
-trait DisplayHIRType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result;
-}
-
-impl DisplayHIRType for HIRType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            HIRType::Primitive(p) => write!(f, "{p}"),
-        }
-    }
-}
-
-impl DisplayHIRType for Option<HIRType> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            Some(ty) => ty.fmt(f),
-            None => write!(f, "UNDEFINED"),
-        }
-    }
-}
-
-impl<T: DisplayHIRType> Display for Item<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            Item::Function(func) => write!(f, "{func}"),
-        }
-    }
-}
-
-impl<T: DisplayHIRType> Display for Function<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "fn {}(", self.name)?;
-        for (i, arg) in self.args.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{arg}")?;
-        }
-        write!(f, ") -> ",)?;
-        self.ret_ty.fmt(f)?;
-        self.body.fmt(f, Some(&self.expr_arena))
-    }
-}
-
-impl Display for Argument {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}: ", self.name)?;
-        self.ty.fmt(f)
-    }
-}
-
-trait DisplayHIRBlock<T: DisplayHIRType> {
-    fn fmt(&self, f: &mut Formatter<'_>, arena: Option<&ExprArena<T>>) -> Result;
-}
-
-impl<T: DisplayHIRType> DisplayHIRBlock<T> for Block<T> {
-    fn fmt(&self, f: &mut Formatter<'_>, arena: Option<&ExprArena<T>>) -> Result {
-        writeln!(f, "{{")?;
-
-        if !self.locals.is_empty() {
-            writeln!(f, "    // Locals")?;
-        }
-        for local in &self.locals {
-            writeln!(f, "    let {}", local)?;
-        }
-
-        if let Some(arena) = arena {
-            if !arena.0.is_empty() {
-                writeln!(f)?;
-                writeln!(f, "    // Expressions")?;
-                for expr in &arena.0 {
-                    writeln!(f, "    {}", expr)?;
+            match item {
+                Item::Function(fun) => {
+                    let s = format_function(fun, &func_names);
+                    f.write_str(&s)?;
                 }
             }
         }
-
-        if !self.statements.is_empty() {
-            writeln!(f)?;
-            writeln!(f, "    // Statements")?;
-        }
-        for stmt in &self.statements {
-            writeln!(f, "    {stmt}")?;
-        }
-        writeln!(f, "}}")?;
         Ok(())
     }
 }
 
-impl<T: DisplayHIRType> Display for HIRLocal<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}({}): ", self.name, self.id)?;
-        self.ty.fmt(f)
-    }
-}
+fn format_function<T: RenderType>(
+    fun: &Function<T>,
+    func_names: &HashMap<FuncId, String>,
+) -> String {
+    // Build function context
+    let mut local_names = HashMap::<LocalId, String>::new();
+    let mut local_types = HashMap::<LocalId, String>::new();
 
-impl Display for Statement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            Statement::VariableDeclaration(var_decl) => write!(f, "{}", var_decl),
-            Statement::Expr(expr_id) => write!(f, "{}", expr_id),
-            Statement::Return(expr_id) => write!(f, "return {}", expr_id),
+    for a in &fun.args {
+        let arg = &a.node;
+        local_names.insert(arg.local_id, arg.name.node.clone());
+        local_types.insert(arg.local_id, arg.ty.node.render_ty());
+    }
+
+    for l in &fun.body.locals {
+        local_names.insert(l.id, l.name.node.clone());
+        local_types.insert(l.id, l.ty.render_ty());
+    }
+
+    let ctx = FnCtx {
+        arena: ArenaView::build(&fun.expr_arena),
+        local_names,
+        local_types,
+        func_names,
+    };
+
+    // Function signature
+    let mut out = String::new();
+    out.push_str("fn ");
+    out.push_str(&fun.name.node);
+    out.push('(');
+    for (i, a) in fun.args.iter().enumerate() {
+        if i > 0 {
+            out.push_str(", ");
         }
+        let arg = &a.node;
+        out.push_str(&arg.name.node);
+        out.push_str(": ");
+        out.push_str(&arg.ty.node.render_ty());
     }
+    out.push(')');
+
+    let ret = fun.ret_ty.render_ty();
+    out.push_str(" -> ");
+    out.push_str(&ret);
+    out.push_str(" {\n");
+
+    // Body
+    format_block_into(&mut out, &fun.body, &ctx, 1);
+
+    out.push_str("}\n");
+    out
 }
 
-impl Display for VariableDeclaration {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "let {} = {}", self.local_id, self.expr_id)
-    }
-}
-
-// --- Expression-related --- //
-
-impl<T: DisplayHIRType> Display for Expr<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}: ", self.id)?;
-        self.ty.fmt(f)?;
-        write!(f, " = ")?;
-        match &self.kind {
-            ExprKind::Literal(lit) => write!(f, "{lit}"),
-            ExprKind::Local(id) => write!(f, "{id}"),
-            ExprKind::FunctionCall(func_call) => write!(f, "{func_call}"),
-            ExprKind::Block(block) => block.fmt(f, None),
-        }
-    }
-}
-
-impl Display for FunctionCall {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}(", self.func_id)?;
-        for (i, arg) in self.args.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
+fn indent(n: usize) -> &'static str {
+    const IND: &str = "    ";
+    // Micro-optimization: 4 variants, then repeat
+    match n {
+        0 => "",
+        1 => IND,
+        2 => "        ",
+        3 => "            ",
+        _ => {
+            let mut s = String::new();
+            for _ in 0..n {
+                s.push_str(IND);
             }
-            write!(f, "{arg}")?;
+            Box::leak(s.into_boxed_str())
         }
-        write!(f, ")")
     }
+}
+
+fn format_block_into<T: RenderType>(
+    out: &mut String,
+    block: &Block<T>,
+    ctx: &FnCtx<T>,
+    lvl: usize,
+) {
+    for stmt in &block.statements {
+        out.push_str(indent(lvl));
+        match stmt {
+            Statement::VariableDeclaration(v) => {
+                let name = ctx
+                    .local_names
+                    .get(&v.local_id)
+                    .cloned()
+                    .unwrap_or_else(|| "/*unknown_local*/".into());
+                let ty = ctx
+                    .local_types
+                    .get(&v.local_id)
+                    .cloned()
+                    .unwrap_or_else(|| "undefined".into());
+
+                out.push_str("let ");
+                out.push_str(&name);
+                out.push_str(": ");
+                out.push_str(&ty);
+                out.push_str(" = ");
+                format_expr_id_into(out, &v.expr_id, ctx);
+                out.push('\n');
+            }
+            Statement::Expr(eid) => {
+                format_expr_id_into(out, eid, ctx);
+                out.push('\n');
+            }
+            Statement::Return(eid) => {
+                out.push_str("return ");
+                format_expr_id_into(out, eid, ctx);
+                out.push('\n');
+            }
+        }
+    }
+}
+
+fn format_expr_id_into<T: RenderType>(out: &mut String, id: &ExprId, ctx: &FnCtx<T>) {
+    if let Some(e) = ctx.arena.get(id) {
+        format_expr_into(out, e, ctx);
+    } else {
+        out.push_str("/*unknown_expr*/");
+    }
+}
+
+fn format_expr_into<T: RenderType>(out: &mut String, e: &Expr<T>, ctx: &FnCtx<T>) {
+    match &e.kind {
+        ExprKind::Literal(l) => out.push_str(&format!("{l}")),
+        ExprKind::Local(lid) => {
+            let name = ctx
+                .local_names
+                .get(lid)
+                .cloned()
+                .unwrap_or_else(|| "/*unknown_local*/".into());
+            out.push_str(&name);
+        }
+        ExprKind::FunctionCall(call) => format_call_into(out, call, ctx),
+        ExprKind::Block(b) => {
+            out.push_str("{\n");
+            format_block_into(out, b, ctx, 2);
+            out.push('}');
+        }
+    }
+}
+
+fn format_call_into<T: RenderType>(out: &mut String, call: &FunctionCall, ctx: &FnCtx<T>) {
+    let fname = ctx
+        .func_names
+        .get(&call.func_id)
+        .cloned()
+        .unwrap_or_else(|| "/*unknown_fn*/".into());
+    out.push_str(&fname);
+    out.push('(');
+    for (i, arg) in call.args.iter().enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        format_expr_id_into(out, arg, ctx);
+    }
+    out.push(')');
 }

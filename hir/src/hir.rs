@@ -17,6 +17,14 @@ pub struct HIR<T> {
     pub items: Vec<Item<T>>,
 }
 
+impl<T> HIR<T> {
+    pub fn with_function(self, func: Function<T>) -> Self {
+        let mut items = self.items;
+        items.push(Item::Function(func));
+        Self { items }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum HIRType {
     Primitive(PrimitiveType),
