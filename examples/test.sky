@@ -3,7 +3,7 @@
 /* Multiline
 comment 0123
 */
-fn main() asdasdasdasdasd {
+fn main() {
     let x: i32 = 5
     print(x)
 }

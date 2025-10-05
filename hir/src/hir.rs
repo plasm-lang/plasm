@@ -73,7 +73,7 @@ pub struct VariableDeclaration {
 // --- Expression-related --- //
 
 #[derive(Debug, Default)]
-pub struct ExprArena<T>(Vec<Expr<T>>);
+pub struct ExprArena<T>(pub Vec<Expr<T>>);
 
 impl<T> ExprArena<T> {
     pub fn join(self, other: Self) -> Self {
@@ -81,24 +81,29 @@ impl<T> ExprArena<T> {
         v.extend(other.0);
         Self(v)
     }
+
+    pub fn add(&mut self, expr: Expr<T>) {
+        self.0.push(expr);
+    }
 }
 
 #[derive(Debug)]
 pub struct Expr<T> {
-    id: ExprId,
-    ty: T,
-    kind: ExprKind,
+    pub id: ExprId,
+    pub ty: T,
+    pub kind: ExprKind<T>,
 }
 
 #[derive(Debug)]
-pub enum ExprKind {
+pub enum ExprKind<T> {
     Literal(Literal),
     Local(LocalId),
     FunctionCall(FunctionCall),
+    Block(Block<T>),
 }
 
 #[derive(Debug)]
 pub struct FunctionCall {
-    func_id: FuncId,
-    args: Vec<ExprId>,
+    pub func_id: FuncId,
+    pub args: Vec<ExprId>,
 }

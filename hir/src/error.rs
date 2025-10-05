@@ -8,6 +8,12 @@ pub enum Error {
         first: Spanned<String>,
         second: Spanned<String>,
     },
+    UnknownVariable {
+        name: String,
+    },
+    UnknownFunction {
+        name: String,
+    },
 }
 
 impl Display for Error {

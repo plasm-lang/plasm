@@ -62,16 +62,46 @@ impl<T> Id<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct FuncMarker;
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct LocalMarker;
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ExprMarker;
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TypeMarker;
 
 pub type FuncId = Id<FuncMarker>;
 pub type LocalId = Id<LocalMarker>;
 pub type ExprId = Id<ExprMarker>;
 pub type TypeId = Id<TypeMarker>;
+
+impl std::fmt::Display for FuncMarker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "FN")
+    }
+}
+
+impl std::fmt::Display for LocalMarker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "LOCAL")
+    }
+}
+
+impl std::fmt::Display for ExprMarker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "EXPR")
+    }
+}
+
+impl std::fmt::Display for TypeMarker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TYPE")
+    }
+}
+
+impl<T: std::fmt::Display + Default> std::fmt::Display for Id<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "${}[{}]", T::default(), self.raw)
+    }
+}

@@ -1,12 +1,13 @@
 use bimap::BiHashMap;
 
-use diagnostic::Spanned;
+use diagnostic::{Span, Spanned};
 
-use crate::hir::{Statement, VariableDeclaration};
+use crate::hir::FunctionCall;
 
 use super::error::Error;
 use super::hir::{
-    Argument, Block, Expr, ExprArena, Function, HIRLocal, HIRType, Item, OptHIR, THIR,
+    Argument, Block, Expr, ExprArena, ExprKind, Function, HIRLocal, HIRType, Item, OptHIR,
+    Statement, THIR, VariableDeclaration,
 };
 use super::ids::{ExprId, FuncId, LocalId};
 use super::type_annotator::TypeAnnotator;
@@ -37,6 +38,11 @@ fn opt_hir_to_t_hir(opt_hir: OptHIR) -> (THIR, Vec<S<Error>>) {
     annotator.annotate(opt_hir)
 }
 
+#[derive(Default, Clone)]
+struct LocalsMap {
+    map: BiHashMap<S<String>, LocalId>,
+}
+
 struct ASTTranslator {
     hir: OptHIR,
     errors: Vec<S<Error>>,
@@ -48,11 +54,16 @@ struct ASTTranslator {
 
 impl ASTTranslator {
     pub fn new() -> Self {
-        ASTTranslator {
+        // Temporary hardcode build-in functions
+        // TODO: Load from stdlib
+        let mut funcs_map = BiHashMap::new();
+        funcs_map.insert(S::new("print".into(), Span::zero()), FuncId::one());
+
+        Self {
             hir: OptHIR::default(),
             errors: Vec::new(),
-            funcs_map: BiHashMap::new(),
-            next_func_id: FuncId::one(),
+            funcs_map,
+            next_func_id: FuncId::one().increment(),
             next_local_id: LocalId::one(),
             next_expr_id: ExprId::one(),
         }
@@ -138,7 +149,7 @@ impl ASTTranslator {
 
         // Translate body
 
-        let (body, expr_arena) = self.translate_block(func.body, locals);
+        let (body, expr_arena) = self.translate_block(func.body, &locals);
 
         let hir_func = Function {
             id,
@@ -181,7 +192,7 @@ impl ASTTranslator {
     fn translate_block(
         &mut self,
         ast_block: ast::Block,
-        locals: Vec<HIRLocal<OT>>,
+        locals: &Vec<HIRLocal<OT>>,
     ) -> (Block<OT>, ExprArena<OT>) {
         let mut locals = locals.clone();
         let mut expr_arena = ExprArena::<OT>::default();
@@ -205,18 +216,18 @@ impl ASTTranslator {
 
                     // Translate Expr and build VariableDeclaration
                     let (expr_id, local_expr_arena) =
-                        self.translate_expr(variable_declaration.value);
+                        self.translate_expr(variable_declaration.value, &locals);
                     expr_arena = expr_arena.join(local_expr_arena);
 
                     Statement::VariableDeclaration(VariableDeclaration { local_id, expr_id })
                 }
                 ast::Statement::Expr(expr) => {
-                    let (expr_id, local_expr_arena) = self.translate_expr(expr);
+                    let (expr_id, local_expr_arena) = self.translate_expr(expr, &locals);
                     expr_arena = expr_arena.join(local_expr_arena);
                     Statement::Expr(expr_id)
                 }
                 ast::Statement::Return(expr) => {
-                    let (expr_id, local_expr_arena) = self.translate_expr(expr);
+                    let (expr_id, local_expr_arena) = self.translate_expr(expr, &locals);
                     expr_arena = expr_arena.join(local_expr_arena);
                     Statement::Return(expr_id)
                 }
@@ -229,8 +240,81 @@ impl ASTTranslator {
         (block, expr_arena)
     }
 
-    fn translate_expr(&mut self, expr: ast::Expr) -> (ExprId, ExprArena<OT>) {
-        todo!()
+    fn translate_expr(
+        &mut self,
+        expr: ast::Expr,
+        locals: &Vec<HIRLocal<OT>>,
+    ) -> (ExprId, ExprArena<OT>) {
+        let expr_id = self.get_next_expr_id();
+        let mut expr_arena = ExprArena::<OT>::default();
+        match expr {
+            ast::Expr::Literal(lit) => {
+                let hir_expr = Expr::<OT> {
+                    id: expr_id,
+                    ty: None,
+                    kind: ExprKind::Literal(lit),
+                };
+                expr_arena.add(hir_expr);
+            }
+            ast::Expr::Variable(var) => {
+                // Look up local_id
+                // TODO: Change Vec to HashMap or BiHashMap for efficiency
+                let local_id = locals
+                    .iter()
+                    .find(|local| local.name.node == var.node)
+                    .map(|local| local.id);
+
+                if let Some(local_id) = local_id {
+                    let hir_expr = Expr::<OT> {
+                        id: expr_id,
+                        ty: None,
+                        kind: ExprKind::Local(local_id),
+                    };
+                    expr_arena.add(hir_expr);
+                } else {
+                    let (name, span) = var.unwrap();
+                    let err = Error::UnknownVariable { name };
+                    self.errors.push(S::new(err, span));
+                }
+            }
+            ast::Expr::FunctionCall(func_call) => {
+                let (name, span) = func_call.name.unwrap();
+                let func_id = self.funcs_map.get_by_left(&name).cloned();
+                if let Some(func_id) = func_id {
+                    // Translate arguments into ExprIds
+                    let mut args = Vec::new();
+                    for ast_arg in func_call.args.into_iter() {
+                        let (arg_expr_id, local_expr_arena) =
+                            self.translate_expr(ast_arg.value, locals);
+                        expr_arena = expr_arena.join(local_expr_arena);
+                        args.push(arg_expr_id);
+                    }
+
+                    // Build FunctionCall and Expr
+                    let func_call = FunctionCall { func_id, args };
+                    let hir_expr = Expr::<OT> {
+                        id: expr_id,
+                        ty: None,
+                        kind: ExprKind::FunctionCall(func_call),
+                    };
+                    expr_arena.add(hir_expr);
+                } else {
+                    let err = Error::UnknownFunction { name };
+                    self.errors.push(S::new(err, span));
+                }
+            }
+            ast::Expr::Block(block) => {
+                let (hir_block, local_expr_arena) = self.translate_block(block, locals);
+                expr_arena = expr_arena.join(local_expr_arena);
+                let hir_expr = Expr::<OT> {
+                    id: expr_id,
+                    ty: None,
+                    kind: ExprKind::Block(hir_block),
+                };
+                expr_arena.add(hir_expr);
+            }
+        }
+        (expr_id, expr_arena)
     }
 }
 
@@ -239,7 +323,8 @@ mod tests {
     use super::*;
     use diagnostic::{Span, Spanned};
 
-    fn test() {
+    #[test]
+    fn basic_test() {
         let ast = {
             use ast::ast::*;
             AST {
@@ -282,5 +367,9 @@ mod tests {
                 })],
             }
         };
+
+        let (hir, errors) = ast_to_opt_hir(ast);
+        assert!(errors.is_empty());
+        println!("{hir}");
     }
 }
