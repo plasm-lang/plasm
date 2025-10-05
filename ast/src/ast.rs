@@ -7,6 +7,7 @@ use serde::Serialize;
 
 pub type S<T> = Spanned<T>;
 
+/// Abstract Syntax Tree
 #[derive(Debug, PartialEq, Eq, Default, Serialize)]
 pub struct AST {
     pub items: Vec<Item>,
@@ -48,7 +49,7 @@ pub type Block = Vec<Statement>;
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum Statement {
     VariableDeclaration(VariableDeclaration),
-    FunctionCall(FunctionCall),
+    Expr(Expr),
     // Assignment,
     Return(Expr),
 }
@@ -97,7 +98,7 @@ pub struct CallArgument {
     pub value: Expr,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum Type {
     Primitive(PrimitiveType),
     // String, // TODO
@@ -114,7 +115,7 @@ impl Type {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum PrimitiveType {
     Void,
     Bool,

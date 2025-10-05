@@ -12,15 +12,14 @@ For example, following command will parse `test.sky` file, stop on AST stage and
 cargo run emit test.sky --stage ast --format text
 ```
 
-
 ## The compilation flow
 
 ```
-                                 HIR                          Codegen (LLVM)
-                           ________________             __________________________
-                          |                |           |                          |
- code -> tokens -> AST -> | OptHIR -> THIR | -> MIR -> | LLVM-IR -> ASM -> binary | -> linker -> Exe
-   |        |       |     |_____________|__|     |     |_____________|____________|
+                                 HIR                             Codegen (LLVM)
+                           ________________             _______________________________
+                          |                |           |                               |
+ code -> tokens -> AST -> | OptHIR -> THIR | -> MIR -> | LLVM-IR -> ASM -> object file | -> linker -> Exe
+   |        |       |     |_____________|__|     |     |_____________|_________________|
    |        |----> CST                  |        |                   |
    |                |                   |        |                   |
    |                |                   |        |                   |
@@ -39,4 +38,5 @@ Codegen     Code Generation
 LLVM        A external compiler backend
 ASM         Assembler
 Exe         Executable file
+CLI         Computer Line Interface
 ```

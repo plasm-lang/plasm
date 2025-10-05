@@ -3,4 +3,13 @@ name = "hir"
 version = "0.1.0"
 edition = "2024"
 
+
 [dependencies]
+diagnostic = { path = "../diagnostic" }
+tokenizer = { path = "../tokenizer" }
+ast = { path = "../ast" }
+serde.workspace = true
+bimap.workspace = true
+
+[dev-dependencies]
+indoc.workspace = true

@@ -26,13 +26,19 @@ impl Span {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 pub struct Spanned<T> {
     pub node: T,
     pub span: Span,
 }
 
 impl<T: Copy> Copy for Spanned<T> {}
+
+impl<T: std::hash::Hash> std::hash::Hash for Spanned<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.node.hash(state);
+    }
+}
 
 impl<T: std::fmt::Display> std::fmt::Display for Spanned<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -68,6 +74,11 @@ impl<T> Spanned<T> {
             node: &mut self.node,
             span: self.span,
         }
+    }
+
+    #[inline]
+    pub fn unwrap(self) -> (T, Span) {
+        (self.node, self.span)
     }
 }
 

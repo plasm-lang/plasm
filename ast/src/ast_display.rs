@@ -94,7 +94,7 @@ impl Display for Statement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Statement::VariableDeclaration(var_decl) => writeln!(f, "{var_decl}"),
-            Statement::FunctionCall(func_call) => writeln!(f, "{func_call}"),
+            Statement::Expr(expr) => writeln!(f, "{expr}"),
             Statement::Return(expr) => writeln!(f, "return {expr}"),
         }
     }

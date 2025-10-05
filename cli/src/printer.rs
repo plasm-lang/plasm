@@ -90,16 +90,16 @@ impl Printer {
             self.stderr,
             "{color}Error{r}: {}",
             msg.error,
-            color = self.theme.error.render(),
+            color = self.theme.error.bold().render(),
             r = Reset.render()
         )?;
         writeln!(
             self.stderr,
-            "-----> {color}{}:{}:{}{r}",
+            "---->  {color}{}:{}:{}{r}",
             msg.file_path.display(),
             msg.lines_table.line(msg.error.span.start),
             msg.lines_table.column(msg.error.span.start),
-            color = self.theme.path.render(),
+            color = self.theme.path.bold().render(),
             r = Reset.render()
         )?;
 
@@ -127,7 +127,7 @@ impl Printer {
         let len = (msg.error.span.end - msg.error.span.start).max(1);
         writeln!(
             self.stderr,
-            "{:>width$} {color}{:>col$}/{:^<len$}\\{r}",
+            "{:>width$} {:>col$}{color}/{:^<len$}\\{r}",
             "",
             "",
             "",

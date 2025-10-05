@@ -209,7 +209,8 @@ where
                         Some((token, _span)) => match token {
                             Token::Bracket(Bracket::RoundOpen) => self
                                 .parse_function_call(id, span)
-                                .map(Statement::FunctionCall),
+                                .map(Expr::FunctionCall)
+                                .map(Statement::Expr),
                             Token::SpecialSymbol(SpecialSymbol::Equals) => todo!(), // Variable assignment
                             _ => {
                                 let (token, span) = self.take_next()?;
@@ -409,7 +410,7 @@ mod tests {
                             span: Span { start: 78, end: 79 },
                         })),
                     }),
-                    Statement::FunctionCall(FunctionCall {
+                    Statement::Expr(Expr::FunctionCall(FunctionCall {
                         name: Spanned {
                             node: "print".to_string(),
                             span: Span { start: 84, end: 89 },
@@ -421,7 +422,7 @@ mod tests {
                                 span: Span { start: 90, end: 91 },
                             }),
                         }],
-                    }),
+                    })),
                 ],
             })],
         };

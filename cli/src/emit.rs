@@ -24,7 +24,7 @@ pub fn emit(path: PathBuf, ty: PathType, format: Format, stage: Stage, ansi: Ena
             let mut token_iter = tokenize(char_iter);
 
             match stage {
-                Stage::Ast => {
+                Stage::AST => {
                     let (ast, errors) = {
                         let parser = ASTParser::new(&mut token_iter);
                         parser.parse()
