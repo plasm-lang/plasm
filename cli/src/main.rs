@@ -55,7 +55,7 @@ enum Stage {
     MIR,
     LlvmIR,
     Asm,
-    ObjectFIle,
+    ObjectFile,
     Binary,
 }
 
