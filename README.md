@@ -15,7 +15,7 @@ cargo run emit test.sky --stage ast --format text
 ## The compilation flow
 
 ```
-                                 HIR                             Codegen (LLVM)
+                                 HIR                               Codegen (LLVM)
                            ________________             _____________________________________
                           |                |           |                                     |
  code -> tokens -> AST -> | OptHIR -> THIR | -> MIR -> | LLVM-IR -> ASM -----> artifacts ----|--> linker -> Exe
@@ -50,16 +50,16 @@ CLI         Computer Line Interface
 - `examples/` - Plasm language examples
 - `hir/` - High-level IR, OptHIR, THIR + translator from AST + types annotator
 - `mir/` - Middle-level IR + translator from HIR
-- `orchestrator/` - Compilation flow managments utilities (Parallel compilation, linker controller, configuration reader)
+- `orchestrator/` - Compilation flow management utilities (Parallel compilation, linker controller, configuration reader)
 - `tokenizer/` - Tokens description + lexer + from bytes to tokens stream
 
 Internal dependencies:
 
 ```
 orchestrator    diagnostic -> tokenizer -> ast -> hir -> mir -> codegen
-      |            | ^           ^ ^       ^ ^    ^ ^     ^        ^
-      |            | |           | |       | |    | |     |        |
-      |            |_|___________|_|_______|_|____| |     |        |
-      |              |             |         |      |     |        |
-      |______________|_____________|_________|______|_____|________|
+      ^            | |            |        ^ |    ^ |     |        |
+      |            | |            |        | |    | |     |        |
+      |            |_|____________|________|_|____| |     |        |
+      |              |            |          |      |     |        |
+      |______________|____________|__________|______|_____|________|
 ```
