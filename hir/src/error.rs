@@ -18,7 +18,21 @@ pub enum Error {
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        match self {
+            Error::FunctionMultipleDefinitions { first, second } => {
+                write!(
+                    f,
+                    "Function `{}` is defined multiple times: first at {}, then at {}",
+                    first.node, first.span, second.span
+                )
+            }
+            Error::UnknownVariable { name } => {
+                write!(f, "Unknown variable `{}`", name)
+            }
+            Error::UnknownFunction { name } => {
+                write!(f, "Unknown function `{}`", name)
+            }
+        }
     }
 }
 

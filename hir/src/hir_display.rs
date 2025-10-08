@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use crate::hir::{
-    Block, Expr, ExprArena, ExprKind, Function, FunctionCall, HIR, HIRType, Item, Statement,
+    Block, Expr, ExprArena, ExprKind, Function, FunctionCall, FunctionSignature, HIR, HIRType,
+    Item, Statement,
 };
 use crate::ids::{ExprId, FuncId, LocalId};
 
@@ -60,7 +61,7 @@ impl<T: RenderType> Display for HIR<T> {
         let mut func_names = HashMap::<FuncId, String>::new();
         for item in &self.items {
             if let Item::Function(fun) = item {
-                func_names.insert(fun.id, fun.name.node.clone());
+                func_names.insert(fun.signature.id, fun.signature.name.node.clone());
             }
         }
 
@@ -87,7 +88,7 @@ fn format_function<T: RenderType>(
     let mut local_names = HashMap::<LocalId, String>::new();
     let mut local_types = HashMap::<LocalId, String>::new();
 
-    for a in &fun.args {
+    for a in &fun.signature.args {
         let arg = &a.node;
         local_names.insert(arg.local_id, arg.name.node.clone());
         local_types.insert(arg.local_id, arg.ty.node.render_ty());
@@ -105,25 +106,10 @@ fn format_function<T: RenderType>(
         func_names,
     };
 
-    // Function signature
     let mut out = String::new();
-    out.push_str("fn ");
-    out.push_str(&fun.name.node);
-    out.push('(');
-    for (i, a) in fun.args.iter().enumerate() {
-        if i > 0 {
-            out.push_str(", ");
-        }
-        let arg = &a.node;
-        out.push_str(&arg.name.node);
-        out.push_str(": ");
-        out.push_str(&arg.ty.node.render_ty());
-    }
-    out.push(')');
 
-    let ret = fun.ret_ty.render_ty();
-    out.push_str(" -> ");
-    out.push_str(&ret);
+    // Function signature
+    format_function_signature(&mut out, &fun.signature);
     out.push_str(" {\n");
 
     // Body
@@ -149,6 +135,26 @@ fn indent(n: usize) -> &'static str {
             Box::leak(s.into_boxed_str())
         }
     }
+}
+
+fn format_function_signature(out: &mut String, signature: &FunctionSignature) {
+    out.push_str("fn ");
+    out.push_str(&signature.name.node);
+    out.push('(');
+    for (i, a) in signature.args.iter().enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        let arg = &a.node;
+        out.push_str(&arg.name.node);
+        out.push_str(": ");
+        out.push_str(&arg.ty.node.render_ty());
+    }
+    out.push(')');
+
+    let ret = signature.ret_ty.render_ty();
+    out.push_str(" -> ");
+    out.push_str(&ret);
 }
 
 fn format_block_into<T: RenderType>(

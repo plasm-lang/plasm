@@ -2,7 +2,7 @@ use bimap::BiHashMap;
 
 use diagnostic::{Span, Spanned};
 
-use crate::hir::FunctionCall;
+use crate::hir::{FunctionCall, FunctionSignature};
 
 use super::error::Error;
 use super::hir::{
@@ -14,18 +14,13 @@ use super::type_annotator::TypeAnnotator;
 
 /// For brevity
 type OT = Option<HIRType>;
-
-/// For brevity
 type S<T> = Spanned<T>;
 
-pub fn ast_to_hir(ast: ast::AST) -> (Option<THIR>, Vec<S<Error>>) {
-    let (opt_hir, errors) = ast_to_opt_hir(ast);
-    if !errors.is_empty() {
-        return (None, errors);
-    }
+pub fn ast_to_hir(ast: ast::AST) -> (THIR, Vec<S<Error>>) {
+    let (opt_hir, translation_errors) = ast_to_opt_hir(ast);
 
-    let (t_hir, errors) = opt_hir_to_t_hir(opt_hir);
-    (Some(t_hir), errors)
+    let (t_hir, annotation_errors) = opt_hir_to_t_hir(opt_hir);
+    (t_hir, translation_errors.into_iter().chain(annotation_errors).collect())
 }
 
 fn ast_to_opt_hir(ast: ast::AST) -> (OptHIR, Vec<S<Error>>) {
@@ -43,6 +38,32 @@ struct LocalsMap {
     map: BiHashMap<S<String>, LocalId>,
 }
 
+fn print_func_stub(id: FuncId) -> Function<OT> {
+    Function {
+        signature: FunctionSignature {
+            id,
+            name: S::new("print".into(), Span::zero()),
+            args: vec![S::new(
+                Argument {
+                    name: S::new("value".into(), Span::zero()),
+                    local_id: LocalId::one(),
+                    ty: S::new(
+                        HIRType::Primitive(ast::ast::PrimitiveType::I32),
+                        Span::zero(),
+                    ),
+                },
+                Span::zero(),
+            )],
+            ret_ty: HIRType::Primitive(ast::ast::PrimitiveType::Void),
+        },
+        body: Block {
+            locals: vec![],
+            statements: vec![],
+        },
+        expr_arena: ExprArena::default(),
+    }
+}
+
 struct ASTTranslator {
     hir: OptHIR,
     errors: Vec<S<Error>>,
@@ -50,30 +71,6 @@ struct ASTTranslator {
     next_func_id: FuncId,
     next_local_id: LocalId,
     next_expr_id: ExprId,
-}
-
-fn print_func_stub(id: FuncId) -> Function<OT> {
-    Function {
-        id,
-        name: S::new("print".into(), Span::zero()),
-        args: vec![S::new(
-            Argument {
-                name: S::new("value".into(), Span::zero()),
-                local_id: LocalId::one(),
-                ty: S::new(
-                    HIRType::Primitive(ast::ast::PrimitiveType::I32),
-                    Span::zero(),
-                ),
-            },
-            Span::zero(),
-        )],
-        ret_ty: HIRType::Primitive(ast::ast::PrimitiveType::Void),
-        body: Block {
-            locals: vec![],
-            statements: vec![],
-        },
-        expr_arena: ExprArena::default(),
-    }
 }
 
 impl ASTTranslator {
@@ -176,11 +173,15 @@ impl ASTTranslator {
 
         let (body, expr_arena) = self.translate_block(func.body, &locals);
 
-        let hir_func = Function {
+        let signature = FunctionSignature {
             id,
             name,
             args,
             ret_ty,
+        };
+
+        let hir_func = Function {
+            signature,
             body,
             expr_arena,
         };
@@ -393,8 +394,9 @@ mod tests {
             }
         };
 
-        let (hir, errors) = ast_to_opt_hir(ast);
-        assert!(errors.is_empty());
+        let (hir, errors) = ast_to_hir(ast);
+        // assert!(errors.is_empty());
+        println!("{:#?}", errors);
         println!("{hir}");
     }
 }

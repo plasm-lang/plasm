@@ -25,7 +25,7 @@ impl<T> HIR<T> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HIRType {
     Primitive(PrimitiveType),
 }
@@ -37,15 +37,20 @@ pub enum Item<T> {
 
 #[derive(Debug)]
 pub struct Function<T> {
-    pub id: FuncId,
-    pub name: S<String>,
-    pub args: Vec<S<Argument>>,
-    pub ret_ty: HIRType,
+    pub signature: FunctionSignature,
     pub body: Block<T>,
     pub expr_arena: ExprArena<T>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+pub struct FunctionSignature {
+    pub id: FuncId,
+    pub name: S<String>,
+    pub args: Vec<S<Argument>>,
+    pub ret_ty: HIRType,
+}
+
+#[derive(Debug, Clone)]
 pub struct Argument {
     pub name: S<String>,
     pub local_id: LocalId,

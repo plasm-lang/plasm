@@ -16,11 +16,11 @@ cargo run emit test.sky --stage ast --format text
 
 ```
                                  HIR                             Codegen (LLVM)
-                           ________________             _______________________________
-                          |                |           |                               |
- code -> tokens -> AST -> | OptHIR -> THIR | -> MIR -> | LLVM-IR -> ASM -> object file | -> linker -> Exe
-   |        |       |     |_____________|__|     |     |_____________|_________________|
-   |        |----> CST                  |        |                   |
+                           ________________             _____________________________________
+                          |                |           |                                     |
+ code -> tokens -> AST -> | OptHIR -> THIR | -> MIR -> | LLVM-IR -> ASM -----> artifacts ----|--> linker -> Exe
+   |        |       |     |_____________|__|     |     |             |     (.o/.a/.bc/.wasm) |
+   |        |----> CST                  |        |     |_____________|_______________________|
    |                |                   |        |                   |
    |                |                   |        |                   |
 Visible         Visible              Visible  Visible             Visible

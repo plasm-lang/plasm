@@ -1,12 +1,13 @@
 [workspace]
 members = [
-    "cli",
-    "codegen",
+    "diagnostic",
+    "tokenizer",
+    "ast",
     "hir",
     "mir",
-    "ast",
-    "tokenizer",
-    "diagnostic",
+    "codegen",
+    "orchestrator",
+    "cli",
 ]
 
 [workspace.dependencies]

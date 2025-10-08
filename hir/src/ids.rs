@@ -1,6 +1,5 @@
-use std::{marker::PhantomData, num::NonZeroU32};
+use std::{fmt::Debug, marker::PhantomData, num::NonZeroU32};
 
-#[derive(Debug)]
 pub struct Id<T> {
     raw: NonZeroU32,
     _marker: PhantomData<*const T>,
@@ -62,19 +61,22 @@ impl<T> Id<T> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct FuncMarker;
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct LocalMarker;
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct ExprMarker;
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct TypeMarker;
+#[derive(Default)]
+pub struct TypeVarMarker;
 
 pub type FuncId = Id<FuncMarker>;
 pub type LocalId = Id<LocalMarker>;
 pub type ExprId = Id<ExprMarker>;
 pub type TypeId = Id<TypeMarker>;
+pub type TypeVarId = Id<TypeVarMarker>;
 
 impl std::fmt::Display for FuncMarker {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -100,8 +102,20 @@ impl std::fmt::Display for TypeMarker {
     }
 }
 
+impl std::fmt::Display for TypeVarMarker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TVAR")
+    }
+}
+
 impl<T: std::fmt::Display + Default> std::fmt::Display for Id<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "${}[{}]", T::default(), self.raw)
+    }
+}
+
+impl<T: std::fmt::Display + Default> Debug for Id<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &self)
     }
 }

@@ -26,6 +26,12 @@ impl Span {
     }
 }
 
+impl std::fmt::Display for Span {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.start, self.end)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 pub struct Spanned<T> {
     pub node: T,
