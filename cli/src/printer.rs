@@ -10,7 +10,7 @@ use super::theme::Theme;
 use crate::EnableAsni;
 
 use ast::ast::PrimitiveType;
-use diagnostic::ErrorMessage;
+use diagnostic::{ErrorMessage, ErrorType};
 use tokenizer::{Comment, Token, tokenize};
 
 const LINES_BEFORE: usize = 5;
@@ -79,23 +79,32 @@ impl Printer {
             .collect()
     }
 
-    pub fn error<E: std::error::Error + std::fmt::Display>(
+    pub fn error<E: std::error::Error + std::fmt::Display + ErrorType>(
         &mut self,
         msg: ErrorMessage<E>,
     ) -> Result<()> {
         let (code_slice, start_line_num) = msg.extract_code_snippet(LINES_BEFORE)?;
+
         let code_slice = self.paint_code(code_slice);
 
+        // Print the error type and message
+        let err_ty = msg.error.error_type();
         writeln!(
             self.stderr,
-            "{color}Error{r}: {}",
-            msg.error,
-            color = self.theme.error.render(),
+            "{err_ty_color}{err_ty}{r}: {bold}{err_sub_ty}{r}: {msg}",
+            err_ty = err_ty,
+            err_ty_color = self.theme.error.bold().render(),
+            err_sub_ty = msg.error.error_sub_type(),
+            msg = msg.error,
+            bold = anstyle::Style::new().bold().render(),
             r = Reset.render()
         )?;
+
+        // Print the file path and line/column info
+        let arrow_body = "-".repeat(err_ty.len() - 1);
         writeln!(
             self.stderr,
-            "-----> {color}{}:{}:{}{r}",
+            "{arrow_body}>  {color}{}:{}:{}{r}",
             msg.file_path.display(),
             msg.lines_table.line(msg.error.span.start),
             msg.lines_table.column(msg.error.span.start),
@@ -127,7 +136,7 @@ impl Printer {
         let len = (msg.error.span.end - msg.error.span.start).max(1);
         writeln!(
             self.stderr,
-            "{:>width$} {color}{:>col$}/{:^<len$}\\{r}",
+            "{:>width$} {:>col$}{color}/{:^<len$}\\{r}",
             "",
             "",
             "",

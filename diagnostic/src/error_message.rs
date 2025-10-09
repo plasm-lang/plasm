@@ -11,7 +11,7 @@ pub struct ErrorMessage<E: std::error::Error + Display> {
     pub file_path: PathBuf,
 }
 
-impl<E: std::error::Error + Display> ErrorMessage<E> {
+impl<E: std::error::Error + Display + ErrorType> ErrorMessage<E> {
     pub fn new(error: Spanned<E>, lines_table: LinesTable, file_path: PathBuf) -> Self {
         Self {
             error,
@@ -26,14 +26,14 @@ impl<E: std::error::Error + Display> ErrorMessage<E> {
         let err_line = self.lines_table.line(self.error.span.start);
         let start_offset = self
             .lines_table
-            .offset(err_line - lines_before)
+            .offset(err_line.wrapping_sub(lines_before))
             .unwrap_or(0);
         let fallback_end_offset = file.metadata()?.len() as usize;
         let end_offset = self
             .lines_table
             .offset(err_line + 1)
             .unwrap_or(fallback_end_offset);
-        let len = end_offset - start_offset;
+        let len = end_offset.wrapping_sub(start_offset);
 
         file.seek(SeekFrom::Start(start_offset as u64))?;
         let mut buf = vec![0u8; len];
@@ -47,4 +47,9 @@ impl<E: std::error::Error + Display> ErrorMessage<E> {
 
         Ok((code, self.lines_table.line(start_offset)))
     }
+}
+
+pub trait ErrorType {
+    fn error_type(&self) -> &'static str;
+    fn error_sub_type(&self) -> &'static str;
 }

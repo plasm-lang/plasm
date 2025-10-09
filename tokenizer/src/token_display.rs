@@ -42,6 +42,7 @@ impl Display for SpecialSymbol {
         let s = match self {
             SpecialSymbol::Colon => ":",
             SpecialSymbol::Equals => "=",
+            SpecialSymbol::Comma => ",",
         };
         write!(f, "{s}")
     }

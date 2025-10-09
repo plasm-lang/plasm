@@ -1,15 +1,17 @@
 [workspace]
 members = [
-    "cli",
-    "codegen",
+    "diagnostic",
+    "tokenizer",
+    "ast",
     "hir",
     "mir",
-    "ast",
-    "tokenizer",
-    "diagnostic",
+    "codegen",
+    "orchestrator",
+    "cli",
 ]
 
 [workspace.dependencies]
 indoc = { version = "2.0.6"}
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.145" }
+bimap = { version = "0.6.3" }

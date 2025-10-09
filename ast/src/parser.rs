@@ -7,7 +7,15 @@ use super::ast::{
 use diagnostic::{Span, Spanned};
 use tokenizer::{Bracket, Keyword, Number, SpecialSymbol, Token};
 
-use crate::error::ParseError;
+use crate::{Argument, error::ParseError};
+
+pub fn parse<I>(token_iter: &mut I) -> (AST, Vec<Spanned<ParseError>>)
+where
+    I: Iterator<Item = (Token, Span)>,
+{
+    let parser = ASTParser::new(token_iter);
+    parser.parse()
+}
 
 type FilterFn = fn(&(Token, Span)) -> bool;
 
@@ -154,12 +162,59 @@ where
         self.expect(Token::Keyword(Keyword::Fn))?;
         let (func_name, func_name_span) = self.expect_ident()?;
         self.expect(Token::Bracket(Bracket::RoundOpen))?;
-        self.expect(Token::Bracket(Bracket::RoundClose))?;
+
+        // parse arguments
+
+        let mut args = Vec::new();
+        loop {
+            match self.iter.peek() {
+                Some((token, _span)) => match token {
+                    Token::Identifier(_) => {
+                        let (arg_name, arg_name_span) = self.expect_ident()?;
+                        self.expect(Token::SpecialSymbol(SpecialSymbol::Colon))?;
+                        let (type_name, type_name_span) = self.expect_ident()?;
+                        let ty = Type::from_str(&type_name);
+                        let arg = Argument {
+                            name: Spanned::new(arg_name, arg_name_span),
+                            ty: Spanned::new(ty, type_name_span),
+                        };
+                        let arg_span = arg.name.span.join(arg.ty.span);
+                        args.push(Spanned::new(arg, arg_span));
+                    }
+                    Token::Bracket(Bracket::RoundClose) => {
+                        self.take_next();
+                        break;
+                    }
+                    Token::SpecialSymbol(SpecialSymbol::Comma) => {
+                        self.take_next();
+                    }
+                    _ => {
+                        let (token, span) = self.take_next()?;
+                        let err = ParseError::UnexpectedToken {
+                            token,
+                            expected: "function argument or `)`".to_string(),
+                        };
+                        self.errors.push(Spanned::new(err, span));
+                        return None;
+                    }
+                },
+                None => {
+                    self.errors.push(Spanned::new(
+                        ParseError::UnexpectedEOF {
+                            expected: "function argument or `)`".to_string(),
+                        },
+                        self.last_span,
+                    ));
+                    return None;
+                }
+            }
+        }
+
         let block = self.parse_block()?;
 
         let func = Function {
             name: Spanned::new(func_name, func_name_span),
-            args: vec![],
+            args,
             return_type: None,
             body: block,
         };
@@ -209,7 +264,8 @@ where
                         Some((token, _span)) => match token {
                             Token::Bracket(Bracket::RoundOpen) => self
                                 .parse_function_call(id, span)
-                                .map(Statement::FunctionCall),
+                                .map(|spanned_call| spanned_call.map(Expr::FunctionCall))
+                                .map(Statement::Expr),
                             Token::SpecialSymbol(SpecialSymbol::Equals) => todo!(), // Variable assignment
                             _ => {
                                 let (token, span) = self.take_next()?;
@@ -255,15 +311,20 @@ where
         }
     }
 
-    fn parse_function_call(&mut self, id: String, span: Span) -> Option<FunctionCall> {
+    fn parse_function_call(&mut self, id: String, span: Span) -> Option<Spanned<FunctionCall>> {
         self.expect(Token::Bracket(Bracket::RoundOpen))?;
         let mut arguments = Vec::new();
+        let end_span: Span;
         loop {
             match self.iter.peek() {
-                Some((token, _span)) => match token {
+                Some((token, next_span)) => match token {
                     Token::Bracket(Bracket::RoundClose) => {
+                        end_span = *next_span;
                         self.take_next();
                         break;
+                    }
+                    Token::SpecialSymbol(SpecialSymbol::Comma) => {
+                        self.take_next();
                     }
                     _ => {
                         let Some(expr) = self.parse_expression() else {
@@ -288,30 +349,66 @@ where
             }
         }
 
-        Some(FunctionCall {
-            name: Spanned::new(id, span),
-            args: arguments,
-        })
+        Some(Spanned::new(
+            FunctionCall {
+                name: Spanned::new(id, span),
+                args: arguments,
+            },
+            span.join(end_span),
+        ))
     }
 
     fn parse_variable_declaration(&mut self) -> Option<Statement> {
         self.expect(Token::Keyword(Keyword::Let))?;
         let (var_name, var_name_span) = self.expect_ident()?;
-        self.expect(Token::SpecialSymbol(SpecialSymbol::Colon))?;
-        let (type_name, type_name_span) = self.expect_ident()?;
-        let ty = Type::from_str(&type_name);
-        self.expect(Token::SpecialSymbol(SpecialSymbol::Equals))?;
-        let expr = self.parse_expression()?;
 
-        let stmt = VariableDeclaration {
-            name: Spanned::new(var_name, var_name_span),
-            ty: Some(Spanned::new(ty, type_name_span)),
-            value: expr,
-        };
-        Some(Statement::VariableDeclaration(stmt))
+        match self.take_next() {
+            // If type is not specified, expect '=' next
+            Some((Token::SpecialSymbol(SpecialSymbol::Equals), _span)) => {
+                let expr = self.parse_expression()?;
+                let stmt = VariableDeclaration {
+                    name: Spanned::new(var_name, var_name_span),
+                    ty: None,
+                    value: expr,
+                };
+                Some(Statement::VariableDeclaration(stmt))
+            }
+            // If type is specified, expect ': Type =' next
+            Some((Token::SpecialSymbol(SpecialSymbol::Colon), _span)) => {
+                let (type_name, type_name_span) = self.expect_ident()?;
+                let ty = Type::from_str(&type_name);
+                self.expect(Token::SpecialSymbol(SpecialSymbol::Equals))?;
+                let expr = self.parse_expression()?;
+                let stmt = VariableDeclaration {
+                    name: Spanned::new(var_name, var_name_span),
+                    ty: Some(Spanned::new(ty, type_name_span)),
+                    value: expr,
+                };
+                Some(Statement::VariableDeclaration(stmt))
+            }
+            Some((token, span)) => {
+                self.errors.push(Spanned::new(
+                    ParseError::UnexpectedToken {
+                        token,
+                        expected: "`:` or `=`".to_string(),
+                    },
+                    span,
+                ));
+                None
+            }
+            None => {
+                self.errors.push(Spanned::new(
+                    ParseError::UnexpectedEOF {
+                        expected: "`:` or `=`".to_string(),
+                    },
+                    self.last_span,
+                ));
+                None
+            }
+        }
     }
 
-    fn parse_expression(&mut self) -> Option<Expr> {
+    fn parse_expression(&mut self) -> Option<Spanned<Expr>> {
         match self.iter.peek() {
             Some((token, _span)) => match token {
                 Token::Identifier(_) => {
@@ -320,10 +417,10 @@ where
                     };
                     match self.iter.peek() {
                         Some((token, _span)) => match token {
-                            Token::Bracket(Bracket::RoundOpen) => {
-                                self.parse_function_call(id, span).map(Expr::FunctionCall)
-                            }
-                            _ => Some(Expr::Variable(Spanned::new(id, span))),
+                            Token::Bracket(Bracket::RoundOpen) => self
+                                .parse_function_call(id, span)
+                                .map(|spanned_call| spanned_call.map(Expr::FunctionCall)),
+                            _ => Some(Spanned::new(Expr::Variable(id), span)),
                         },
                         None => {
                             let err = ParseError::UnexpectedEOF {
@@ -334,7 +431,9 @@ where
                         }
                     }
                 }
-                Token::Number(_) => self.parse_number().map(Expr::Literal),
+                Token::Number(_) => self
+                    .parse_number()
+                    .map(|spanned_lit| spanned_lit.map(Expr::Literal)),
                 _ => {
                     let (token, span) = self.take_next()?;
                     let err = ParseError::UnexpectedToken {
@@ -357,9 +456,9 @@ where
         }
     }
 
-    fn parse_number(&mut self) -> Option<Literal> {
+    fn parse_number(&mut self) -> Option<Spanned<Literal>> {
         let (number, number_span) = self.expect_number()?;
-        Some(Literal::from_number(number, number_span))
+        Some(Spanned::new(Literal::from_number(number), number_span))
     }
 }
 
@@ -404,23 +503,26 @@ mod tests {
                             node: Type::Primitive(PrimitiveType::I32),
                             span: Span { start: 72, end: 75 },
                         }),
-                        value: Expr::Literal(Literal::Integer(Spanned {
-                            node: "5".to_string(),
+                        value: Spanned {
+                            node: Expr::Literal(Literal::Integer("5".to_string())),
                             span: Span { start: 78, end: 79 },
-                        })),
-                    }),
-                    Statement::FunctionCall(FunctionCall {
-                        name: Spanned {
-                            node: "print".to_string(),
-                            span: Span { start: 84, end: 89 },
                         },
-                        args: vec![CallArgument {
-                            name: None,
-                            value: Expr::Variable(Spanned {
-                                node: "x".to_string(),
-                                span: Span { start: 90, end: 91 },
-                            }),
-                        }],
+                    }),
+                    Statement::Expr(Spanned {
+                        node: Expr::FunctionCall(FunctionCall {
+                            name: Spanned {
+                                node: "print".to_string(),
+                                span: Span { start: 84, end: 89 },
+                            },
+                            args: vec![CallArgument {
+                                name: None,
+                                value: Spanned {
+                                    node: Expr::Variable("x".to_string()),
+                                    span: Span { start: 90, end: 91 },
+                                },
+                            }],
+                        }),
+                        span: Span { start: 84, end: 92 },
                     }),
                 ],
             })],

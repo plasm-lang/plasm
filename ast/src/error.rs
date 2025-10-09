@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter};
 
+use diagnostic::ErrorType;
 use tokenizer::Token;
 
 pub type Result<T> = std::result::Result<T, ParseError>;
@@ -26,5 +27,18 @@ impl Display for ParseError {
 impl std::error::Error for ParseError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         None
+    }
+}
+
+impl ErrorType for ParseError {
+    fn error_type(&self) -> &'static str {
+        "ParseError"
+    }
+
+    fn error_sub_type(&self) -> &'static str {
+        match self {
+            ParseError::UnexpectedToken { .. } => "UnexpectedToken",
+            ParseError::UnexpectedEOF { .. } => "UnexpectedEOF",
+        }
     }
 }

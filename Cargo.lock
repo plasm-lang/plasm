@@ -63,6 +63,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bimap"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "230c5f1ca6a325a32553f8640d31ac9b49f2411e901e427570154868b46da4f7"
+
+[[package]]
 name = "clap"
 version = "4.5.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -111,6 +117,7 @@ dependencies = [
  "ast",
  "clap",
  "diagnostic",
+ "hir",
  "serde",
  "serde_json",
  "tokenizer",
@@ -142,6 +149,14 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 [[package]]
 name = "hir"
 version = "0.1.0"
+dependencies = [
+ "ast",
+ "bimap",
+ "diagnostic",
+ "indoc",
+ "serde",
+ "tokenizer",
+]
 
 [[package]]
 name = "indoc"
@@ -176,6 +191,10 @@ name = "once_cell_polyfill"
 version = "1.70.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4895175b425cb1f87721b59f0f286c2092bd4af812243672510e1ac53e2e0ad"
+
+[[package]]
+name = "orchestrator"
+version = "0.1.0"
 
 [[package]]
 name = "proc-macro2"

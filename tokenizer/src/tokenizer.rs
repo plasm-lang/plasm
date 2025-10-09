@@ -104,30 +104,23 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
     fn lex_single_comment(&mut self) -> Option<(Token, Span)> {
         self.accumulated.clear();
 
-        let (start_i, ch0) = self.chars.next()?;
+        let &(start_i, ch0) = self.chars.peek()?;
 
-        if ch0 == '\n' {
-            return Some((
-                Token::Comment(Comment::SingleLine("".to_string())),
-                Span::new(start_i, start_i),
-            ));
-        }
-
-        self.accumulated.push(ch0);
-
-        for (i, ch) in self.chars.by_ref() {
+        let mut end_i = start_i + ch0.len_utf8();
+        while let Some(&(i, ch)) = self.chars.peek() {
             if ch == '\n' {
-                let span = Span::new(start_i, i);
-                let comment_text = take(&mut self.accumulated);
-                self.state = State::Default;
-                self.lines_table.add_line(i + ch.len_utf8());
-                return Some((Token::Comment(Comment::SingleLine(comment_text)), span));
+                break;
             } else {
+                end_i = i + ch.len_utf8();
+                let (_, ch) = self.chars.next()?;
                 self.accumulated.push(ch);
             }
         }
 
-        None
+        let span = Span::new(start_i, end_i);
+        let comment_text = take(&mut self.accumulated);
+        self.state = State::Default;
+        return Some((Token::Comment(Comment::SingleLine(comment_text)), span));
     }
 
     fn lex_multiline_comment(&mut self) -> Option<(Token, Span)> {
@@ -207,14 +200,15 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
                 Token::SpecialSymbol(SpecialSymbol::Equals),
                 Span::new(i, i + ch.len_utf8()),
             )),
+            ',' => Some((
+                Token::SpecialSymbol(SpecialSymbol::Comma),
+                Span::new(i, i + ch.len_utf8()),
+            )),
             ch if ch.is_alphanumeric() || ch == '_' => self.lex_alphanumeric_from(i, ch),
-            ch => {
-                Some((
-                    Token::Impossible(ch.to_string()),
-                    Span::new(i, i + ch.len_utf8()),
-                ))
-                // todo!("Handle unrecognized character: '{}'", ch);
-            }
+            ch => Some((
+                Token::Impossible(ch.to_string()),
+                Span::new(i, i + ch.len_utf8()),
+            )),
         }
     }
 }
@@ -257,6 +251,7 @@ mod tests {
 
         let expected = [
             Token::Comment(Comment::SingleLine(" Basic inline comment 1".to_string())),
+            Token::NewLine,
             Token::NewLine,
             Token::Comment(Comment::MultiLine(" Multiline\ncomment 0123\n".to_string())),
             Token::NewLine,
@@ -308,6 +303,7 @@ mod tests {
                 Token::SpecialSymbol(special_symbol) => match special_symbol {
                     SpecialSymbol::Colon => assert_eq!(str_by_span, ":"),
                     SpecialSymbol::Equals => assert_eq!(str_by_span, "="),
+                    SpecialSymbol::Comma => assert_eq!(str_by_span, ","),
                 },
                 Token::Bracket(bracket) => match bracket {
                     Bracket::RoundOpen => assert_eq!(str_by_span, "("),
@@ -321,7 +317,7 @@ mod tests {
                 Token::Comment(comment) => assert_eq!(comment.raw_value(), str_by_span),
                 Token::NewLine => assert_eq!(str_by_span, "\n"),
                 Token::Impossible(value) => {
-                    todo!("Impossible token ({value:?}) during test is impos    sible!")
+                    unreachable!("Impossible token ({value:?}) during test is impossible!")
                 }
             }
         }

@@ -25,6 +25,8 @@ pub enum SpecialSymbol {
     Colon,
     /// =
     Equals,
+    /// ,
+    Comma,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

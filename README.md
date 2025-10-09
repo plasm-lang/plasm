@@ -12,16 +12,15 @@ For example, following command will parse `test.sky` file, stop on AST stage and
 cargo run emit test.sky --stage ast --format text
 ```
 
-
 ## The compilation flow
 
 ```
-                                 HIR                          Codegen (LLVM)
-                           ________________             __________________________
-                          |                |           |                          |
- code -> tokens -> AST -> | OptHIR -> THIR | -> MIR -> | LLVM-IR -> ASM -> binary | -> linker -> Exe
-   |        |       |     |_____________|__|     |     |_____________|____________|
-   |        |----> CST                  |        |                   |
+                                 HIR                               Codegen (LLVM)
+                           ________________             _____________________________________
+                          |                |           |                                     |
+ code -> tokens -> AST -> | OptHIR -> THIR | -> MIR -> | LLVM-IR -> ASM -----> artifacts ----|--> linker -> Exe
+   |        |       |     |_____________|__|     |     |             |     (.o/.a/.bc/.wasm) |
+   |        |----> CST                  |        |     |_____________|_______________________|
    |                |                   |        |                   |
    |                |                   |        |                   |
 Visible         Visible              Visible  Visible             Visible
@@ -39,4 +38,28 @@ Codegen     Code Generation
 LLVM        A external compiler backend
 ASM         Assembler
 Exe         Executable file
+CLI         Command Line Interface
+```
+
+## Sub-modules description
+
+- `ast/` - Abstract Syntax Tree + Parser
+- `cli/` - Command Line Interface wrapper
+- `codegen/` - LLVM-IR + translator from MIR to LLVM-IR + artifacts generation utilities
+- `diagnostic/` - Utilities to track errors during compilation process like `Span`, code snippets, and errors container
+- `examples/` - Plasm language examples
+- `hir/` - High-level IR, OptHIR, THIR + translator from AST + types annotator
+- `mir/` - Middle-level IR + translator from HIR
+- `orchestrator/` - Compilation flow management utilities (Parallel compilation, linkers controller, configuration reader)
+- `tokenizer/` - Tokens description + lexer + from bytes to tokens stream
+
+Internal dependencies:
+
+```
+orchestrator    diagnostic -> tokenizer -> ast -> hir -> mir -> codegen
+      ^            | |            |        ^ |    ^ |     |        |
+      |            | |            |        | |    | |     |        |
+      |            |_|____________|________|_|____| |     |        |
+      |              |            |          |      |     |        |
+      |______________|____________|__________|______|_____|________|
 ```
