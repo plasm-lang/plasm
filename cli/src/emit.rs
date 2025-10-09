@@ -75,9 +75,8 @@ pub fn emit(path: PathBuf, ty: PathType, format: Format, stage: Stage, ansi: Ena
 
                     match format {
                         Format::Json => {
-                            unimplemented!()
-                            // let json = serde_json::to_string_pretty(&hir).unwrap();
-                            // println!("{json}");
+                            let json = serde_json::to_string_pretty(&hir).unwrap();
+                            println!("{json}");
                         }
                         Format::Text => {
                             println!("{hir}");

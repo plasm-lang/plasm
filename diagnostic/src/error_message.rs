@@ -33,7 +33,7 @@ impl<E: std::error::Error + Display + ErrorType> ErrorMessage<E> {
             .lines_table
             .offset(err_line + 1)
             .unwrap_or(fallback_end_offset);
-        let len = end_offset - start_offset;
+        let len = end_offset.wrapping_sub(start_offset);
 
         file.seek(SeekFrom::Start(start_offset as u64))?;
         let mut buf = vec![0u8; len];

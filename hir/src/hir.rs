@@ -1,3 +1,5 @@
+use serde::Serialize;
+
 use ast::ast::{Literal, PrimitiveType};
 use diagnostic::{MaybeSpanned, Spanned};
 
@@ -13,7 +15,7 @@ pub type OptHIR = HIR<Option<S<HIRType>>>;
 pub type THIR = HIR<MaybeS<HIRType>>;
 
 /// High-level Intermediate Representation
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct HIR<T> {
     pub items: Vec<Item<T>>,
 }
@@ -30,24 +32,24 @@ impl<T> HIR<T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum HIRType {
     Primitive(PrimitiveType),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum Item<T> {
     Function(Function<T>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Function<T> {
     pub signature: FunctionSignature,
     pub body: Block<T>,
     pub expr_arena: ExprArena<T>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FunctionSignature {
     pub id: FuncId,
     pub name: S<String>,
@@ -55,34 +57,34 @@ pub struct FunctionSignature {
     pub ret_ty: MaybeS<HIRType>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Argument {
     pub name: S<String>,
     pub local_id: LocalId,
     pub ty: S<HIRType>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Block<T> {
     pub locals: Vec<HIRLocal<T>>,
     pub statements: Vec<Statement>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct HIRLocal<T> {
     pub id: LocalId,
     pub ty: T,
     pub name: S<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum Statement {
     VariableDeclaration(VariableDeclaration),
     Expr(ExprId),
     Return(ExprId),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct VariableDeclaration {
     pub local_id: LocalId,
     pub expr_id: ExprId,
@@ -90,7 +92,7 @@ pub struct VariableDeclaration {
 
 // --- Expression-related --- //
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct ExprArena<T>(pub Vec<S<Expr<T>>>);
 
 impl<T> ExprArena<T> {
@@ -105,14 +107,14 @@ impl<T> ExprArena<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Expr<T> {
     pub id: ExprId,
     pub ty: T,
     pub kind: ExprKind<T>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum ExprKind<T> {
     Literal(Literal),
     Local(LocalId),
@@ -120,7 +122,7 @@ pub enum ExprKind<T> {
     Block(Block<T>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct FunctionCall {
     pub func_id: FuncId,
     pub args: Vec<ExprId>,

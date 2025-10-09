@@ -217,13 +217,11 @@ impl<I: Iterator<Item = (usize, char)>> Iterator for TokenIter<I> {
     type Item = (Token, Span);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let a = match self.state {
+        match self.state {
             State::Default => self.lex_default(),
             State::InSingleComment => self.lex_single_comment(),
             State::InMultiComment => self.lex_multiline_comment(),
-        };
-        // println!("TOKEN: {:?}", a.clone().unwrap().0);
-        a
+        }
     }
 }
 

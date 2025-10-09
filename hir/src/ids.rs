@@ -1,5 +1,7 @@
 use std::{fmt::Debug, marker::PhantomData, num::NonZeroU32};
 
+use serde::{Serialize, Serializer};
+
 pub struct Id<T> {
     raw: NonZeroU32,
     _marker: PhantomData<*const T>,
@@ -117,5 +119,14 @@ impl<T: std::fmt::Display + Default> std::fmt::Display for Id<T> {
 impl<T: std::fmt::Display + Default> Debug for Id<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", &self)
+    }
+}
+
+impl<T: std::fmt::Display + Default> Serialize for Id<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.collect_str(self)
     }
 }
