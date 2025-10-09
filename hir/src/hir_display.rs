@@ -3,11 +3,11 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use diagnostic::{MaybeSpanned, Spanned};
 
-use crate::hir::{
+use super::hir::{
     Block, Expr, ExprArena, ExprKind, Function, FunctionCall, FunctionSignature, HIR, HIRType,
     Item, Statement,
 };
-use crate::ids::{ExprId, FuncId, LocalId};
+use super::ids::{ExprId, FuncId, LocalId};
 
 /// Render type for THIR/OptHIR.
 pub trait RenderType {
@@ -137,22 +137,13 @@ fn format_function<T: RenderType>(
     out
 }
 
-fn indent(n: usize) -> &'static str {
+fn indent(n: usize) -> String {
     const IND: &str = "    ";
-    // Micro-optimization: 4 variants, then repeat
-    match n {
-        0 => "",
-        1 => IND,
-        2 => "        ",
-        3 => "            ",
-        _ => {
-            let mut s = String::new();
-            for _ in 0..n {
-                s.push_str(IND);
-            }
-            Box::leak(s.into_boxed_str())
-        }
+    let mut s = String::with_capacity(n * IND.len());
+    for _ in 0..n {
+        s.push_str(IND);
     }
+    s
 }
 
 fn format_function_signature(out: &mut String, signature: &FunctionSignature) {
@@ -182,7 +173,7 @@ fn format_block_into<T: RenderType>(
     lvl: usize,
 ) {
     for stmt in &block.statements {
-        out.push_str(indent(lvl));
+        out.push_str(&indent(lvl));
         match stmt {
             Statement::VariableDeclaration(v) => {
                 let name = ctx

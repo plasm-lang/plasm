@@ -11,7 +11,7 @@ pub struct ErrorMessage<E: std::error::Error + Display> {
     pub file_path: PathBuf,
 }
 
-impl<E: std::error::Error + Display> ErrorMessage<E> {
+impl<E: std::error::Error + Display + ErrorType> ErrorMessage<E> {
     pub fn new(error: Spanned<E>, lines_table: LinesTable, file_path: PathBuf) -> Self {
         Self {
             error,
@@ -47,4 +47,9 @@ impl<E: std::error::Error + Display> ErrorMessage<E> {
 
         Ok((code, self.lines_table.line(start_offset)))
     }
+}
+
+pub trait ErrorType {
+    fn error_type(&self) -> &'static str;
+    fn error_sub_type(&self) -> &'static str;
 }

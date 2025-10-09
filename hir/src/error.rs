@@ -1,13 +1,11 @@
 use std::fmt::{Display, Formatter};
 
-use diagnostic::{MaybeSpanned, Spanned};
+use diagnostic::{ErrorType, MaybeSpanned, Spanned};
 
-use crate::{
-    hir::HIRType,
-    hir_display::RenderType,
-    ids::{ExprId, LocalId},
-    type_annotator::TyClass,
-};
+use super::hir::HIRType;
+use super::hir_display::RenderType;
+use super::ids::{ExprId, LocalId};
+use super::type_annotator::TyClass;
 
 #[derive(Debug)]
 pub enum Error {
@@ -20,6 +18,10 @@ pub enum Error {
     },
     UnknownFunction {
         name: String,
+    },
+    ArgumentCountMismatch {
+        found: usize,
+        expected: usize,
     },
     TypesConflict {
         first: MaybeSpanned<HIRType>,
@@ -53,12 +55,18 @@ impl Display for Error {
             Error::UnknownFunction { name } => {
                 write!(f, "Unknown function `{name}`")
             }
+            Error::ArgumentCountMismatch { found, expected } => {
+                write!(
+                    f,
+                    "Function call argument count mismatch: found {found}, expected {expected}"
+                )
+            }
             Error::TypesConflict { first, second } => {
                 // let first_at = first.span.map(|s| format!(" ({s} bytes)")).unwrap_or_default();
                 // let second_at = second.span.map(|s| format!(" ({s} bytes)")).unwrap_or_default();
                 write!(
                     f,
-                    "Types conflict: `{}` and `{}`",
+                    "Types conflict between `{}` and `{}`",
                     first.node.render_ty(),
                     second.node.render_ty(),
                 )
@@ -96,5 +104,42 @@ impl Display for Error {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         None
+    }
+}
+
+impl ErrorType for Error {
+    fn error_type(&self) -> &'static str {
+        const SEMANTIC_ERROR: &str = "SemanticError";
+        const TYPE_ERROR: &str = "TypeError";
+        const INTERNAL_ERROR: &str = "InternalError";
+        match self {
+            Error::FunctionMultipleDefinitions { .. } => SEMANTIC_ERROR,
+            Error::UnknownVariable { .. } => SEMANTIC_ERROR,
+            Error::UnknownFunction { .. } => SEMANTIC_ERROR,
+            Error::ArgumentCountMismatch { .. } => SEMANTIC_ERROR,
+
+            Error::TypesConflict { .. } => TYPE_ERROR,
+            Error::AmbiguousClass { .. } => TYPE_ERROR,
+            Error::CantResolveType => TYPE_ERROR,
+
+            Error::UnregisteredLocalId { .. } => INTERNAL_ERROR,
+            Error::UnregisteredExprId { .. } => INTERNAL_ERROR,
+        }
+    }
+
+    fn error_sub_type(&self) -> &'static str {
+        match self {
+            Error::FunctionMultipleDefinitions { .. } => "FunctionMultipleDefinitions",
+            Error::UnknownVariable { .. } => "UnknownVariable",
+            Error::UnknownFunction { .. } => "UnknownFunction",
+            Error::ArgumentCountMismatch { .. } => "ArgumentCountMismatch",
+
+            Error::TypesConflict { .. } => "TypesConflict",
+            Error::AmbiguousClass { .. } => "AmbiguousClass",
+            Error::CantResolveType => "CantResolveType",
+
+            Error::UnregisteredLocalId { .. } => "UnregisteredLocalId",
+            Error::UnregisteredExprId { .. } => "UnregisteredExprId",
+        }
     }
 }

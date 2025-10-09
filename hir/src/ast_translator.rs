@@ -2,12 +2,10 @@ use bimap::BiHashMap;
 
 use diagnostic::{MaybeSpanned, Spanned};
 
-use crate::hir::{FunctionCall, FunctionSignature};
-
 use super::error::Error;
 use super::hir::{
-    Argument, Block, Expr, ExprArena, ExprKind, Function, HIRLocal, HIRType, Item, OptHIR,
-    Statement, THIR, VariableDeclaration,
+    Argument, Block, Expr, ExprArena, ExprKind, Function, FunctionCall, FunctionSignature,
+    HIRLocal, HIRType, Item, OptHIR, Statement, THIR, VariableDeclaration,
 };
 use super::ids::{ExprId, FuncId, LocalId};
 use super::type_annotator::opt_hir_to_t_hir;
@@ -31,11 +29,6 @@ pub fn ast_to_hir(ast: ast::AST) -> (THIR, Vec<S<Error>>) {
 fn ast_to_opt_hir(ast: ast::AST) -> (OptHIR, Vec<S<Error>>) {
     let translator = ASTTranslator::new();
     translator.translate(ast)
-}
-
-#[derive(Default, Clone)]
-struct LocalsMap {
-    map: BiHashMap<S<String>, LocalId>,
 }
 
 struct ASTTranslator {
@@ -324,7 +317,7 @@ mod tests {
         let code = indoc! {"
             fn print(x: i32) {}
             fn main() {
-                let a: i32 = 5
+                let a = 5
                 let b = a
                 let c = b
                 print(c)

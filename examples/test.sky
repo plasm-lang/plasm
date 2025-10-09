@@ -4,11 +4,9 @@
 comment 0123
 */
 
-fn print(x: u16) {}
+fn print(x: i32) {}
 
 fn main() {
-    let a: i32 = 5.0
-    let b = a
-    let c: u32 = b
-    print(c)
+    let a: i32 = 5
+    print(a)
 }

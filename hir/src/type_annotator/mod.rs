@@ -1,4 +1,7 @@
 //! Algorithm W (Milner, Hindley–Milner inference)
+//!
+//! The usage flow is:
+//! hir::Function<OT> -> func_ctx::FunctionCtx -> Constraints -> solver::Solver -> annotator::FunctionAnnotator -> hir::Function<T>
 
 mod annotator;
 mod func_ctx;

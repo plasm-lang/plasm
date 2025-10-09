@@ -10,10 +10,9 @@ use crate::hir::{
 use super::func_ctx::FunctionCtx;
 use super::solver::Solver;
 
-/// For brevity
+// For brevity
 type OT = Option<S<HIRType>>;
 type S<T> = Spanned<T>;
-type MaybeS<T> = MaybeSpanned<T>;
 
 pub fn opt_hir_to_t_hir(opt_hir: OptHIR) -> (THIR, Vec<S<Error>>) {
     let annotator = TypeAnnotator::new();
@@ -46,9 +45,8 @@ impl TypeAnnotator {
         for item in opt_hir.items {
             match item {
                 Item::Function(func) => {
-                    let (solver, constraint_errors) = FunctionCtx::from_function(&func)
-                        .with_signatures(signatures.clone())
-                        .into_solver();
+                    let (solver, constraint_errors) =
+                        FunctionCtx::from_function(&func, &signatures).into_solver();
                     errors.extend(constraint_errors);
 
                     let annotator = FunctionAnnotator::new(solver);
@@ -76,7 +74,7 @@ impl FunctionAnnotator {
         }
     }
 
-    fn annotate(mut self, func: Function<OT>) -> (Function<MaybeS<HIRType>>, Vec<S<Error>>) {
+    fn annotate(mut self, func: Function<OT>) -> (Function<MaybeSpanned<HIRType>>, Vec<S<Error>>) {
         let arena = self.annotate_expr_arena(func.expr_arena);
         let block = self.annotate_block(func.body);
 
@@ -90,7 +88,7 @@ impl FunctionAnnotator {
         )
     }
 
-    fn annotate_expr_arena(&mut self, arena: ExprArena<OT>) -> ExprArena<MaybeS<HIRType>> {
+    fn annotate_expr_arena(&mut self, arena: ExprArena<OT>) -> ExprArena<MaybeSpanned<HIRType>> {
         let mut out_exprs = Vec::with_capacity(arena.0.len());
         for expr in arena.0.into_iter() {
             let (expr, span) = expr.unwrap();
@@ -126,7 +124,7 @@ impl FunctionAnnotator {
         ExprArena(out_exprs)
     }
 
-    fn annotate_block(&mut self, block: Block<OT>) -> Block<MaybeS<HIRType>> {
+    fn annotate_block(&mut self, block: Block<OT>) -> Block<MaybeSpanned<HIRType>> {
         let locals = block
             .locals
             .into_iter()

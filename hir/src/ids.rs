@@ -67,15 +67,15 @@ pub struct FuncMarker;
 pub struct LocalMarker;
 #[derive(Default)]
 pub struct ExprMarker;
-#[derive(Default)]
-pub struct TypeMarker;
+// #[derive(Default)]
+// pub struct TypeMarker;
 #[derive(Default)]
 pub struct TypeVarMarker;
 
 pub type FuncId = Id<FuncMarker>;
 pub type LocalId = Id<LocalMarker>;
 pub type ExprId = Id<ExprMarker>;
-pub type TypeId = Id<TypeMarker>;
+// pub type TypeId = Id<TypeMarker>;
 pub type TypeVarId = Id<TypeVarMarker>;
 
 impl std::fmt::Display for FuncMarker {
@@ -96,11 +96,11 @@ impl std::fmt::Display for ExprMarker {
     }
 }
 
-impl std::fmt::Display for TypeMarker {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "TYPE")
-    }
-}
+// impl std::fmt::Display for TypeMarker {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         write!(f, "TYPE")
+//     }
+// }
 
 impl std::fmt::Display for TypeVarMarker {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

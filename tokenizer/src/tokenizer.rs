@@ -319,7 +319,7 @@ mod tests {
                 Token::Comment(comment) => assert_eq!(comment.raw_value(), str_by_span),
                 Token::NewLine => assert_eq!(str_by_span, "\n"),
                 Token::Impossible(value) => {
-                    todo!("Impossible token ({value:?}) during test is impos    sible!")
+                    unreachable!("Impossible token ({value:?}) during test is impossible!")
                 }
             }
         }

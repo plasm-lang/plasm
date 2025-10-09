@@ -323,6 +323,9 @@ where
                         self.take_next();
                         break;
                     }
+                    Token::SpecialSymbol(SpecialSymbol::Comma) => {
+                        self.take_next();
+                    }
                     _ => {
                         let Some(expr) = self.parse_expression() else {
                             continue;
@@ -414,11 +417,9 @@ where
                     };
                     match self.iter.peek() {
                         Some((token, _span)) => match token {
-                            Token::Bracket(Bracket::RoundOpen) => {
-                                self.parse_function_call(id, span).map(|spanned_call| {
-                                    spanned_call.map(Expr::FunctionCall)
-                                })
-                            }
+                            Token::Bracket(Bracket::RoundOpen) => self
+                                .parse_function_call(id, span)
+                                .map(|spanned_call| spanned_call.map(Expr::FunctionCall)),
                             _ => Some(Spanned::new(Expr::Variable(id), span)),
                         },
                         None => {

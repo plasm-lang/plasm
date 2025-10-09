@@ -3,7 +3,7 @@ use std::io::BufReader;
 use std::path::PathBuf;
 
 use ast::parse;
-use diagnostic::{ErrorMessage, LinesTable, Spanned};
+use diagnostic::{ErrorMessage, ErrorType, LinesTable, Spanned};
 use hir::ast_to_hir;
 use tokenizer::{CharIndicesIter, tokenize};
 
@@ -98,7 +98,7 @@ fn print_errors<E>(
     format: Format,
     printer: &mut Printer,
 ) where
-    E: std::error::Error + std::fmt::Display,
+    E: std::error::Error + std::fmt::Display + ErrorType,
 {
     match format {
         Format::Json => {
