@@ -38,13 +38,13 @@ Codegen     Code Generation
 LLVM        A external compiler backend
 ASM         Assembler
 Exe         Executable file
-CLI         Computer Line Interface
+CLI         Command Line Interface
 ```
 
-## Sub-modules desription
+## Sub-modules description
 
 - `ast/` - Abstract Syntax Tree + Parser
-- `cli/` - Computer Line Interface wrapper
+- `cli/` - Command Line Interface wrapper
 - `codegen/` - LLVM-IR + translator from MIR to LLVM-IR + artifacts generation utilities
 - `diagnostic/` - Utilities to track errors during compilation process like `Span`, code snippets, and errors container
 - `examples/` - Plasm language examples
