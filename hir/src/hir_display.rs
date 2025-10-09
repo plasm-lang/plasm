@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
+use diagnostic::{MaybeSpanned, Spanned};
+
 use crate::hir::{
     Block, Expr, ExprArena, ExprKind, Function, FunctionCall, FunctionSignature, HIR, HIRType,
     Item, Statement,
@@ -20,7 +22,23 @@ impl RenderType for HIRType {
     }
 }
 
-impl RenderType for Option<HIRType> {
+impl RenderType for MaybeSpanned<HIRType> {
+    fn render_ty(&self) -> String {
+        match self.node {
+            HIRType::Primitive(p) => format!("{p}"),
+        }
+    }
+}
+
+impl RenderType for Spanned<HIRType> {
+    fn render_ty(&self) -> String {
+        match self.node {
+            HIRType::Primitive(p) => format!("{p}"),
+        }
+    }
+}
+
+impl RenderType for Option<Spanned<HIRType>> {
     fn render_ty(&self) -> String {
         match self {
             Some(t) => t.render_ty(),
@@ -38,7 +56,7 @@ impl<'a, T> ArenaView<'a, T> {
     fn build(arena: &'a ExprArena<T>) -> Self {
         let mut by_id = HashMap::with_capacity(arena.0.len());
         for e in &arena.0 {
-            by_id.insert(e.id, e);
+            by_id.insert(e.id, &e.node);
         }
         Self { by_id }
     }

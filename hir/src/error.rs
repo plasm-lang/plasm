@@ -1,6 +1,13 @@
 use std::fmt::{Display, Formatter};
 
-use diagnostic::Spanned;
+use diagnostic::{MaybeSpanned, Spanned};
+
+use crate::{
+    hir::HIRType,
+    hir_display::RenderType,
+    ids::{ExprId, LocalId},
+    type_annotator::TyClass,
+};
 
 #[derive(Debug)]
 pub enum Error {
@@ -13,6 +20,20 @@ pub enum Error {
     },
     UnknownFunction {
         name: String,
+    },
+    TypesConflict {
+        first: MaybeSpanned<HIRType>,
+        second: MaybeSpanned<HIRType>,
+    },
+    AmbiguousClass {
+        possible_classes: Vec<TyClass>,
+    },
+    CantResolveType,
+    UnregisteredLocalId {
+        id: LocalId,
+    },
+    UnregisteredExprId {
+        id: ExprId,
     },
 }
 
@@ -27,10 +48,46 @@ impl Display for Error {
                 )
             }
             Error::UnknownVariable { name } => {
-                write!(f, "Unknown variable `{}`", name)
+                write!(f, "Unknown variable `{name}`",)
             }
             Error::UnknownFunction { name } => {
-                write!(f, "Unknown function `{}`", name)
+                write!(f, "Unknown function `{name}`")
+            }
+            Error::TypesConflict { first, second } => {
+                // let first_at = first.span.map(|s| format!(" ({s} bytes)")).unwrap_or_default();
+                // let second_at = second.span.map(|s| format!(" ({s} bytes)")).unwrap_or_default();
+                write!(
+                    f,
+                    "Types conflict: `{}` and `{}`",
+                    first.node.render_ty(),
+                    second.node.render_ty(),
+                )
+            }
+            Error::AmbiguousClass { possible_classes } => {
+                let classes = possible_classes
+                    .iter()
+                    .map(|c| format!("{c:?}"))
+                    .collect::<Vec<_>>()
+                    .join(" or ");
+                write!(
+                    f,
+                    "Cannot resolve type because literal is ambiguous - may be {classes}"
+                )
+            }
+            Error::CantResolveType => {
+                write!(f, "Cannot resolve type")
+            }
+            Error::UnregisteredLocalId { id } => {
+                write!(
+                    f,
+                    "Unregistered local id {id}. It's a compiler issue, please report it"
+                )
+            }
+            Error::UnregisteredExprId { id } => {
+                write!(
+                    f,
+                    "Unregistered expression id {id}. It's a compiler issue, please report it"
+                )
             }
         }
     }

@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use diagnostic::{Span, Spanned};
+use diagnostic::Spanned;
 use tokenizer::Number;
 
 use serde::Serialize;
@@ -49,16 +49,16 @@ pub type Block = Vec<Statement>;
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum Statement {
     VariableDeclaration(VariableDeclaration),
-    Expr(Expr),
+    Expr(S<Expr>),
     // Assignment,
-    Return(Expr),
+    Return(S<Expr>),
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct VariableDeclaration {
     pub name: S<String>,
     pub ty: Option<S<Type>>,
-    pub value: Expr,
+    pub value: S<Expr>,
 }
 
 /// Represents an expression in the AST
@@ -66,7 +66,7 @@ pub struct VariableDeclaration {
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum Expr {
     Literal(Literal),
-    Variable(S<String>),
+    Variable(String),
     FunctionCall(FunctionCall),
     Block(Block),
 }
@@ -79,15 +79,15 @@ pub struct FunctionCall {
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum Literal {
-    Integer(S<String>),
-    Float(S<String>),
+    Integer(String),
+    Float(String),
 }
 
 impl Literal {
-    pub fn from_number(number: Number, span: Span) -> Self {
+    pub fn from_number(number: Number) -> Self {
         match number {
-            Number::Integer(s) => Self::Integer(S::new(s, span)),
-            Number::Float(s) => Self::Float(S::new(s, span)),
+            Number::Integer(s) => Self::Integer(s),
+            Number::Float(s) => Self::Float(s),
         }
     }
 }
@@ -95,7 +95,7 @@ impl Literal {
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct CallArgument {
     pub name: Option<S<String>>,
-    pub value: Expr,
+    pub value: S<Expr>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

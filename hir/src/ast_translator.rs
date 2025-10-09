@@ -1,6 +1,6 @@
 use bimap::BiHashMap;
 
-use diagnostic::{Span, Spanned};
+use diagnostic::{MaybeSpanned, Spanned};
 
 use crate::hir::{FunctionCall, FunctionSignature};
 
@@ -10,17 +10,22 @@ use super::hir::{
     Statement, THIR, VariableDeclaration,
 };
 use super::ids::{ExprId, FuncId, LocalId};
-use super::type_annotator::TypeAnnotator;
+use super::type_annotator::opt_hir_to_t_hir;
 
 /// For brevity
-type OT = Option<HIRType>;
+type OT = Option<S<HIRType>>;
 type S<T> = Spanned<T>;
+type MaybeS<T> = MaybeSpanned<T>;
 
 pub fn ast_to_hir(ast: ast::AST) -> (THIR, Vec<S<Error>>) {
     let (opt_hir, translation_errors) = ast_to_opt_hir(ast);
 
+    if !translation_errors.is_empty() {
+        return (THIR::empty(), translation_errors);
+    }
+
     let (t_hir, annotation_errors) = opt_hir_to_t_hir(opt_hir);
-    (t_hir, translation_errors.into_iter().chain(annotation_errors).collect())
+    (t_hir, annotation_errors)
 }
 
 fn ast_to_opt_hir(ast: ast::AST) -> (OptHIR, Vec<S<Error>>) {
@@ -28,40 +33,9 @@ fn ast_to_opt_hir(ast: ast::AST) -> (OptHIR, Vec<S<Error>>) {
     translator.translate(ast)
 }
 
-fn opt_hir_to_t_hir(opt_hir: OptHIR) -> (THIR, Vec<S<Error>>) {
-    let annotator = TypeAnnotator::new();
-    annotator.annotate(opt_hir)
-}
-
 #[derive(Default, Clone)]
 struct LocalsMap {
     map: BiHashMap<S<String>, LocalId>,
-}
-
-fn print_func_stub(id: FuncId) -> Function<OT> {
-    Function {
-        signature: FunctionSignature {
-            id,
-            name: S::new("print".into(), Span::zero()),
-            args: vec![S::new(
-                Argument {
-                    name: S::new("value".into(), Span::zero()),
-                    local_id: LocalId::one(),
-                    ty: S::new(
-                        HIRType::Primitive(ast::ast::PrimitiveType::I32),
-                        Span::zero(),
-                    ),
-                },
-                Span::zero(),
-            )],
-            ret_ty: HIRType::Primitive(ast::ast::PrimitiveType::Void),
-        },
-        body: Block {
-            locals: vec![],
-            statements: vec![],
-        },
-        expr_arena: ExprArena::default(),
-    }
 }
 
 struct ASTTranslator {
@@ -75,17 +49,11 @@ struct ASTTranslator {
 
 impl ASTTranslator {
     pub fn new() -> Self {
-        // Temporary hardcode build-in functions
-        // TODO: Load from stdlib
-        let mut funcs_map = BiHashMap::new();
-        let print_func_id = FuncId::one();
-        funcs_map.insert(S::new("print".into(), Span::zero()), print_func_id);
-
         Self {
-            hir: OptHIR::default().with_function(print_func_stub(print_func_id)),
+            hir: OptHIR::default(),
             errors: Vec::new(),
-            funcs_map,
-            next_func_id: FuncId::one().increment(),
+            funcs_map: BiHashMap::new(),
+            next_func_id: FuncId::one(),
             next_local_id: LocalId::one(),
             next_expr_id: ExprId::one(),
         }
@@ -154,8 +122,10 @@ impl ASTTranslator {
         let name = func.name;
         let ret_ty = func
             .return_type
-            .map(|ty| self.translate_type(ty.unwrap().0))
-            .unwrap_or(HIRType::Primitive(ast::ast::PrimitiveType::Void));
+            .map(|ty| ty.map(|t| self.translate_type(t)).into_maybe())
+            .unwrap_or(MaybeS::new(HIRType::Primitive(
+                ast::ast::PrimitiveType::Void,
+            )));
 
         let mut locals: Vec<HIRLocal<OT>> = Vec::new();
 
@@ -191,13 +161,12 @@ impl ASTTranslator {
     fn translate_arg(&mut self, ast_arg: S<ast::Argument>) -> (S<Argument>, HIRLocal<OT>) {
         let local_id = self.get_next_local_id();
         let (ast_arg, arg_span) = ast_arg.unwrap();
-        let (ast_ty, ty_span) = ast_arg.ty.unwrap();
-        let hir_ty = self.translate_type(ast_ty);
+        let hir_ty = ast_arg.ty.map(|t| self.translate_type(t));
 
         let hir_arg = Argument {
             name: ast_arg.name.clone(),
             local_id,
-            ty: S::new(hir_ty.clone(), ty_span),
+            ty: hir_ty.clone(),
         };
 
         let local = HIRLocal {
@@ -230,12 +199,12 @@ impl ASTTranslator {
                     // TODO: Handle duplicate variable names
                     let local_id = self.get_next_local_id();
                     let name = variable_declaration.name.clone();
-                    let ty = variable_declaration
+                    let opt_ty = variable_declaration
                         .ty
-                        .map(|t| self.translate_type(t.unwrap().0));
+                        .map(|t| t.map(|t| self.translate_type(t)));
                     let local = HIRLocal {
                         id: local_id,
-                        ty,
+                        ty: opt_ty,
                         name,
                     };
                     locals.push(local);
@@ -268,26 +237,26 @@ impl ASTTranslator {
 
     fn translate_expr(
         &mut self,
-        expr: ast::Expr,
+        expr: S<ast::Expr>,
         locals: &Vec<HIRLocal<OT>>,
     ) -> (ExprId, ExprArena<OT>) {
         let expr_id = self.get_next_expr_id();
         let mut expr_arena = ExprArena::<OT>::default();
-        match expr {
+        match expr.node {
             ast::Expr::Literal(lit) => {
                 let hir_expr = Expr::<OT> {
                     id: expr_id,
                     ty: None,
                     kind: ExprKind::Literal(lit),
                 };
-                expr_arena.add(hir_expr);
+                expr_arena.add(S::new(hir_expr, expr.span));
             }
             ast::Expr::Variable(var) => {
                 // Look up local_id
                 // TODO: Change Vec to HashMap or BiHashMap for efficiency
                 let local_id = locals
                     .iter()
-                    .find(|local| local.name.node == var.node)
+                    .find(|local| local.name.node == var)
                     .map(|local| local.id);
 
                 if let Some(local_id) = local_id {
@@ -296,11 +265,10 @@ impl ASTTranslator {
                         ty: None,
                         kind: ExprKind::Local(local_id),
                     };
-                    expr_arena.add(hir_expr);
+                    expr_arena.add(S::new(hir_expr, expr.span));
                 } else {
-                    let (name, span) = var.unwrap();
-                    let err = Error::UnknownVariable { name };
-                    self.errors.push(S::new(err, span));
+                    let err = Error::UnknownVariable { name: var };
+                    self.errors.push(S::new(err, expr.span));
                 }
             }
             ast::Expr::FunctionCall(func_call) => {
@@ -323,7 +291,7 @@ impl ASTTranslator {
                         ty: None,
                         kind: ExprKind::FunctionCall(func_call),
                     };
-                    expr_arena.add(hir_expr);
+                    expr_arena.add(S::new(hir_expr, expr.span));
                 } else {
                     let err = Error::UnknownFunction { name };
                     self.errors.push(S::new(err, span));
@@ -337,7 +305,7 @@ impl ASTTranslator {
                     ty: None,
                     kind: ExprKind::Block(hir_block),
                 };
-                expr_arena.add(hir_expr);
+                expr_arena.add(S::new(hir_expr, expr.span));
             }
         }
         (expr_id, expr_arena)
@@ -347,56 +315,37 @@ impl ASTTranslator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use diagnostic::{Span, Spanned};
+    use ast::parse;
+    use indoc::indoc;
+    use tokenizer::tokenize;
 
     #[test]
-    fn basic_test() {
-        let ast = {
-            use ast::ast::*;
-            AST {
-                items: vec![Item::Function(Function {
-                    name: Spanned {
-                        node: "main".to_string(),
-                        span: Span { start: 52, end: 56 },
-                    },
-                    args: vec![],
-                    return_type: None,
-                    body: vec![
-                        Statement::VariableDeclaration(VariableDeclaration {
-                            name: Spanned {
-                                node: "x".to_string(),
-                                span: Span { start: 69, end: 70 },
-                            },
-                            ty: Some(Spanned {
-                                node: Type::Primitive(PrimitiveType::I32),
-                                span: Span { start: 72, end: 75 },
-                            }),
-                            value: Expr::Literal(Literal::Integer(Spanned {
-                                node: "5".to_string(),
-                                span: Span { start: 78, end: 79 },
-                            })),
-                        }),
-                        Statement::Expr(Expr::FunctionCall(FunctionCall {
-                            name: Spanned {
-                                node: "print".to_string(),
-                                span: Span { start: 84, end: 89 },
-                            },
-                            args: vec![CallArgument {
-                                name: None,
-                                value: Expr::Variable(Spanned {
-                                    node: "x".to_string(),
-                                    span: Span { start: 90, end: 91 },
-                                }),
-                            }],
-                        })),
-                    ],
-                })],
-            }
-        };
+    fn basic_types_inference_test() {
+        let code = indoc! {"
+            fn print(x: i32) {}
+            fn main() {
+                let a: i32 = 5
+                let b = a
+                let c = b
+                print(c)
+            }"};
+
+        let (ast, errors) = parse(&mut tokenize(code.char_indices()));
+        assert!(errors.is_empty());
 
         let (hir, errors) = ast_to_hir(ast);
-        // assert!(errors.is_empty());
-        println!("{:#?}", errors);
-        println!("{hir}");
+        let expected_hir_display = indoc! {"
+            fn print(x: i32) -> void {
+            }
+
+            fn main() -> void {
+                let a: i32 = 5
+                let b: i32 = a
+                let c: i32 = b
+                print(c)
+            }
+        "};
+        assert!(errors.is_empty());
+        assert_eq!(hir.to_string(), expected_hir_display);
     }
 }

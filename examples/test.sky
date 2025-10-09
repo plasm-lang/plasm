@@ -3,7 +3,12 @@
 /* Multiline
 comment 0123
 */
+
+fn print(x: u16) {}
+
 fn main() {
-    let x: i32 = 5
-    print(x)
+    let a: i32 = 5.0
+    let b = a
+    let c: u32 = b
+    print(c)
 }

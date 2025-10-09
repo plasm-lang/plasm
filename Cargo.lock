@@ -117,6 +117,7 @@ dependencies = [
  "ast",
  "clap",
  "diagnostic",
+ "hir",
  "serde",
  "serde_json",
  "tokenizer",

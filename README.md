@@ -50,7 +50,7 @@ CLI         Computer Line Interface
 - `examples/` - Plasm language examples
 - `hir/` - High-level IR, OptHIR, THIR + translator from AST + types annotator
 - `mir/` - Middle-level IR + translator from HIR
-- `orchestrator/` - Compilation flow management utilities (Parallel compilation, linker controller, configuration reader)
+- `orchestrator/` - Compilation flow management utilities (Parallel compilation, linkers controller, configuration reader)
 - `tokenizer/` - Tokens description + lexer + from bytes to tokens stream
 
 Internal dependencies:

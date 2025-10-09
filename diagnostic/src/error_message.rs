@@ -26,7 +26,7 @@ impl<E: std::error::Error + Display> ErrorMessage<E> {
         let err_line = self.lines_table.line(self.error.span.start);
         let start_offset = self
             .lines_table
-            .offset(err_line - lines_before)
+            .offset(err_line.wrapping_sub(lines_before))
             .unwrap_or(0);
         let fallback_end_offset = file.metadata()?.len() as usize;
         let end_offset = self

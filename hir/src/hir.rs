@@ -1,15 +1,16 @@
 use ast::ast::{Literal, PrimitiveType};
-use diagnostic::Spanned;
+use diagnostic::{MaybeSpanned, Spanned};
 
 use super::ids::{ExprId, FuncId, LocalId};
 
-pub type S<T> = Spanned<T>;
+type S<T> = Spanned<T>;
+type MaybeS<T> = MaybeSpanned<T>;
 
 /// Optionally typed HIR
-pub type OptHIR = HIR<Option<HIRType>>;
+pub type OptHIR = HIR<Option<S<HIRType>>>;
 
 /// Typed HIR
-pub type THIR = HIR<HIRType>;
+pub type THIR = HIR<MaybeS<HIRType>>;
 
 /// High-level Intermediate Representation
 #[derive(Debug, Default)]
@@ -22,6 +23,10 @@ impl<T> HIR<T> {
         let mut items = self.items;
         items.push(Item::Function(func));
         Self { items }
+    }
+
+    pub fn empty() -> Self {
+        Self { items: Vec::new() }
     }
 }
 
@@ -47,7 +52,7 @@ pub struct FunctionSignature {
     pub id: FuncId,
     pub name: S<String>,
     pub args: Vec<S<Argument>>,
-    pub ret_ty: HIRType,
+    pub ret_ty: MaybeS<HIRType>,
 }
 
 #[derive(Debug, Clone)]
@@ -86,7 +91,7 @@ pub struct VariableDeclaration {
 // --- Expression-related --- //
 
 #[derive(Debug, Default)]
-pub struct ExprArena<T>(pub Vec<Expr<T>>);
+pub struct ExprArena<T>(pub Vec<S<Expr<T>>>);
 
 impl<T> ExprArena<T> {
     pub fn join(self, other: Self) -> Self {
@@ -95,7 +100,7 @@ impl<T> ExprArena<T> {
         Self(v)
     }
 
-    pub fn add(&mut self, expr: Expr<T>) {
+    pub fn add(&mut self, expr: S<Expr<T>>) {
         self.0.push(expr);
     }
 }

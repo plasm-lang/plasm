@@ -8,9 +8,10 @@ name = "sky"
 path = "src/main.rs"
 
 [dependencies]
-ast = { path = "../ast" }
 diagnostic = { path = "../diagnostic" }
 tokenizer = { path = "../tokenizer" }
+ast = { path = "../ast" }
+hir = { path = "../hir" }
 
 serde.workspace = true
 serde_json.workspace = true

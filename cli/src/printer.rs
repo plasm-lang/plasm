@@ -84,13 +84,17 @@ impl Printer {
         msg: ErrorMessage<E>,
     ) -> Result<()> {
         let (code_slice, start_line_num) = msg.extract_code_snippet(LINES_BEFORE)?;
+
+        // println!("{code_slice}");
+        // panic!();
         let code_slice = self.paint_code(code_slice);
 
         writeln!(
             self.stderr,
-            "{color}Error{r}: {}",
+            "{color}Error{r}: {bold}{}{r}",
             msg.error,
             color = self.theme.error.bold().render(),
+            bold = anstyle::Style::new().bold().render(),
             r = Reset.render()
         )?;
         writeln!(
