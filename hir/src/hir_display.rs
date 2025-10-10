@@ -128,6 +128,12 @@ fn format_function<T: RenderType>(
 
     // Function signature
     format_function_signature(&mut out, &fun.signature);
+
+    if fun.body.statements.is_empty() {
+        out.push_str(" {}\n");
+        return out;
+    }
+
     out.push_str(" {\n");
 
     // Body

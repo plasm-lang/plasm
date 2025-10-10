@@ -42,16 +42,16 @@ pub struct Argument {
     pub ty: S<Type>,
 }
 
-pub type Block = Vec<Statement>;
+pub type Block = Vec<S<Statement>>;
 
 /// Represents a statement in the AST
 /// A statement is a line of code that does something, special language construction, it has no type, cannot be returned
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum Statement {
     VariableDeclaration(VariableDeclaration),
-    Expr(S<Expr>),
+    Expr(Expr),
     // Assignment,
-    Return(S<Expr>),
+    Return(Option<S<Expr>>),
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -79,6 +79,8 @@ pub struct FunctionCall {
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum Literal {
+    Void,
+    Bool(bool),
     Integer(String),
     Float(String),
 }

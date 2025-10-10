@@ -1,12 +1,37 @@
-// Basic inline comment 1
+fn empty(){}
 
-/* Multiline
-comment 0123
-*/
+fn no_args() {
+    return
+}
 
-fn print(x: i32) {}
+fn one_arg(x: i32) {
+    return
+}
 
-fn main() {
-    let a: i32 = 5
-    print(a)
+fn two_args(x: i32, y: f64) {
+    return
+}
+
+fn voidf() -> void {
+    return
+}
+
+fn intf() -> i32 {
+    return 5
+}
+
+fn floatf() -> f64 {
+    return 5.0
+}
+
+fn boolf() -> bool {
+    return true
+}
+
+fn multi_line(
+    x: i32,
+    y: f64,
+    z: bool
+) -> void {
+    return
 }

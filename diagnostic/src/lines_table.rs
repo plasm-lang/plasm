@@ -44,7 +44,7 @@ impl LinesTable {
     }
 
     pub fn offset(&self, line: usize) -> Option<usize> {
-        self.offsets.get(line - 1).copied()
+        self.offsets.get(line.wrapping_sub(1)).copied()
     }
 }
 

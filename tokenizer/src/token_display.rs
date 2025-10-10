@@ -23,6 +23,7 @@ impl Display for Keyword {
         let s = match self {
             Keyword::Fn => "fn",
             Keyword::Let => "let",
+            Keyword::Return => "return",
         };
         write!(f, "{s}")
     }
@@ -43,6 +44,9 @@ impl Display for SpecialSymbol {
             SpecialSymbol::Colon => ":",
             SpecialSymbol::Equals => "=",
             SpecialSymbol::Comma => ",",
+            SpecialSymbol::GreaterThan => ">",
+            SpecialSymbol::LessThan => "<",
+            SpecialSymbol::Minus => "-",
         };
         write!(f, "{s}")
     }

@@ -7,8 +7,12 @@ use super::ast::{
 
 impl Display for AST {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        for item in &self.items {
-            writeln!(f, "{item}")?;
+        for (i, item) in self.items.iter().enumerate() {
+            if i == self.items.len() - 1 {
+                write!(f, "{item}")?;
+            } else {
+                writeln!(f, "{item}")?;
+            }
         }
         Ok(())
     }
@@ -35,6 +39,11 @@ impl Display for Function {
         if let Some(ret_type) = &self.return_type {
             write!(f, " -> {ret_type}")?;
         }
+
+        if self.body.is_empty() {
+            return writeln!(f, " {{}}");
+        }
+
         writeln!(f, " {{")?;
         for stmt in &self.body {
             write!(f, "    {stmt}")?;
@@ -95,7 +104,13 @@ impl Display for Statement {
         match self {
             Statement::VariableDeclaration(var_decl) => writeln!(f, "{var_decl}"),
             Statement::Expr(expr) => writeln!(f, "{expr}"),
-            Statement::Return(expr) => writeln!(f, "return {expr}"),
+            Statement::Return(expr) => {
+                if let Some(expr) = expr {
+                    writeln!(f, "return {expr}")
+                } else {
+                    writeln!(f, "return")
+                }
+            }
         }
     }
 }
@@ -153,6 +168,8 @@ impl Display for Expr {
 impl Display for Literal {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
+            Literal::Void => write!(f, "void"),
+            Literal::Bool(value) => write!(f, "{value}"),
             Literal::Integer(value) => write!(f, "{value}"),
             Literal::Float(spanned) => write!(f, "{spanned}"),
         }

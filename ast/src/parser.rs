@@ -54,11 +54,11 @@ where
         Some((token, span))
     }
 
-    fn expect(&mut self, expected: Token) -> Option<()> {
+    fn expect(&mut self, expected: Token) -> Option<Span> {
         match self.take_next() {
             Some((token, span)) => {
                 if token == expected {
-                    Some(())
+                    Some(span)
                 } else {
                     self.errors.push(Spanned::new(
                         ParseError::UnexpectedToken {
@@ -210,27 +210,63 @@ where
             }
         }
 
-        let block = self.parse_block()?;
+        let (block, return_type) = match self.iter.peek() {
+            Some((token, _span)) => match token {
+                // Function without return type
+                Token::Bracket(Bracket::CurlyOpen) => {
+                    let block = self.parse_block()?.node;
+                    (block, None)
+                }
+                // Function with return type
+                Token::SpecialSymbol(SpecialSymbol::Minus) => {
+                    self.take_next(); // consume '-'
+                    self.expect(Token::SpecialSymbol(SpecialSymbol::GreaterThan))?;
+                    let (type_name, type_name_span) = self.expect_ident()?;
+                    let ty = Type::from_str(&type_name);
+                    let return_type = Some(Spanned::new(ty, type_name_span));
+                    let block = self.parse_block()?.node;
+                    (block, return_type)
+                }
+                _ => {
+                    let (token, span) = self.take_next()?;
+                    let err = ParseError::UnexpectedToken {
+                        token,
+                        expected: "`-> T {` or `{`".to_string(),
+                    };
+                    self.errors.push(Spanned::new(err, span));
+                    return None;
+                }
+            },
+            None => {
+                self.errors.push(Spanned::new(
+                    ParseError::UnexpectedEOF {
+                        expected: "`-> T {` or `{`".to_string(),
+                    },
+                    self.last_span,
+                ));
+                return None;
+            }
+        };
 
         let func = Function {
             name: Spanned::new(func_name, func_name_span),
             args,
-            return_type: None,
+            return_type,
             body: block,
         };
         Some(func)
     }
 
-    fn parse_block(&mut self) -> Option<Block> {
-        self.expect(Token::Bracket(Bracket::CurlyOpen))?;
+    fn parse_block(&mut self) -> Option<Spanned<Block>> {
+        let start_span = self.expect(Token::Bracket(Bracket::CurlyOpen))?;
         let mut block = Vec::new();
 
         loop {
             match self.iter.peek() {
                 Some((token, _span)) => match token {
                     Token::Bracket(Bracket::CurlyClose) => {
-                        self.take_next();
-                        break Some(block);
+                        let (_, end_span) = self.take_next()?;
+                        break Some(Spanned::new(block, start_span.join(end_span)));
                     }
                     _ => {
                         let Some(stmt) = self.parse_statement() else {
@@ -246,13 +282,13 @@ where
                         },
                         self.last_span,
                     ));
-                    break Some(block);
+                    break Some(Spanned::new(block, start_span.join(self.last_span)));
                 }
             }
         }
     }
 
-    fn parse_statement(&mut self) -> Option<Statement> {
+    fn parse_statement(&mut self) -> Option<Spanned<Statement>> {
         match self.iter.peek() {
             Some((token, _span)) => match token {
                 Token::Keyword(Keyword::Let) => self.parse_variable_declaration(),
@@ -262,10 +298,11 @@ where
                     };
                     match self.iter.peek() {
                         Some((token, _span)) => match token {
-                            Token::Bracket(Bracket::RoundOpen) => self
-                                .parse_function_call(id, span)
-                                .map(|spanned_call| spanned_call.map(Expr::FunctionCall))
-                                .map(Statement::Expr),
+                            Token::Bracket(Bracket::RoundOpen) => {
+                                self.parse_function_call(id, span).map(|spanned_call| {
+                                    spanned_call.map(Expr::FunctionCall).map(Statement::Expr)
+                                })
+                            }
                             Token::SpecialSymbol(SpecialSymbol::Equals) => todo!(), // Variable assignment
                             _ => {
                                 let (token, span) = self.take_next()?;
@@ -281,6 +318,33 @@ where
                             self.take_next();
                             let err = ParseError::UnexpectedEOF {
                                 expected: "`(` or `=`".to_string(),
+                            };
+                            self.errors.push(Spanned::new(err, self.last_span));
+                            None
+                        }
+                    }
+                }
+                Token::Keyword(Keyword::Return) => {
+                    let (_, return_span) = self.take_next()?;
+                    match self.iter.peek() {
+                        Some((token, _span)) => match token {
+                            Token::Identifier(_)
+                            | Token::Number(_)
+                            | Token::Bracket(Bracket::RoundOpen)
+                            | Token::Bracket(Bracket::CurlyOpen) => {
+                                let expr = self.parse_expression()?;
+                                let end_span = expr.span;
+                                Some(Spanned::new(
+                                    Statement::Return(Some(expr)),
+                                    return_span.join(end_span),
+                                ))
+                            }
+                            _ => Some(Spanned::new(Statement::Return(None), return_span)),
+                        },
+                        None => {
+                            self.take_next();
+                            let err = ParseError::UnexpectedEOF {
+                                expected: "expression or new line with `}`".to_string(),
                             };
                             self.errors.push(Spanned::new(err, self.last_span));
                             None
@@ -358,20 +422,24 @@ where
         ))
     }
 
-    fn parse_variable_declaration(&mut self) -> Option<Statement> {
-        self.expect(Token::Keyword(Keyword::Let))?;
+    fn parse_variable_declaration(&mut self) -> Option<Spanned<Statement>> {
+        let first_span = self.expect(Token::Keyword(Keyword::Let))?;
         let (var_name, var_name_span) = self.expect_ident()?;
 
         match self.take_next() {
             // If type is not specified, expect '=' next
             Some((Token::SpecialSymbol(SpecialSymbol::Equals), _span)) => {
                 let expr = self.parse_expression()?;
+                let end_span = expr.span;
                 let stmt = VariableDeclaration {
                     name: Spanned::new(var_name, var_name_span),
                     ty: None,
                     value: expr,
                 };
-                Some(Statement::VariableDeclaration(stmt))
+                Some(Spanned::new(
+                    Statement::VariableDeclaration(stmt),
+                    first_span.join(end_span),
+                ))
             }
             // If type is specified, expect ': Type =' next
             Some((Token::SpecialSymbol(SpecialSymbol::Colon), _span)) => {
@@ -379,12 +447,16 @@ where
                 let ty = Type::from_str(&type_name);
                 self.expect(Token::SpecialSymbol(SpecialSymbol::Equals))?;
                 let expr = self.parse_expression()?;
+                let end_span = expr.span;
                 let stmt = VariableDeclaration {
                     name: Spanned::new(var_name, var_name_span),
                     ty: Some(Spanned::new(ty, type_name_span)),
                     value: expr,
                 };
-                Some(Statement::VariableDeclaration(stmt))
+                Some(Spanned::new(
+                    Statement::VariableDeclaration(stmt),
+                    first_span.join(end_span),
+                ))
             }
             Some((token, span)) => {
                 self.errors.push(Spanned::new(
@@ -415,12 +487,25 @@ where
                     let Some((Token::Identifier(id), span)) = self.take_next() else {
                         unreachable!(); // Unreachable: we peeked and saw Identifier
                     };
+                    match id.as_str() {
+                        "true" => {
+                            return Some(Spanned::new(Expr::Literal(Literal::Bool(true)), span));
+                        }
+                        "false" => {
+                            return Some(Spanned::new(Expr::Literal(Literal::Bool(false)), span));
+                        }
+                        "void" => return Some(Spanned::new(Expr::Literal(Literal::Void), span)),
+                        _ => {}
+                    }
                     match self.iter.peek() {
                         Some((token, _span)) => match token {
                             Token::Bracket(Bracket::RoundOpen) => self
                                 .parse_function_call(id, span)
                                 .map(|spanned_call| spanned_call.map(Expr::FunctionCall)),
-                            _ => Some(Spanned::new(Expr::Variable(id), span)),
+                            _ => {
+                                println!("Parsed variable: {id}");
+                                Some(Spanned::new(Expr::Variable(id), span))
+                            }
                         },
                         None => {
                             let err = ParseError::UnexpectedEOF {
@@ -464,71 +549,95 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::super::ast::{Item, PrimitiveType};
     use super::*;
     use indoc::indoc;
     use tokenizer::tokenize;
 
-    #[test]
-    fn test_basic_code_cst_parsing() {
-        let code = indoc! {"
-            // Basic inline comment
-
-            /* Multiline
-            comment
-            */
-            fn main() {
-                let x: i32 = 5
-                print(x)
-            }"};
-
+    fn parse_and_check_by_display(code: &str, expected_display: &str) {
         let mut token_iter = tokenize(code.char_indices());
         let (ast, errors) = ASTParser::new(&mut token_iter).parse();
+        assert!(errors.is_empty());
+        assert_eq!(format!("{ast}"), expected_display);
+    }
 
-        let expected = AST {
-            items: vec![Item::Function(Function {
-                name: Spanned {
-                    node: "main".to_string(),
-                    span: Span { start: 52, end: 56 },
-                },
-                args: vec![],
-                return_type: None,
-                body: vec![
-                    Statement::VariableDeclaration(VariableDeclaration {
-                        name: Spanned {
-                            node: "x".to_string(),
-                            span: Span { start: 69, end: 70 },
-                        },
-                        ty: Some(Spanned {
-                            node: Type::Primitive(PrimitiveType::I32),
-                            span: Span { start: 72, end: 75 },
-                        }),
-                        value: Spanned {
-                            node: Expr::Literal(Literal::Integer("5".to_string())),
-                            span: Span { start: 78, end: 79 },
-                        },
-                    }),
-                    Statement::Expr(Spanned {
-                        node: Expr::FunctionCall(FunctionCall {
-                            name: Spanned {
-                                node: "print".to_string(),
-                                span: Span { start: 84, end: 89 },
-                            },
-                            args: vec![CallArgument {
-                                name: None,
-                                value: Spanned {
-                                    node: Expr::Variable("x".to_string()),
-                                    span: Span { start: 90, end: 91 },
-                                },
-                            }],
-                        }),
-                        span: Span { start: 84, end: 92 },
-                    }),
-                ],
-            })],
-        };
+    #[test]
+    fn test_function_signatures() {
+        let code = indoc! {"
+            fn empty() {}
 
-        assert_eq!(ast, expected);
-        assert_eq!(errors, vec![]);
+            fn no_args() {
+                return
+            }
+
+            fn one_arg(x: i32) {
+                return
+            }
+
+            fn two_args(x: i32, y: f64) {
+                return
+            }
+
+            fn voidf() -> void {
+                return
+            }
+
+            fn intf() -> i32 {
+                return 5
+            }
+
+            fn floatf() -> f64 {
+                return 5.0
+            }
+
+            fn boolf() -> bool {
+                return true
+            }
+
+            fn multi_line(
+                x: i32,
+                y: f64,
+                z: bool,
+            ) -> void {
+                return
+            }
+        "};
+
+        let expected_display = indoc! {"
+            fn empty() {}
+
+            fn no_args() {
+                return
+            }
+
+            fn one_arg(x: i32) {
+                return
+            }
+
+            fn two_args(x: i32, y: f64) {
+                return
+            }
+
+            fn voidf() -> void {
+                return
+            }
+
+            fn intf() -> i32 {
+                return 5
+            }
+
+            fn floatf() -> f64 {
+                return 5.0
+            }
+
+            fn boolf() -> bool {
+                return true
+            }
+
+            fn multi_line(x: i32, y: f64, z: bool) -> void {
+                return
+            }
+        "};
+
+        parse_and_check_by_display(code, expected_display);
     }
 }

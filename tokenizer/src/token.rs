@@ -2,6 +2,7 @@
 pub enum Keyword {
     Fn,
     Let,
+    Return,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,6 +28,12 @@ pub enum SpecialSymbol {
     Equals,
     /// ,
     Comma,
+    /// >
+    GreaterThan,
+    /// <
+    LessThan,
+    /// -
+    Minus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

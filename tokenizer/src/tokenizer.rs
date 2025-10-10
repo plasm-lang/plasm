@@ -94,6 +94,7 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
         let token = match self.accumulated.as_str() {
             "fn" => Token::Keyword(Keyword::Fn),
             "let" => Token::Keyword(Keyword::Let),
+            "return" => Token::Keyword(Keyword::Return),
             _ => Token::Identifier(self.accumulated.clone()),
         };
         let span = Span::new(start_i, end_i);
@@ -120,7 +121,7 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
         let span = Span::new(start_i, end_i);
         let comment_text = take(&mut self.accumulated);
         self.state = State::Default;
-        return Some((Token::Comment(Comment::SingleLine(comment_text)), span));
+        Some((Token::Comment(Comment::SingleLine(comment_text)), span))
     }
 
     fn lex_multiline_comment(&mut self) -> Option<(Token, Span)> {
@@ -202,6 +203,18 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
             )),
             ',' => Some((
                 Token::SpecialSymbol(SpecialSymbol::Comma),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+            '>' => Some((
+                Token::SpecialSymbol(SpecialSymbol::GreaterThan),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+            '<' => Some((
+                Token::SpecialSymbol(SpecialSymbol::LessThan),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+            '-' => Some((
+                Token::SpecialSymbol(SpecialSymbol::Minus),
                 Span::new(i, i + ch.len_utf8()),
             )),
             ch if ch.is_alphanumeric() || ch == '_' => self.lex_alphanumeric_from(i, ch),
@@ -297,6 +310,7 @@ mod tests {
                 Token::Keyword(keyword) => match keyword {
                     Keyword::Fn => assert_eq!(str_by_span, "fn"),
                     Keyword::Let => assert_eq!(str_by_span, "let"),
+                    Keyword::Return => assert_eq!(str_by_span, "return"),
                 },
                 Token::Identifier(id) => assert_eq!(id, str_by_span),
                 Token::Number(number) => assert_eq!(number.raw_value(), str_by_span),
@@ -304,6 +318,9 @@ mod tests {
                     SpecialSymbol::Colon => assert_eq!(str_by_span, ":"),
                     SpecialSymbol::Equals => assert_eq!(str_by_span, "="),
                     SpecialSymbol::Comma => assert_eq!(str_by_span, ","),
+                    SpecialSymbol::GreaterThan => assert_eq!(str_by_span, ">"),
+                    SpecialSymbol::LessThan => assert_eq!(str_by_span, "<"),
+                    SpecialSymbol::Minus => assert_eq!(str_by_span, "-"),
                 },
                 Token::Bracket(bracket) => match bracket {
                     Bracket::RoundOpen => assert_eq!(str_by_span, "("),

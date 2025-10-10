@@ -61,7 +61,7 @@ impl<'a> FunctionCtx<'a> {
             .signature
             .ret_ty
             .span
-            .unwrap_or_else(|| self.func.signature.name.span);
+            .unwrap_or(self.func.signature.name.span);
         let block_constraints = self.block_to_constraints(
             &self.func.body,
             S::new(
@@ -119,6 +119,12 @@ impl<'a> FunctionCtx<'a> {
             let expr_type_var = self.ty_of_expr(expr.id).clone();
             match &expr.kind {
                 ExprKind::Literal(lit) => match lit {
+                    ast::Literal::Void => {
+                        constraints.push(Constraint::InClass(expr_type_var, TyClass::Void))
+                    }
+                    ast::Literal::Bool(_) => {
+                        constraints.push(Constraint::InClass(expr_type_var, TyClass::Bool))
+                    }
                     ast::Literal::Integer(_) => {
                         constraints.push(Constraint::InClass(expr_type_var, TyClass::Int))
                     }

@@ -186,7 +186,7 @@ impl ASTTranslator {
         let mut expr_arena = ExprArena::<OT>::default();
         let mut statements = Vec::new();
         for ast_stmt in ast_block.into_iter() {
-            let hir_stmt = match ast_stmt {
+            let hir_stmt = match ast_stmt.node {
                 ast::Statement::VariableDeclaration(variable_declaration) => {
                     // Build HIRLocal
                     // TODO: Handle duplicate variable names
@@ -210,12 +210,18 @@ impl ASTTranslator {
                     Statement::VariableDeclaration(VariableDeclaration { local_id, expr_id })
                 }
                 ast::Statement::Expr(expr) => {
-                    let (expr_id, local_expr_arena) = self.translate_expr(expr, &locals);
+                    let (expr_id, local_expr_arena) =
+                        self.translate_expr(S::new(expr, ast_stmt.span), &locals);
                     expr_arena = expr_arena.join(local_expr_arena);
                     Statement::Expr(expr_id)
                 }
-                ast::Statement::Return(expr) => {
-                    let (expr_id, local_expr_arena) = self.translate_expr(expr, &locals);
+                ast::Statement::Return(opt_expr) => {
+                    let (expr_id, local_expr_arena) = if let Some(expr) = opt_expr {
+                        self.translate_expr(expr, &locals)
+                    } else {
+                        let void_expr = ast::Expr::Literal(ast::Literal::Void);
+                        self.translate_expr(S::new(void_expr, ast_stmt.span), &locals)
+                    };
                     expr_arena = expr_arena.join(local_expr_arena);
                     Statement::Return(expr_id)
                 }
@@ -312,6 +318,14 @@ mod tests {
     use indoc::indoc;
     use tokenizer::tokenize;
 
+    fn check_by_display(code: &str, expected_display: &str) {
+        let (ast, errors) = parse(&mut tokenize(code.char_indices()));
+        assert!(errors.is_empty());
+        let (hir, errors) = ast_to_hir(ast);
+        assert!(errors.is_empty());
+        assert_eq!(hir.to_string(), expected_display);
+    }
+
     #[test]
     fn basic_types_inference_test() {
         let code = indoc! {"
@@ -322,14 +336,8 @@ mod tests {
                 let c = b
                 print(c)
             }"};
-
-        let (ast, errors) = parse(&mut tokenize(code.char_indices()));
-        assert!(errors.is_empty());
-
-        let (hir, errors) = ast_to_hir(ast);
         let expected_hir_display = indoc! {"
-            fn print(x: i32) -> void {
-            }
+            fn print(x: i32) -> void {}
 
             fn main() -> void {
                 let a: i32 = 5
@@ -338,7 +346,50 @@ mod tests {
                 print(c)
             }
         "};
-        assert!(errors.is_empty());
-        assert_eq!(hir.to_string(), expected_hir_display);
+        check_by_display(code, expected_hir_display);
+    }
+
+    #[test]
+    fn bool_type_inference_test() {
+        let code = indoc! {"
+            fn is_true(x: bool) {}
+            fn main() {
+                let a = true
+                let b = a
+                is_true(a)
+                is_true(b)
+                is_true(false)
+            }"};
+        let expected_hir_display = indoc! {"
+            fn is_true(x: bool) -> void {}
+
+            fn main() -> void {
+                let a: bool = true
+                let b: bool = a
+                is_true(a)
+                is_true(b)
+                is_true(false)
+            }
+        "};
+        check_by_display(code, expected_hir_display);
+    }
+
+    #[test]
+    fn void_type_inference_test() {
+        let code = indoc! {"
+            fn do_nothing() {}
+            fn main() {
+                let a = do_nothing()
+                let b = a
+            }"};
+        let expected_hir_display = indoc! {"
+            fn do_nothing() -> void {}
+
+            fn main() -> void {
+                let a: void = do_nothing()
+                let b: void = a
+            }
+        "};
+        check_by_display(code, expected_hir_display);
     }
 }
