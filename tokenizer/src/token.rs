@@ -22,6 +22,8 @@ impl Number {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SpecialSymbol {
+    // 1-character symbols
+
     /// :
     Colon,
     /// =
@@ -44,6 +46,35 @@ pub enum SpecialSymbol {
     Percent,
     /// \
     Backslash,
+    /// !
+    Exclamation,
+    /// &
+    Ampersand,
+    /// |
+    Pipe,
+    /// ^
+    Caret,
+
+    // 2-character symbols
+
+    /// **
+    DoubleAsterisk,
+    /// &&
+    DoubleAmpersand,
+    /// ||
+    DoublePipe,
+    /// ==
+    DoubleEquals,
+    /// !=
+    ExclamationEquals,
+    /// <=
+    LessThanEquals,
+    /// >=
+    GreaterThanEquals,
+    /// <<
+    DoubleLessThan,
+    /// >>
+    DoubleGreaterThan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

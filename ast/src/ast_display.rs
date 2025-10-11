@@ -119,14 +119,22 @@ impl Display for BinaryOp {
             BinaryOp::Div => "/",
             BinaryOp::Mod => "%",
             BinaryOp::DivInt => "\\",
-            // BinaryOp::And => "&&",
-            // BinaryOp::Or => "||",
-            // BinaryOp::Eq => "==",
-            // BinaryOp::Neq => "!=",
-            // BinaryOp::Lt => "<",
-            // BinaryOp::Gt => ">",
-            // BinaryOp::Leq => "<=",
-            // BinaryOp::Geq => ">=",
+            BinaryOp::Pow => "**",
+
+            BinaryOp::BitAnd => "&",
+            BinaryOp::BitOr => "|",
+            BinaryOp::BitXor => "^",
+            BinaryOp::Shl => "<<",
+            BinaryOp::Shr => ">>",
+
+            BinaryOp::And => "&&",
+            BinaryOp::Or => "||",
+            BinaryOp::Eq => "==",
+            BinaryOp::Neq => "!=",
+            BinaryOp::Lt => "<",
+            BinaryOp::Gt => ">",
+            BinaryOp::Geq => ">=",
+            BinaryOp::Leq => "<=",
         };
         write!(f, "{op_str}")
     }
@@ -248,6 +256,9 @@ impl<'a> Display for Indent<'a, Expr> {
             FunctionCall(fc) => write!(f, "{}", Indent::new(fc).with_indent(self.indent)),
             Binary(b) => write!(f, "{}", Indent::new(b).with_indent(self.indent)),
             Block(stmts) => {
+                if stmts.is_empty() {
+                    return write!(f, "{{}}");
+                }
                 writeln!(f, "{{")?;
                 for s in stmts {
                     write!(f, "{}", Indent::new(&s.node).with_indent(self.indent + 1))?;

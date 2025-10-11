@@ -487,12 +487,31 @@ where
         loop {
             let op = match self.iter.peek() {
                 Some((token, _span)) => match token {
+                    // Arithemetic operations
                     Token::SpecialSymbol(SpecialSymbol::Plus) => BinaryOp::Add,
                     Token::SpecialSymbol(SpecialSymbol::Minus) => BinaryOp::Sub,
                     Token::SpecialSymbol(SpecialSymbol::Asterisk) => BinaryOp::Mul,
                     Token::SpecialSymbol(SpecialSymbol::Slash) => BinaryOp::Div,
                     Token::SpecialSymbol(SpecialSymbol::Percent) => BinaryOp::Mod,
                     Token::SpecialSymbol(SpecialSymbol::Backslash) => BinaryOp::DivInt,
+                    Token::SpecialSymbol(SpecialSymbol::DoubleAsterisk) => BinaryOp::Pow,
+
+                    // Bitwise operations
+                    Token::SpecialSymbol(SpecialSymbol::Ampersand) => BinaryOp::BitAnd,
+                    Token::SpecialSymbol(SpecialSymbol::Pipe) => BinaryOp::BitOr,
+                    Token::SpecialSymbol(SpecialSymbol::Caret) => BinaryOp::BitXor,
+                    Token::SpecialSymbol(SpecialSymbol::DoubleLessThan) => BinaryOp::Shl,
+                    Token::SpecialSymbol(SpecialSymbol::DoubleGreaterThan) => BinaryOp::Shr,
+
+                    // Logical operations
+                    Token::SpecialSymbol(SpecialSymbol::DoubleAmpersand) => BinaryOp::And,
+                    Token::SpecialSymbol(SpecialSymbol::DoublePipe) => BinaryOp::Or,
+                    Token::SpecialSymbol(SpecialSymbol::DoubleEquals) => BinaryOp::Eq,
+                    Token::SpecialSymbol(SpecialSymbol::ExclamationEquals) => BinaryOp::Neq,
+                    Token::SpecialSymbol(SpecialSymbol::LessThan) => BinaryOp::Lt,
+                    Token::SpecialSymbol(SpecialSymbol::GreaterThan) => BinaryOp::Gt,
+                    Token::SpecialSymbol(SpecialSymbol::GreaterThanEquals) => BinaryOp::Geq,
+                    Token::SpecialSymbol(SpecialSymbol::LessThanEquals) => BinaryOp::Leq,
                     _ => break,
                 },
                 None => {
@@ -506,7 +525,7 @@ where
                 }
             };
 
-            let (current_l_bp, current_r_bp) = Self::binding_power(&op);
+            let (current_l_bp, current_r_bp) = op.binding_power();
             if current_l_bp < min_bp {
                 break;
             }
@@ -528,13 +547,6 @@ where
         }
 
         Some(left_expr)
-    }
-
-    fn binding_power(op: &BinaryOp) -> (u8, u8) {
-        match op {
-            BinaryOp::Add | BinaryOp::Sub => (1, 2),
-            BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod | BinaryOp::DivInt => (3, 4),
-        }
     }
 
     /// Parse an atomic expression: a literal, variable, function call.
@@ -707,7 +719,7 @@ mod tests {
     }
 
     #[test]
-    fn test_binary_expressions() {
+    fn test_arithmetic_binary_expressions() {
         let code = indoc! {"
             fn main() {
                 let a = 1 + 2 + 3 - 4
@@ -727,6 +739,72 @@ mod tests {
                 let d = ((1 + 2) * 3)
                 let e = ((((1 * 2) / 3) % 4) \\ 5)
                 let f = ((1 + 2) - (3 - 4))
+            }
+        "};
+
+        parse_and_check_by_display(code, expected_display);
+    }
+
+    #[test]
+    fn test_blocks() {
+        let code = indoc! {"
+            fn main() {
+                let x = {
+                    let a = {
+                        let a = {
+                            return get_value() + 1 * 2
+                        }
+                        return a
+                    }
+                    let b = {return (1)}
+                    return a * b
+                }
+                let y = {}
+                print({
+                    let value = compute_value(x, 1, 3)
+                    return value + x
+                })
+            }
+        "};
+
+        let expected_display = indoc! {"
+            fn main() {
+                let x = {
+                    let a = {
+                        let a = {
+                            return (get_value() + (1 * 2))
+                        }
+                        return a
+                    }
+                    let b = {
+                        return 1
+                    }
+                    return (a * b)
+                }
+                let y = {}
+                print({
+                    let value = compute_value(x, 1, 3)
+                    return (value + x)
+                })
+            }
+        "};
+
+        parse_and_check_by_display(code, expected_display);
+    }
+
+    #[test]
+    fn test_logical_binary_expressions() {
+        let code = indoc! {"
+            fn main() {
+                let a = true && false || true
+                let b = 1 == 2 && 3 != 4 || 5 < 6 && 7 <= 8 || 9 > 10 && 11 >= 12
+            }
+        "};
+
+        let expected_display = indoc! {"
+            fn main() {
+                let a = ((true && false) || true)
+                let b = ((((1 == 2) && (3 != 4)) || ((5 < 6) && (7 <= 8))) || ((9 > 10) && (11 >= 12)))
             }
         "};
 

@@ -52,6 +52,20 @@ impl Display for SpecialSymbol {
             SpecialSymbol::Slash => "/",
             SpecialSymbol::Percent => "%",
             SpecialSymbol::Backslash => "\\",
+            SpecialSymbol::Exclamation => "!",
+            SpecialSymbol::Ampersand => "&",
+            SpecialSymbol::Pipe => "|",
+            SpecialSymbol::Caret => "^",
+
+            SpecialSymbol::DoubleAsterisk => "**",
+            SpecialSymbol::DoubleEquals => "==",
+            SpecialSymbol::ExclamationEquals => "!=",
+            SpecialSymbol::GreaterThanEquals => ">=",
+            SpecialSymbol::LessThanEquals => "<=",
+            SpecialSymbol::DoubleAmpersand => "&&",
+            SpecialSymbol::DoublePipe => "||",
+            SpecialSymbol::DoubleLessThan => "<<",
+            SpecialSymbol::DoubleGreaterThan => ">>",
         };
         write!(f, "{s}")
     }

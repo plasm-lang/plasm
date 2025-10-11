@@ -162,6 +162,73 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
                 self.chars.next(); // consume the '*'
                 self.lex_multiline_comment()
             }
+
+            // 2-character symbols
+
+            '*' if self.chars.peek().map(|(_, ch)| ch) == Some(&'*') => {
+                let (_, ch2) = self.chars.next()?; // consume the second '*'
+                Some((
+                    Token::SpecialSymbol(SpecialSymbol::DoubleAsterisk),
+                    Span::new(i, i + ch.len_utf8() + ch2.len_utf8()),
+                ))
+            }
+            '&' if self.chars.peek().map(|(_, ch)| ch) == Some(&'&') => {
+                let (_, ch2) = self.chars.next()?; // consume the second '&'
+                Some((
+                    Token::SpecialSymbol(SpecialSymbol::DoubleAmpersand),
+                    Span::new(i, i + ch.len_utf8() + ch2.len_utf8()),
+                ))
+            }
+            '|' if self.chars.peek().map(|(_, ch)| ch) == Some(&'|') => {
+                let (_, ch2) = self.chars.next()?; // consume the second '|'
+                Some((
+                    Token::SpecialSymbol(SpecialSymbol::DoublePipe),
+                    Span::new(i, i + ch.len_utf8() + ch2.len_utf8()),
+                ))
+            }
+            '=' if self.chars.peek().map(|(_, ch)| ch) == Some(&'=') => {
+                let (_, ch2) = self.chars.next()?; // consume the second '='
+                Some((
+                    Token::SpecialSymbol(SpecialSymbol::DoubleEquals),
+                    Span::new(i, i + ch.len_utf8() + ch2.len_utf8()),
+                ))
+            }
+            '!' if self.chars.peek().map(|(_, ch)| ch) == Some(&'=') => {
+                let (_, ch2) = self.chars.next()?; // consume the '='
+                Some((
+                    Token::SpecialSymbol(SpecialSymbol::ExclamationEquals),
+                    Span::new(i, i + ch.len_utf8() + ch2.len_utf8()),
+                ))
+            }
+            '<' if self.chars.peek().map(|(_, ch)| ch) == Some(&'=') => {
+                let (_, ch2) = self.chars.next()?; // consume the '='
+                Some((
+                    Token::SpecialSymbol(SpecialSymbol::LessThanEquals),
+                    Span::new(i, i + ch.len_utf8() + ch2.len_utf8()),
+                ))
+            }
+            '>' if self.chars.peek().map(|(_, ch)| ch) == Some(&'=') => {
+                let (_, ch2) = self.chars.next()?; // consume the '='
+                Some((
+                    Token::SpecialSymbol(SpecialSymbol::GreaterThanEquals),
+                    Span::new(i, i + ch.len_utf8() + ch2.len_utf8()),
+                ))
+            }
+            '<' if self.chars.peek().map(|(_, ch)| ch) == Some(&'<') => {
+                let (_, ch2) = self.chars.next()?; // consume the second '<'
+                Some((
+                    Token::SpecialSymbol(SpecialSymbol::DoubleLessThan),
+                    Span::new(i, i + ch.len_utf8() + ch2.len_utf8()),
+                ))
+            }
+            '>' if self.chars.peek().map(|(_, ch)| ch) == Some(&'>') => {
+                let (_, ch2) = self.chars.next()?; // consume the second '>'
+                Some((
+                    Token::SpecialSymbol(SpecialSymbol::DoubleGreaterThan),
+                    Span::new(i, i + ch.len_utf8() + ch2.len_utf8()),
+                ))
+            }
+
             '\n' => {
                 let char_len = ch.len_utf8();
                 self.lines_table.add_line(i + char_len);
@@ -169,6 +236,9 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
             }
             ch if ch.is_whitespace() => self.lex_whitespace_from(i, ch),
             ch if ch.is_ascii_digit() => self.lex_number_from(i, ch),
+
+            // 1-character symbols
+
             '{' => Some((
                 Token::Bracket(Bracket::CurlyOpen),
                 Span::new(i, i + ch.len_utf8()),
@@ -237,6 +307,23 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
                 Token::SpecialSymbol(SpecialSymbol::Backslash),
                 Span::new(i, i + ch.len_utf8()),
             )),
+            '!' => Some((
+                Token::SpecialSymbol(SpecialSymbol::Exclamation),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+            '&' => Some((
+                Token::SpecialSymbol(SpecialSymbol::Ampersand),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+            '|' => Some((
+                Token::SpecialSymbol(SpecialSymbol::Pipe),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+            '^' => Some((
+                Token::SpecialSymbol(SpecialSymbol::Caret),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+
             ch if ch.is_alphanumeric() || ch == '_' => self.lex_alphanumeric_from(i, ch),
             ch => Some((
                 Token::Impossible(ch.to_string()),
@@ -346,6 +433,19 @@ mod tests {
                     SpecialSymbol::Slash => assert_eq!(str_by_span, "/"),
                     SpecialSymbol::Percent => assert_eq!(str_by_span, "%"),
                     SpecialSymbol::Backslash => assert_eq!(str_by_span, "\\"),
+                    SpecialSymbol::Exclamation => assert_eq!(str_by_span, "!"),
+                    SpecialSymbol::Ampersand => assert_eq!(str_by_span, "&"),
+                    SpecialSymbol::Pipe => assert_eq!(str_by_span, "|"),
+                    SpecialSymbol::Caret => assert_eq!(str_by_span, "^"),
+                    SpecialSymbol::DoubleAsterisk => assert_eq!(str_by_span, "**"),
+                    SpecialSymbol::DoubleAmpersand => assert_eq!(str_by_span, "&&"),
+                    SpecialSymbol::DoublePipe => assert_eq!(str_by_span, "||"),
+                    SpecialSymbol::DoubleEquals => assert_eq!(str_by_span, "=="),
+                    SpecialSymbol::ExclamationEquals => assert_eq!(str_by_span, "!="),
+                    SpecialSymbol::GreaterThanEquals => assert_eq!(str_by_span, ">="),
+                    SpecialSymbol::LessThanEquals => assert_eq!(str_by_span, "<="),
+                    SpecialSymbol::DoubleLessThan => assert_eq!(str_by_span, "<<"),
+                    SpecialSymbol::DoubleGreaterThan => assert_eq!(str_by_span, ">>"),
                 },
                 Token::Bracket(bracket) => match bracket {
                     Bracket::RoundOpen => assert_eq!(str_by_span, "("),
