@@ -1,13 +1,14 @@
+/// Recursive descent and Knuth–Morris–Pratt (for expression parsing) algorithms.
 use std::iter::{Filter, Peekable};
 
-use super::ast::{
-    AST, Block, CallArgument, Expr, Function, FunctionCall, Literal, Statement, Type,
-    VariableDeclaration,
-};
 use diagnostic::{Span, Spanned};
 use tokenizer::{Bracket, Keyword, Number, SpecialSymbol, Token};
 
-use crate::{Argument, error::ParseError};
+use super::ast::{
+    AST, Argument, BinaryExpr, BinaryOp, Block, CallArgument, Expr, Function, FunctionCall,
+    Literal, Statement, Type, VariableDeclaration,
+};
+use super::error::ParseError;
 
 pub fn parse<I>(token_iter: &mut I) -> (AST, Vec<Spanned<ParseError>>)
 where
@@ -332,7 +333,7 @@ where
                             | Token::Number(_)
                             | Token::Bracket(Bracket::RoundOpen)
                             | Token::Bracket(Bracket::CurlyOpen) => {
-                                let expr = self.parse_expression()?;
+                                let expr = self.parse_expression(0)?;
                                 let end_span = expr.span;
                                 Some(Spanned::new(
                                     Statement::Return(Some(expr)),
@@ -391,7 +392,7 @@ where
                         self.take_next();
                     }
                     _ => {
-                        let Some(expr) = self.parse_expression() else {
+                        let Some(expr) = self.parse_expression(0) else {
                             continue;
                         };
                         let arg = CallArgument {
@@ -429,7 +430,7 @@ where
         match self.take_next() {
             // If type is not specified, expect '=' next
             Some((Token::SpecialSymbol(SpecialSymbol::Equals), _span)) => {
-                let expr = self.parse_expression()?;
+                let expr = self.parse_expression(0)?;
                 let end_span = expr.span;
                 let stmt = VariableDeclaration {
                     name: Spanned::new(var_name, var_name_span),
@@ -446,7 +447,7 @@ where
                 let (type_name, type_name_span) = self.expect_ident()?;
                 let ty = Type::from_str(&type_name);
                 self.expect(Token::SpecialSymbol(SpecialSymbol::Equals))?;
-                let expr = self.parse_expression()?;
+                let expr = self.parse_expression(0)?;
                 let end_span = expr.span;
                 let stmt = VariableDeclaration {
                     name: Spanned::new(var_name, var_name_span),
@@ -480,7 +481,64 @@ where
         }
     }
 
-    fn parse_expression(&mut self) -> Option<Spanned<Expr>> {
+    fn parse_expression(&mut self, min_bp: u8) -> Option<Spanned<Expr>> {
+        let mut left_expr = self.parse_atomic_expression()?;
+
+        loop {
+            let op = match self.iter.peek() {
+                Some((token, _span)) => match token {
+                    Token::SpecialSymbol(SpecialSymbol::Plus) => BinaryOp::Add,
+                    Token::SpecialSymbol(SpecialSymbol::Minus) => BinaryOp::Sub,
+                    Token::SpecialSymbol(SpecialSymbol::Asterisk) => BinaryOp::Mul,
+                    Token::SpecialSymbol(SpecialSymbol::Slash) => BinaryOp::Div,
+                    Token::SpecialSymbol(SpecialSymbol::Percent) => BinaryOp::Mod,
+                    Token::SpecialSymbol(SpecialSymbol::Backslash) => BinaryOp::DivInt,
+                    _ => break,
+                },
+                None => {
+                    self.errors.push(Spanned::new(
+                        ParseError::UnexpectedEOF {
+                            expected: "expression".to_string(),
+                        },
+                        self.last_span,
+                    ));
+                    return None;
+                }
+            };
+
+            let (current_l_bp, current_r_bp) = Self::binding_power(&op);
+            if current_l_bp < min_bp {
+                break;
+            }
+            self.take_next();
+
+            let right_expr = self.parse_expression(current_r_bp)?;
+
+            let left_expr_span = left_expr.span;
+            let right_expr_span = right_expr.span;
+            let span = left_expr_span.join(right_expr_span);
+            left_expr = Spanned::new(
+                Expr::Binary(BinaryExpr {
+                    op,
+                    left: Box::new(left_expr),
+                    right: Box::new(right_expr),
+                }),
+                span,
+            );
+        }
+
+        Some(left_expr)
+    }
+
+    fn binding_power(op: &BinaryOp) -> (u8, u8) {
+        match op {
+            BinaryOp::Add | BinaryOp::Sub => (1, 2),
+            BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod | BinaryOp::DivInt => (3, 4),
+        }
+    }
+
+    /// Parse an atomic expression: a literal, variable, function call.
+    fn parse_atomic_expression(&mut self) -> Option<Spanned<Expr>> {
         match self.iter.peek() {
             Some((token, _span)) => match token {
                 Token::Identifier(_) => {
@@ -502,10 +560,7 @@ where
                             Token::Bracket(Bracket::RoundOpen) => self
                                 .parse_function_call(id, span)
                                 .map(|spanned_call| spanned_call.map(Expr::FunctionCall)),
-                            _ => {
-                                println!("Parsed variable: {id}");
-                                Some(Spanned::new(Expr::Variable(id), span))
-                            }
+                            _ => Some(Spanned::new(Expr::Variable(id), span)),
                         },
                         None => {
                             let err = ParseError::UnexpectedEOF {
@@ -519,6 +574,16 @@ where
                 Token::Number(_) => self
                     .parse_number()
                     .map(|spanned_lit| spanned_lit.map(Expr::Literal)),
+                Token::Bracket(Bracket::RoundOpen) => {
+                    self.take_next(); // consume '('
+                    let expr = self.parse_expression(0)?;
+                    self.expect(Token::Bracket(Bracket::RoundClose))?;
+                    Some(expr)
+                }
+                Token::Bracket(Bracket::CurlyOpen) => {
+                    let block = self.parse_block()?;
+                    Some(block.map(Expr::Block))
+                }
                 _ => {
                     let (token, span) = self.take_next()?;
                     let err = ParseError::UnexpectedToken {
@@ -635,6 +700,33 @@ mod tests {
 
             fn multi_line(x: i32, y: f64, z: bool) -> void {
                 return
+            }
+        "};
+
+        parse_and_check_by_display(code, expected_display);
+    }
+
+    #[test]
+    fn test_binary_expressions() {
+        let code = indoc! {"
+            fn main() {
+                let a = 1 + 2 + 3 - 4
+                let b = 1 * 2 * 3
+                let c = 1 + 2 * 3
+                let d = (1 + 2) * 3
+                let e = 1 * 2 / 3 % 4 \\ 5
+                let f = (1+2)-(3-4)
+            }
+        "};
+
+        let expected_display = indoc! {"
+            fn main() {
+                let a = (((1 + 2) + 3) - 4)
+                let b = ((1 * 2) * 3)
+                let c = (1 + (2 * 3))
+                let d = ((1 + 2) * 3)
+                let e = ((((1 * 2) / 3) % 4) \\ 5)
+                let f = ((1 + 2) - (3 - 4))
             }
         "};
 

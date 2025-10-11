@@ -1,37 +1,17 @@
-fn empty(){}
-
-fn no_args() {
-    return
-}
-
-fn one_arg(x: i32) {
-    return
-}
-
-fn two_args(x: i32, y: f64) {
-    return
-}
-
-fn voidf() -> void {
-    return
-}
-
-fn intf() -> i32 {
-    return 5
-}
-
-fn floatf() -> f64 {
-    return 5.0
-}
-
-fn boolf() -> bool {
-    return true
-}
-
-fn multi_line(
-    x: i32,
-    y: f64,
-    z: bool
-) -> void {
-    return
+fn main() {
+    let a = 1 + 2 + 3 * 4 + 5 / 6
+    let x = 5
+    let y = (x + 10 / 2) * 3 - 1
+    let z = {
+        let a = x + y
+        let b = {
+            let a = get_value() + 1 * 2
+            return a
+        }
+        return a * b
+    }
+    print({
+        let value = compute_value(x, y, z)
+        return value + 10
+    })
 }

@@ -217,6 +217,26 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
                 Token::SpecialSymbol(SpecialSymbol::Minus),
                 Span::new(i, i + ch.len_utf8()),
             )),
+            '+' => Some((
+                Token::SpecialSymbol(SpecialSymbol::Plus),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+            '*' => Some((
+                Token::SpecialSymbol(SpecialSymbol::Asterisk),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+            '/' => Some((
+                Token::SpecialSymbol(SpecialSymbol::Slash),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+            '%' => Some((
+                Token::SpecialSymbol(SpecialSymbol::Percent),
+                Span::new(i, i + ch.len_utf8()),
+            )),
+            '\\' => Some((
+                Token::SpecialSymbol(SpecialSymbol::Backslash),
+                Span::new(i, i + ch.len_utf8()),
+            )),
             ch if ch.is_alphanumeric() || ch == '_' => self.lex_alphanumeric_from(i, ch),
             ch => Some((
                 Token::Impossible(ch.to_string()),
@@ -321,6 +341,11 @@ mod tests {
                     SpecialSymbol::GreaterThan => assert_eq!(str_by_span, ">"),
                     SpecialSymbol::LessThan => assert_eq!(str_by_span, "<"),
                     SpecialSymbol::Minus => assert_eq!(str_by_span, "-"),
+                    SpecialSymbol::Plus => assert_eq!(str_by_span, "+"),
+                    SpecialSymbol::Asterisk => assert_eq!(str_by_span, "*"),
+                    SpecialSymbol::Slash => assert_eq!(str_by_span, "/"),
+                    SpecialSymbol::Percent => assert_eq!(str_by_span, "%"),
+                    SpecialSymbol::Backslash => assert_eq!(str_by_span, "\\"),
                 },
                 Token::Bracket(bracket) => match bracket {
                     Bracket::RoundOpen => assert_eq!(str_by_span, "("),
@@ -386,5 +411,38 @@ mod tests {
 
         assert_eq!(tokens, expected);
         assert_eq!(token_iter.lines_table_ref().offsets(), &[0, 12, 15, 20]);
+    }
+
+    #[test]
+    fn test_special_symbols_tokenization() {
+        let code = ": = , > < - + * / % \\";
+
+        let mut token_iter = tokenize(code.char_indices());
+        let tokens = token_iter.by_ref().map(|(t, _s)| t).collect::<Vec<_>>();
+
+        let expected = vec![
+            Token::SpecialSymbol(SpecialSymbol::Colon),
+            Token::Whitespace(1),
+            Token::SpecialSymbol(SpecialSymbol::Equals),
+            Token::Whitespace(1),
+            Token::SpecialSymbol(SpecialSymbol::Comma),
+            Token::Whitespace(1),
+            Token::SpecialSymbol(SpecialSymbol::GreaterThan),
+            Token::Whitespace(1),
+            Token::SpecialSymbol(SpecialSymbol::LessThan),
+            Token::Whitespace(1),
+            Token::SpecialSymbol(SpecialSymbol::Minus),
+            Token::Whitespace(1),
+            Token::SpecialSymbol(SpecialSymbol::Plus),
+            Token::Whitespace(1),
+            Token::SpecialSymbol(SpecialSymbol::Asterisk),
+            Token::Whitespace(1),
+            Token::SpecialSymbol(SpecialSymbol::Slash),
+            Token::Whitespace(1),
+            Token::SpecialSymbol(SpecialSymbol::Percent),
+            Token::Whitespace(1),
+            Token::SpecialSymbol(SpecialSymbol::Backslash),
+        ];
+        assert_eq!(tokens, expected);
     }
 }

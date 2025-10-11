@@ -34,6 +34,16 @@ pub enum SpecialSymbol {
     LessThan,
     /// -
     Minus,
+    /// +
+    Plus,
+    /// *
+    Asterisk,
+    /// /
+    Slash,
+    /// %
+    Percent,
+    /// \
+    Backslash,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

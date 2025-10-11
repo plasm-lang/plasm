@@ -47,6 +47,11 @@ impl Display for SpecialSymbol {
             SpecialSymbol::GreaterThan => ">",
             SpecialSymbol::LessThan => "<",
             SpecialSymbol::Minus => "-",
+            SpecialSymbol::Plus => "+",
+            SpecialSymbol::Asterisk => "*",
+            SpecialSymbol::Slash => "/",
+            SpecialSymbol::Percent => "%",
+            SpecialSymbol::Backslash => "\\",
         };
         write!(f, "{s}")
     }

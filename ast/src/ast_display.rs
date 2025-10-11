@@ -1,8 +1,8 @@
 use std::fmt::{Display, Formatter, Result};
 
 use super::ast::{
-    AST, Argument, CallArgument, Expr, Function, FunctionCall, Item, Literal, PrimitiveType,
-    Statement, Type, VariableDeclaration,
+    AST, Argument, BinaryExpr, BinaryOp, CallArgument, Expr, Function, FunctionCall, Item, Literal,
+    PrimitiveType, Statement, Type, VariableDeclaration,
 };
 
 impl Display for AST {
@@ -46,7 +46,7 @@ impl Display for Function {
 
         writeln!(f, " {{")?;
         for stmt in &self.body {
-            write!(f, "    {stmt}")?;
+            write!(f, "{}", Indent::new(&stmt.node))?;
         }
         writeln!(f, "}}")
     }
@@ -99,72 +99,6 @@ impl Display for PrimitiveType {
     }
 }
 
-impl Display for Statement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            Statement::VariableDeclaration(var_decl) => writeln!(f, "{var_decl}"),
-            Statement::Expr(expr) => writeln!(f, "{expr}"),
-            Statement::Return(expr) => {
-                if let Some(expr) = expr {
-                    writeln!(f, "return {expr}")
-                } else {
-                    writeln!(f, "return")
-                }
-            }
-        }
-    }
-}
-
-impl Display for VariableDeclaration {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if let Some(ty) = &self.ty {
-            write!(f, "let {}: {} = {}", self.name, ty, self.value)
-        } else {
-            write!(f, "let {} = {}", self.name, self.value)
-        }
-    }
-}
-
-impl Display for FunctionCall {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}(", self.name)?;
-        for (i, arg) in self.args.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{arg}")?;
-        }
-        write!(f, ")")
-    }
-}
-
-impl Display for CallArgument {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if let Some(name) = &self.name {
-            write!(f, "{}={}", name, self.value)
-        } else {
-            write!(f, "{}", self.value)
-        }
-    }
-}
-
-impl Display for Expr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            Expr::Literal(lit) => write!(f, "{lit}"),
-            Expr::Variable(name) => write!(f, "{name}"),
-            Expr::FunctionCall(func_call) => write!(f, "{func_call}"),
-            Expr::Block(block) => {
-                writeln!(f, "{{")?;
-                for stmt in block {
-                    write!(f, "    {stmt}")?;
-                }
-                writeln!(f, "}}")
-            }
-        }
-    }
-}
-
 impl Display for Literal {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
@@ -173,5 +107,166 @@ impl Display for Literal {
             Literal::Integer(value) => write!(f, "{value}"),
             Literal::Float(spanned) => write!(f, "{spanned}"),
         }
+    }
+}
+
+impl Display for BinaryOp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let op_str = match self {
+            BinaryOp::Add => "+",
+            BinaryOp::Sub => "-",
+            BinaryOp::Mul => "*",
+            BinaryOp::Div => "/",
+            BinaryOp::Mod => "%",
+            BinaryOp::DivInt => "\\",
+            // BinaryOp::And => "&&",
+            // BinaryOp::Or => "||",
+            // BinaryOp::Eq => "==",
+            // BinaryOp::Neq => "!=",
+            // BinaryOp::Lt => "<",
+            // BinaryOp::Gt => ">",
+            // BinaryOp::Leq => "<=",
+            // BinaryOp::Geq => ">=",
+        };
+        write!(f, "{op_str}")
+    }
+}
+
+/// A helper struct to display nodes with indentation
+struct Indent<'a, T> {
+    node: &'a T,
+    indent: usize,
+}
+
+impl<'a, T> Indent<'a, T> {
+    fn new(node: &'a T) -> Self {
+        Self { node, indent: 1 }
+    }
+
+    fn with_indent(self, indent: usize) -> Self {
+        Self { indent, ..self }
+    }
+}
+
+fn write_indent(f: &mut Formatter<'_>, depth: usize) -> Result {
+    for _ in 0..depth {
+        f.write_str("    ")?;
+    }
+    Ok(())
+}
+
+// Nodes with indentation (always have indent)
+
+impl<'a> Display for Indent<'a, Statement> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        use super::ast::Statement::*;
+        match self.node {
+            VariableDeclaration(v) => {
+                write_indent(f, self.indent)?;
+                writeln!(f, "{}", Indent::new(v).with_indent(self.indent))
+            }
+            Expr(e) => {
+                write_indent(f, self.indent)?;
+                write!(f, "{}", Indent::new(e).with_indent(self.indent))?;
+                writeln!(f)
+            }
+            Return(Some(e)) => {
+                write_indent(f, self.indent)?;
+                writeln!(
+                    f,
+                    "return {}",
+                    Indent::new(&e.node).with_indent(self.indent)
+                )
+            }
+            Return(None) => {
+                write_indent(f, self.indent)?;
+                writeln!(f, "return")
+            }
+        }
+    }
+}
+
+impl<'a> Display for Indent<'a, VariableDeclaration> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        if let Some(ty) = &self.node.ty {
+            write!(
+                f,
+                "let {}: {} = {}",
+                self.node.name,
+                ty,
+                Indent::new(&self.node.value.node).with_indent(self.indent)
+            )
+        } else {
+            write!(
+                f,
+                "let {} = {}",
+                self.node.name,
+                Indent::new(&self.node.value.node).with_indent(self.indent)
+            )
+        }
+    }
+}
+
+impl<'a> Display for Indent<'a, FunctionCall> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}(", self.node.name)?;
+        for (i, arg) in self.node.args.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", Indent::new(arg).with_indent(self.indent))?;
+        }
+        write!(f, ")")
+    }
+}
+
+impl<'a> Display for Indent<'a, CallArgument> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        if let Some(name) = &self.node.name {
+            write!(
+                f,
+                "{}={}",
+                name,
+                Indent::new(&self.node.value.node).with_indent(self.indent)
+            )
+        } else {
+            write!(
+                f,
+                "{}",
+                Indent::new(&self.node.value.node).with_indent(self.indent)
+            )
+        }
+    }
+}
+
+impl<'a> Display for Indent<'a, Expr> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        use super::ast::Expr::*;
+        match self.node {
+            Literal(l) => write!(f, "{l}"),
+            Variable(n) => write!(f, "{n}"),
+            FunctionCall(fc) => write!(f, "{}", Indent::new(fc).with_indent(self.indent)),
+            Binary(b) => write!(f, "{}", Indent::new(b).with_indent(self.indent)),
+            Block(stmts) => {
+                writeln!(f, "{{")?;
+                for s in stmts {
+                    write!(f, "{}", Indent::new(&s.node).with_indent(self.indent + 1))?;
+                }
+                write_indent(f, self.indent)?;
+                write!(f, "}}")
+            }
+        }
+    }
+}
+
+impl<'a> Display for Indent<'a, BinaryExpr> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "({} {} {})",
+            Indent::new(&self.node.left.node).with_indent(self.indent),
+            self.node.op,
+            Indent::new(&self.node.right.node).with_indent(self.indent)
+        )
     }
 }

@@ -1,9 +1,9 @@
 use std::str::FromStr;
 
+use serde::Serialize;
+
 use diagnostic::Spanned;
 use tokenizer::Number;
-
-use serde::Serialize;
 
 pub type S<T> = Spanned<T>;
 
@@ -69,6 +69,59 @@ pub enum Expr {
     Variable(String),
     FunctionCall(FunctionCall),
     Block(Block),
+    // Unary,
+    Binary(BinaryExpr),
+}
+
+// pub enum UnaryOp {
+//     Negate, // -a
+//     Not,    // !a
+//     BitwiseNot, // ~a
+// }
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct BinaryExpr {
+    pub op: BinaryOp,
+    pub left: Box<S<Expr>>,
+    pub right: Box<S<Expr>>,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub enum BinaryOp {
+    /// a + b
+    Add,
+    /// a - b
+    Sub,
+    /// a * b
+    Mul,
+    /// a / b
+    Div,
+    /// a % b
+    Mod,
+    /// a \ b (Integer Division)
+    DivInt,
+    // /// a ^ b (Exponentiation)
+    // Pow, ??? vs xor
+
+    // /// a & b (Bitwise AND)
+    // BitAnd,
+    // /// a | b (Bitwise OR)
+    // BitOr,
+    // /// a ^ b (Bitwise XOR)
+    // BitXor,
+    // /// a << b (Shift Left)
+    // Shl,
+    // /// a >> b (Shift Right)
+    // Shr,
+
+    // And, // a && b
+    // Or,  // a || b
+    // Eq,  // a == b
+    // Neq, // a != b
+    // Lt,  // a < b
+    // Gt,  // a > b
+    // Leq, // a <= b
+    // Geq, // a >= b
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]

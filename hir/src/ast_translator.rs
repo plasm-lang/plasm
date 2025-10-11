@@ -306,6 +306,7 @@ impl ASTTranslator {
                 };
                 expr_arena.add(S::new(hir_expr, expr.span));
             }
+            _ => todo!(),
         }
         (expr_id, expr_arena)
     }
