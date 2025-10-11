@@ -56,6 +56,7 @@ impl Display for SpecialSymbol {
             SpecialSymbol::Ampersand => "&",
             SpecialSymbol::Pipe => "|",
             SpecialSymbol::Caret => "^",
+            SpecialSymbol::Tilde => "~",
 
             SpecialSymbol::DoubleAsterisk => "**",
             SpecialSymbol::DoubleEquals => "==",

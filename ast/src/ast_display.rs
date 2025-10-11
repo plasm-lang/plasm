@@ -2,7 +2,7 @@ use std::fmt::{Display, Formatter, Result};
 
 use super::ast::{
     AST, Argument, BinaryExpr, BinaryOp, CallArgument, Expr, Function, FunctionCall, Item, Literal,
-    PrimitiveType, Statement, Type, VariableDeclaration,
+    PrimitiveType, Statement, Type, VariableDeclaration, UnaryExpr, UnaryOp
 };
 
 impl Display for AST {
@@ -254,6 +254,7 @@ impl<'a> Display for Indent<'a, Expr> {
             Literal(l) => write!(f, "{l}"),
             Variable(n) => write!(f, "{n}"),
             FunctionCall(fc) => write!(f, "{}", Indent::new(fc).with_indent(self.indent)),
+            Unary(u) => write!(f, "{}", Indent::new(u).with_indent(self.indent)),
             Binary(b) => write!(f, "{}", Indent::new(b).with_indent(self.indent)),
             Block(stmts) => {
                 if stmts.is_empty() {
@@ -267,6 +268,17 @@ impl<'a> Display for Indent<'a, Expr> {
                 write!(f, "}}")
             }
         }
+    }
+}
+
+impl<'a> Display for Indent<'a, UnaryExpr> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let op_str = match self.node.op {
+            UnaryOp::Negate => "-",
+            UnaryOp::Not => "!",
+            UnaryOp::BitNot => "~",
+        };
+        write!(f, "{}{}", op_str, Indent::new(&self.node.expr.node).with_indent(self.indent))
     }
 }
 

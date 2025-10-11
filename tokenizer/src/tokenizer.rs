@@ -323,6 +323,10 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
                 Token::SpecialSymbol(SpecialSymbol::Caret),
                 Span::new(i, i + ch.len_utf8()),
             )),
+            '~' => Some((
+                Token::SpecialSymbol(SpecialSymbol::Tilde),
+                Span::new(i, i + ch.len_utf8()),
+            )),
 
             ch if ch.is_alphanumeric() || ch == '_' => self.lex_alphanumeric_from(i, ch),
             ch => Some((
@@ -446,6 +450,7 @@ mod tests {
                     SpecialSymbol::LessThanEquals => assert_eq!(str_by_span, "<="),
                     SpecialSymbol::DoubleLessThan => assert_eq!(str_by_span, "<<"),
                     SpecialSymbol::DoubleGreaterThan => assert_eq!(str_by_span, ">>"),
+                    SpecialSymbol::Tilde => assert_eq!(str_by_span, "~"),
                 },
                 Token::Bracket(bracket) => match bracket {
                     Bracket::RoundOpen => assert_eq!(str_by_span, "("),

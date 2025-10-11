@@ -6,7 +6,7 @@ use tokenizer::{Bracket, Keyword, Number, SpecialSymbol, Token};
 
 use super::ast::{
     AST, Argument, BinaryExpr, BinaryOp, Block, CallArgument, Expr, Function, FunctionCall,
-    Literal, Statement, Type, VariableDeclaration,
+    Literal, Statement, Type, VariableDeclaration, UnaryExpr, UnaryOp
 };
 use super::error::ParseError;
 
@@ -332,7 +332,10 @@ where
                             Token::Identifier(_)
                             | Token::Number(_)
                             | Token::Bracket(Bracket::RoundOpen)
-                            | Token::Bracket(Bracket::CurlyOpen) => {
+                            | Token::Bracket(Bracket::CurlyOpen)
+                            | Token::SpecialSymbol(SpecialSymbol::Minus)
+                            | Token::SpecialSymbol(SpecialSymbol::Exclamation)
+                            | Token::SpecialSymbol(SpecialSymbol::Tilde) => {
                                 let expr = self.parse_expression(0)?;
                                 let end_span = expr.span;
                                 Some(Spanned::new(
@@ -596,6 +599,45 @@ where
                     let block = self.parse_block()?;
                     Some(block.map(Expr::Block))
                 }
+
+                // Unary expressions
+
+                Token::SpecialSymbol(SpecialSymbol::Minus) => {
+                    self.take_next(); // consume '-'
+                    let expr = self.parse_atomic_expression()?;
+                    let span = expr.span;
+                    Some(Spanned::new(
+                        Expr::Unary(UnaryExpr {
+                            op: UnaryOp::Negate,
+                            expr: Box::new(expr),
+                        }),
+                        span,
+                    ))
+                }
+                Token::SpecialSymbol(SpecialSymbol::Exclamation) => {
+                    self.take_next(); // consume '!'
+                    let expr = self.parse_atomic_expression()?;
+                    let span = expr.span;
+                    Some(Spanned::new(
+                        Expr::Unary(UnaryExpr {
+                            op: UnaryOp::Not,
+                            expr: Box::new(expr),
+                        }),
+                        span,
+                    ))
+                }
+                Token::SpecialSymbol(SpecialSymbol::Tilde) => {
+                    self.take_next(); // consume '~'
+                    let expr = self.parse_atomic_expression()?;
+                    let span = expr.span;
+                    Some(Spanned::new(
+                        Expr::Unary(UnaryExpr {
+                            op: UnaryOp::BitNot,
+                            expr: Box::new(expr),
+                        }),
+                        span,
+                    ))
+                }
                 _ => {
                     let (token, span) = self.take_next()?;
                     let err = ParseError::UnexpectedToken {
@@ -805,6 +847,47 @@ mod tests {
             fn main() {
                 let a = ((true && false) || true)
                 let b = ((((1 == 2) && (3 != 4)) || ((5 < 6) && (7 <= 8))) || ((9 > 10) && (11 >= 12)))
+            }
+        "};
+
+        parse_and_check_by_display(code, expected_display);
+    }
+
+    #[test]
+    fn test_unary_expressions() {
+        let code = indoc! {"
+            fn main() {
+                let a = !true
+                let b = ~1
+                let c = !!false
+                let d = ~~2
+                let e = !~!~3
+                let f = ~!~!4
+                let g = -5
+                let h = --6
+                let i = - -7
+                let j = -(-8)
+                let k = !-!9
+                let l = !{return !true}
+            }
+        "};
+
+        let expected_display = indoc! {"
+            fn main() {
+                let a = !true
+                let b = ~1
+                let c = !!false
+                let d = ~~2
+                let e = !~!~3
+                let f = ~!~!4
+                let g = -5
+                let h = --6
+                let i = --7
+                let j = --8
+                let k = !-!9
+                let l = !{
+                    return !true
+                }
             }
         "};
 

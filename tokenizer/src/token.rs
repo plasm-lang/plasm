@@ -54,6 +54,8 @@ pub enum SpecialSymbol {
     Pipe,
     /// ^
     Caret,
+    /// ~
+    Tilde,
 
     // 2-character symbols
 

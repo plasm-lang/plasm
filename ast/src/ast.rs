@@ -69,15 +69,22 @@ pub enum Expr {
     Variable(String),
     FunctionCall(FunctionCall),
     Block(Block),
-    // Unary,
+    Unary(UnaryExpr),
     Binary(BinaryExpr),
 }
 
-// pub enum UnaryOp {
-//     Negate, // -a
-//     Not,    // !a
-//     BitwiseNot, // ~a
-// }
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct UnaryExpr {
+    pub op: UnaryOp,
+    pub expr: Box<S<Expr>>,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub enum UnaryOp {
+    Negate, // -a
+    Not,    // !a
+    BitNot, // ~a
+}
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct BinaryExpr {
