@@ -1,4 +1,26 @@
-# Sky programming language
+# The Plasm compiler
+
+Experimental, compiled, strongly-typed, functional, system programming language that inherits memory regions ideas, focused on dev experience, extensibility and reliability.
+
+Mainly inspired by [Rust](https://github.com/rust-lang/rust)'s type system, [Verona](https://github.com/microsoft/verona)'s and [Pony](https://github.com/ponylang/ponyc)'s memory managment systems, [Python](https://github.com/python/cpython)'s simplicity, [Koka](https://github.com/koka-lang/koka)'s effect system, and [Zig](https://github.com/ziglang/zig)'s comptime.
+
+## Early stage roadmap (MVP)
+
+This is the roadmap for implementing a minimal working framework that will serve as the base for the proposed innovative features. Basically, this is the way to create a "Rustic C" compiler.
+
+- [x] Lexer & tokens stream
+- [x] AST definition
+- [x] AST parser
+- [x] HIR/OptHIR/THIR definitions
+- [x] AST to OptHIR translator
+- [x] OptHIR to THIR translator (type inference)
+- [ ] MIR definition
+- [ ] THIR to MIR lowering
+- [ ] MIR to LLVM-IR lowering
+- [ ] LLVM-IR to object file compilation
+- [ ] object files linking
+
+## Quick Start
 
 For cli help reference:
 
@@ -6,10 +28,10 @@ For cli help reference:
 cargo run --help
 ```
 
-For example, following command will parse `test.sky` file, stop on AST stage and emit the result in text format:
+For example, following command will parse `test.sm` file, analyse, stop on HIR stage and emit the result in a text format:
 
 ```shell
-cargo run emit test.sky --stage ast --format text
+cargo run emit test.sm --stage hir --format text
 ```
 
 ## The compilation flow

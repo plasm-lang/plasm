@@ -10,11 +10,11 @@ mod theme;
 
 use emit::emit;
 
-const CONFIG_FILE_NAME: &str = "sky.toml";
+const CONFIG_FILE_NAME: &str = "Plasm.toml";
 
-/// Sky programming language compiler
+/// Plasm programming language compiler
 #[derive(Parser, Debug)]
-#[command(name = "sky", version, about)]
+#[command(name = "plasm", version, about)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
