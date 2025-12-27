@@ -561,7 +561,7 @@ where
                         unreachable!(); // Unreachable: we peeked and saw Identifier
                     };
                     match id.as_str() {
-                        "true" => {
+                        "true" => {  // TODO: it's incorrect to be identifier, must be a literal
                             return Some(Spanned::new(Expr::Literal(Literal::Bool(true)), span));
                         }
                         "false" => {
