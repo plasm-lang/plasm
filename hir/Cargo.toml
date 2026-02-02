@@ -8,6 +8,7 @@ edition = "2024"
 diagnostic = { path = "../diagnostic" }
 tokenizer = { path = "../tokenizer" }
 ast = { path = "../ast" }
+utils = { path = "../utils" }
 serde.workspace = true
 bimap.workspace = true
 

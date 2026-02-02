@@ -164,7 +164,6 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
             }
 
             // 2-character symbols
-
             '*' if self.chars.peek().map(|(_, ch)| ch) == Some(&'*') => {
                 let (_, ch2) = self.chars.next()?; // consume the second '*'
                 Some((
@@ -238,7 +237,6 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
             ch if ch.is_ascii_digit() => self.lex_number_from(i, ch),
 
             // 1-character symbols
-
             '{' => Some((
                 Token::Bracket(Bracket::CurlyOpen),
                 Span::new(i, i + ch.len_utf8()),

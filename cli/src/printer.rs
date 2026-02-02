@@ -9,9 +9,9 @@ use anstyle::Reset;
 use super::theme::Theme;
 use crate::EnableAsni;
 
-use ast::ast::PrimitiveType;
 use diagnostic::{ErrorMessage, ErrorType};
 use tokenizer::{Comment, Token, tokenize};
+use utils::primitive_types::PrimitiveType;
 
 const LINES_BEFORE: usize = 5;
 

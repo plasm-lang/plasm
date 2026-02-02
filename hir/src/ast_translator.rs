@@ -1,13 +1,14 @@
 use bimap::BiHashMap;
 
 use diagnostic::{MaybeSpanned, Spanned};
+use utils::ids::{ExprId, FuncId, LocalId};
+use utils::primitive_types::PrimitiveType;
 
 use super::error::Error;
 use super::hir::{
     Argument, Block, Expr, ExprArena, ExprKind, Function, FunctionCall, FunctionSignature,
     HIRLocal, HIRType, Item, OptHIR, Statement, THIR, VariableDeclaration,
 };
-use super::ids::{ExprId, FuncId, LocalId};
 use super::type_annotator::opt_hir_to_t_hir;
 
 /// For brevity
@@ -116,9 +117,7 @@ impl ASTTranslator {
         let ret_ty = func
             .return_type
             .map(|ty| ty.map(|t| self.translate_type(t)).into_maybe())
-            .unwrap_or(MaybeS::new(HIRType::Primitive(
-                ast::ast::PrimitiveType::Void,
-            )));
+            .unwrap_or(MaybeS::new(HIRType::Primitive(PrimitiveType::Void)));
 
         let mut locals: Vec<HIRLocal<OT>> = Vec::new();
 
@@ -306,6 +305,9 @@ impl ASTTranslator {
                 };
                 expr_arena.add(S::new(hir_expr, expr.span));
             }
+            // ast::Expr::Binary(expr) => {
+
+            // }
             _ => todo!(),
         }
         (expr_id, expr_arena)

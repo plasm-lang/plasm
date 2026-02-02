@@ -1,10 +1,12 @@
-# The Plasm compiler
+# The Plasm Compiler
 
 Experimental, compiled, strongly-typed, functional, system programming language that inherits memory regions ideas, focused on dev experience, extensibility and reliability.
 
 Mainly inspired by [Rust](https://github.com/rust-lang/rust)'s type system, [Verona](https://github.com/microsoft/verona)'s and [Pony](https://github.com/ponylang/ponyc)'s memory managment systems, [Python](https://github.com/python/cpython)'s simplicity, [Koka](https://github.com/koka-lang/koka)'s effect system, and [Zig](https://github.com/ziglang/zig)'s comptime.
 
-## Early stage roadmap (MVP)
+[![Discord](https://img.shields.io/badge/Discord-Server-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/FwBDKTAjnw)
+
+## Early Stage Roadmap (MVP)
 
 This is the roadmap for implementing a minimal working framework that will serve as the base for the proposed innovative features. Basically, this is the way to create a "Rustic C" compiler.
 
@@ -14,7 +16,7 @@ This is the roadmap for implementing a minimal working framework that will serve
 - [x] HIR/OptHIR/THIR definitions
 - [x] AST to OptHIR translator
 - [x] OptHIR to THIR translator (type inference)
-- [ ] MIR definition
+- [x] MIR definition
 - [ ] THIR to MIR lowering
 - [ ] MIR to LLVM-IR lowering
 - [ ] LLVM-IR to object file compilation
@@ -34,7 +36,7 @@ For example, following command will parse `test.sm` file, analyse, stop on HIR s
 cargo run emit test.sm --stage hir --format text
 ```
 
-## The compilation flow
+## The Compilation Flow
 
 ```
                                  HIR                               Codegen (LLVM)
@@ -63,7 +65,7 @@ Exe         Executable file
 CLI         Command Line Interface
 ```
 
-## Sub-modules description
+## Sub-Modules Description
 
 - `ast/` - Abstract Syntax Tree + Parser
 - `cli/` - Command Line Interface wrapper
@@ -75,13 +77,6 @@ CLI         Command Line Interface
 - `orchestrator/` - Compilation flow management utilities (Parallel compilation, linkers controller, configuration reader)
 - `tokenizer/` - Tokens description + lexer + from bytes to tokens stream
 
-Internal dependencies:
+---
 
-```
-orchestrator    diagnostic -> tokenizer -> ast -> hir -> mir -> codegen
-      ^            | |            |        ^ |    ^ |     |        |
-      |            | |            |        | |    | |     |        |
-      |            |_|____________|________|_|____| |     |        |
-      |              |            |          |      |     |        |
-      |______________|____________|__________|______|_____|________|
-```
+Under [Apache License 2.0](https://github.com/plasm-lang/plasm/blob/main/LICENSE) — forever free to use for any purpose.

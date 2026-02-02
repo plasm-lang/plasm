@@ -1,7 +1,8 @@
 use diagnostic::{MaybeSpanned, Spanned};
+use utils::ids::TypeVarId;
+use utils::primitive_types::PrimitiveType;
 
 use crate::hir::HIRType;
-use crate::ids::TypeVarId;
 
 // For brevity
 type S<T> = Spanned<T>;
@@ -26,16 +27,16 @@ pub enum TyClass {
 impl TyClass {
     pub fn fallback_type(&self) -> HIRType {
         match self {
-            TyClass::Void => HIRType::Primitive(ast::PrimitiveType::Void),
-            TyClass::Int => HIRType::Primitive(ast::PrimitiveType::I32),
-            TyClass::Float => HIRType::Primitive(ast::PrimitiveType::F32),
-            TyClass::Bool => HIRType::Primitive(ast::PrimitiveType::Bool),
-            // TyClass::String => HIRType::Primitive(ast::PrimitiveType::String),
+            TyClass::Void => HIRType::Primitive(PrimitiveType::Void),
+            TyClass::Int => HIRType::Primitive(PrimitiveType::I32),
+            TyClass::Float => HIRType::Primitive(PrimitiveType::F32),
+            TyClass::Bool => HIRType::Primitive(PrimitiveType::Bool),
+            // TyClass::String => HIRType::Primitive(PrimitiveType::String),
         }
     }
 
     pub fn from_type(ty: &HIRType) -> Option<Self> {
-        use ast::PrimitiveType::*;
+        use PrimitiveType::*;
         match ty {
             HIRType::Primitive(p) => match p {
                 Void => Some(TyClass::Void),

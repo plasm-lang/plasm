@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
 use diagnostic::{Span, Spanned};
+use utils::ids::{ExprId, FuncId, LocalId, TypeVarId};
 
 use crate::error::Error;
 use crate::hir::{
     Block, Expr, ExprArena, ExprKind, Function, FunctionSignature, HIRLocal, HIRType, Statement,
 };
-use crate::ids::{ExprId, FuncId, LocalId, TypeVarId};
 
 use super::solver::Solver;
 use super::type_var::{Constraint, TyClass, TypeVar};
@@ -255,9 +255,10 @@ impl<'a> FunctionCtx<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ast::ast::{Literal, PrimitiveType};
+    use ast::ast::Literal;
     use diagnostic::{Span, Spanned};
     use std::collections::HashMap;
+    use utils::primitive_types::PrimitiveType;
 
     // ---------- helpers ----------
 
@@ -338,7 +339,7 @@ mod tests {
             .into_iter()
             .enumerate()
             .map(|(i, (n, t))| {
-                let lid = LocalId::new(std::num::NonZeroU32::new((i + 1) as u32).unwrap());
+                let lid = LocalId::new(std::num::NonZeroUsize::new(i + 1).unwrap());
                 s(crate::hir::Argument {
                     name: s(n.to_string()),
                     local_id: lid,
@@ -451,9 +452,9 @@ mod tests {
         let fid = FuncId::one();
         let sig = signature(fid, "main", vec![], void_ty());
         let lid_a = LocalId::one();
-        let lid_b = LocalId::new(std::num::NonZeroU32::new(2).unwrap());
+        let lid_b = LocalId::new(std::num::NonZeroUsize::new(2).unwrap());
         let eid_lit = ExprId::one();
-        let eid_use_a = ExprId::new(std::num::NonZeroU32::new(2).unwrap());
+        let eid_use_a = ExprId::new(std::num::NonZeroUsize::new(2).unwrap());
 
         let locals = vec![
             local(lid_a, "a", Some(s(i32_ty()))),
@@ -497,7 +498,7 @@ mod tests {
         let sig = signature(fid, "main", vec![], i32_ty());
         let lid_x = LocalId::one();
         let eid_lit = ExprId::one();
-        let eid_use_x = ExprId::new(std::num::NonZeroU32::new(2).unwrap());
+        let eid_use_x = ExprId::new(std::num::NonZeroUsize::new(2).unwrap());
 
         let locals = vec![local(lid_x, "x", None)];
         let exprs = vec![
@@ -532,13 +533,13 @@ mod tests {
         // print(x: i32) -> void; main { let a: i32 = 5; print(a) }
         let fid_print = FuncId::one();
         let sig_print = signature(fid_print, "print", vec![("x", i32_ty())], void_ty());
-        let fid_main = FuncId::new(std::num::NonZeroU32::new(2).unwrap());
+        let fid_main = FuncId::new(std::num::NonZeroUsize::new(2).unwrap());
         let sig_main = signature(fid_main, "main", vec![], void_ty());
 
         let lid_a = LocalId::one();
         let eid_lit = ExprId::one();
-        let eid_use_a = ExprId::new(std::num::NonZeroU32::new(2).unwrap());
-        let eid_call = ExprId::new(std::num::NonZeroU32::new(3).unwrap());
+        let eid_use_a = ExprId::new(std::num::NonZeroUsize::new(2).unwrap());
+        let eid_call = ExprId::new(std::num::NonZeroUsize::new(3).unwrap());
 
         let locals = vec![local(lid_a, "a", Some(s(i32_ty())))];
         let exprs = vec![
@@ -578,12 +579,12 @@ mod tests {
         // print(x: i32) -> void; main { print(1, 2) }
         let fid_print = FuncId::one();
         let sig_print = signature(fid_print, "print", vec![("x", i32_ty())], void_ty());
-        let fid_main = FuncId::new(std::num::NonZeroU32::new(2).unwrap());
+        let fid_main = FuncId::new(std::num::NonZeroUsize::new(2).unwrap());
         let sig_main = signature(fid_main, "main", vec![], void_ty());
 
         let eid_lit1 = ExprId::one();
-        let eid_lit2 = ExprId::new(std::num::NonZeroU32::new(2).unwrap());
-        let eid_call = ExprId::new(std::num::NonZeroU32::new(3).unwrap());
+        let eid_lit2 = ExprId::new(std::num::NonZeroUsize::new(2).unwrap());
+        let eid_call = ExprId::new(std::num::NonZeroUsize::new(3).unwrap());
 
         let locals: Vec<HIRLocal<OT>> = vec![];
         let exprs = vec![
@@ -619,11 +620,11 @@ mod tests {
         let sig = signature(fid, "main", vec![], void_ty());
 
         let lid_y = LocalId::one();
-        let lid_t = LocalId::new(std::num::NonZeroU32::new(2).unwrap());
+        let lid_t = LocalId::new(std::num::NonZeroUsize::new(2).unwrap());
 
         let eid_lit = ExprId::one();
-        let eid_use_t = ExprId::new(std::num::NonZeroU32::new(2).unwrap());
-        let eid_block = ExprId::new(std::num::NonZeroU32::new(3).unwrap());
+        let eid_use_t = ExprId::new(std::num::NonZeroUsize::new(2).unwrap());
+        let eid_block = ExprId::new(std::num::NonZeroUsize::new(3).unwrap());
 
         // inner block
         let inner_locals = vec![local(lid_t, "t", Some(s(u8_ty())))];

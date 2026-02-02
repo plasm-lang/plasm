@@ -1,10 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use diagnostic::{MaybeSpanned, Spanned};
+use utils::ids::{ExprId, LocalId, TypeVarId};
 
 use crate::error::Error;
 use crate::hir::HIRType;
-use crate::ids::{ExprId, LocalId, TypeVarId};
 
 use super::type_var::{Constraint, TyClass, TypeVar};
 
@@ -204,7 +204,7 @@ impl Solver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ast::ast::PrimitiveType;
+    use utils::primitive_types::PrimitiveType;
 
     // ---------- helpers ----------
 
@@ -227,16 +227,16 @@ mod tests {
         HIRType::Primitive(PrimitiveType::F32)
     }
 
-    fn expr_id(n: u32) -> ExprId {
-        ExprId::new(std::num::NonZeroU32::new(n).unwrap())
+    fn expr_id(n: usize) -> ExprId {
+        ExprId::new(std::num::NonZeroUsize::new(n).unwrap())
     }
 
-    fn local_id(n: u32) -> LocalId {
-        LocalId::new(std::num::NonZeroU32::new(n).unwrap())
+    fn local_id(n: usize) -> LocalId {
+        LocalId::new(std::num::NonZeroUsize::new(n).unwrap())
     }
 
-    fn tvar_id(n: u32) -> TypeVarId {
-        TypeVarId::new(std::num::NonZeroU32::new(n).unwrap())
+    fn tvar_id(n: usize) -> TypeVarId {
+        TypeVarId::new(std::num::NonZeroUsize::new(n).unwrap())
     }
 
     // ---------- tests ----------

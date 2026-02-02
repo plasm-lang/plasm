@@ -3,10 +3,11 @@ use std::iter::{Filter, Peekable};
 
 use diagnostic::{Span, Spanned};
 use tokenizer::{Bracket, Keyword, Number, SpecialSymbol, Token};
+use utils::binop::BinaryOp;
 
 use super::ast::{
-    AST, Argument, BinaryExpr, BinaryOp, Block, CallArgument, Expr, Function, FunctionCall,
-    Literal, Statement, Type, VariableDeclaration, UnaryExpr, UnaryOp
+    AST, Argument, BinaryExpr, Block, CallArgument, Expr, Function, FunctionCall, Literal,
+    Statement, Type, UnaryExpr, UnaryOp, VariableDeclaration,
 };
 use super::error::ParseError;
 
@@ -561,7 +562,8 @@ where
                         unreachable!(); // Unreachable: we peeked and saw Identifier
                     };
                     match id.as_str() {
-                        "true" => {  // TODO: it's incorrect to be identifier, must be a literal
+                        "true" => {
+                            // TODO: it's incorrect to be identifier, must be a literal
                             return Some(Spanned::new(Expr::Literal(Literal::Bool(true)), span));
                         }
                         "false" => {
@@ -601,7 +603,6 @@ where
                 }
 
                 // Unary expressions
-
                 Token::SpecialSymbol(SpecialSymbol::Minus) => {
                     self.take_next(); // consume '-'
                     let expr = self.parse_atomic_expression()?;

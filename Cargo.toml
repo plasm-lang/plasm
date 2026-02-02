@@ -8,6 +8,7 @@ members = [
     "codegen",
     "orchestrator",
     "cli",
+    "utils",
 ]
 
 [workspace.dependencies]

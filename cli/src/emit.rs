@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use ast::parse;
 use diagnostic::{ErrorMessage, ErrorType, LinesTable, Spanned};
 use hir::ast_to_hir;
+use mir::hir_to_mir;
 use tokenizer::{CharIndicesIter, tokenize};
 
 use super::printer::Printer;
@@ -24,70 +25,72 @@ pub fn emit(path: PathBuf, ty: PathType, format: Format, stage: Stage, ansi: Ena
             let char_iter = CharIndicesIter::new(reader);
             let mut token_iter = tokenize(char_iter);
 
-            match stage {
-                Stage::AST => {
-                    let (ast, errors) = parse(&mut token_iter);
-                    if !errors.is_empty() {
-                        print_errors(
-                            errors,
-                            path,
-                            token_iter.lines_table_ref().clone(),
-                            format,
-                            &mut printer,
-                        );
-                        return;
-                    }
+            let (ast, errors) = parse(&mut token_iter);
 
-                    match format {
-                        Format::Json => {
-                            let json = serde_json::to_string_pretty(&ast).unwrap();
-                            println!("{json}");
-                        }
-                        Format::Text => {
-                            println!("{ast}");
-                        }
-                    }
-                }
-                Stage::HIR => {
-                    let (ast, parsing_errors) = parse(&mut token_iter);
-                    if !parsing_errors.is_empty() {
-                        print_errors(
-                            parsing_errors,
-                            path.clone(),
-                            token_iter.lines_table_ref().clone(),
-                            format,
-                            &mut printer,
-                        );
-                        return;
-                    }
-
-                    let (hir, translation_errors) = ast_to_hir(ast);
-                    if !translation_errors.is_empty() {
-                        print_errors(
-                            translation_errors,
-                            path,
-                            token_iter.lines_table_ref().clone(),
-                            format,
-                            &mut printer,
-                        );
-                        return;
-                    }
-
-                    match format {
-                        Format::Json => {
-                            let json = serde_json::to_string_pretty(&hir).unwrap();
-                            println!("{json}");
-                        }
-                        Format::Text => {
-                            println!("{hir}");
-                        }
-                    }
-                }
-                _ => unimplemented!(),
+            if stage == Stage::AST {
+                print_results(
+                    &ast,
+                    errors,
+                    path,
+                    token_iter.lines_table_ref().clone(),
+                    format,
+                    &mut printer,
+                );
+                return;
             }
+
+            let (hir, translation_errors) = ast_to_hir(ast);
+
+            if stage == Stage::HIR {
+                print_results(
+                    &hir,
+                    translation_errors,
+                    path,
+                    token_iter.lines_table_ref().clone(),
+                    format,
+                    &mut printer,
+                );
+                return;
+            }
+
+            let mir = hir_to_mir(hir);
+
+            if stage == Stage::MIR {
+                print_data(&mir, format);
+                return;
+            }
+
+            unimplemented!()
         }
         _ => unimplemented!(),
     }
+}
+
+fn print_results<T, E>(
+    data: &T,
+    errors: Vec<Spanned<E>>,
+    path: PathBuf,
+    lines_table: LinesTable,
+    format: Format,
+    printer: &mut Printer,
+) where
+    T: ?Sized + std::fmt::Display + serde::Serialize,
+    E: std::error::Error + std::fmt::Display + ErrorType,
+{
+    if !errors.is_empty() {
+        print_errors(errors, path, lines_table, format, printer);
+        return;
+    }
+
+    print_data(data, format);
+}
+
+fn print_data<T: ?Sized + std::fmt::Display + serde::Serialize>(data: &T, fmt: Format) {
+    let string = match fmt {
+        Format::Json => serde_json::to_string_pretty(data).unwrap(),
+        Format::Text => data.to_string(),
+    };
+    println!("{}", string);
 }
 
 fn print_errors<E>(

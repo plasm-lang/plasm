@@ -1,18 +1,20 @@
 use serde::Serialize;
 
-use ast::ast::{Literal, PrimitiveType};
+use ast::ast::Literal;
 use diagnostic::{MaybeSpanned, Spanned};
-
-use super::ids::{ExprId, FuncId, LocalId};
+use utils::ids::{ExprId, FuncId, LocalId};
+use utils::primitive_types::PrimitiveType;
 
 type S<T> = Spanned<T>;
 type MaybeS<T> = MaybeSpanned<T>;
 
 /// Optionally typed HIR
-pub type OptHIR = HIR<Option<S<HIRType>>>;
+pub type OptTyped = Option<S<HIRType>>;
+pub type OptHIR = HIR<OptTyped>;
 
 /// Typed HIR
-pub type THIR = HIR<MaybeS<HIRType>>;
+pub type Typed = MaybeS<HIRType>;
+pub type THIR = HIR<Typed>;
 
 /// High-level Intermediate Representation
 #[derive(Debug, Default, Serialize)]
@@ -120,6 +122,7 @@ pub enum ExprKind<T> {
     Local(LocalId),
     FunctionCall(FunctionCall),
     Block(Block<T>),
+    // Binary(Binary<T>),
 }
 
 #[derive(Debug, Serialize)]
@@ -127,3 +130,8 @@ pub struct FunctionCall {
     pub func_id: FuncId,
     pub args: Vec<ExprId>,
 }
+
+// #[derive(Debug, Serialize)]
+// pub struct Binary<T> {
+
+// }

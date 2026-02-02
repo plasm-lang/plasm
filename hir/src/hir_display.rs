@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use diagnostic::{MaybeSpanned, Spanned};
+use utils::ids::{ExprId, FuncId, LocalId};
 
 use super::hir::{
     Block, Expr, ExprArena, ExprKind, Function, FunctionCall, FunctionSignature, HIR, HIRType,
     Item, Statement,
 };
-use super::ids::{ExprId, FuncId, LocalId};
 
 /// Render type for THIR/OptHIR.
 pub trait RenderType {

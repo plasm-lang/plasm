@@ -48,7 +48,7 @@ struct EmitArgs {
     ansi: EnableAsni,
 }
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Debug, Clone, ValueEnum, PartialEq, Eq)]
 enum Stage {
     AST,
     HIR,

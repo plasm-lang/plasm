@@ -1,114 +1,115 @@
-struct MIR;
+use serde::Serialize;
 
-pub struct Module {
-    globals: Vec<Global>,
-    functions: Vec<Function>,
+use utils::binop::BinaryOp;
+use utils::ids::{TypeId, ValueId};
+
+use super::types::{MIRType, TypeArena};
+
+#[derive(Debug, Default, Serialize)]
+pub struct MIR {
+    pub modules: Vec<Module>,
 }
 
-enum Function {
+#[derive(Debug, Default, Serialize)]
+pub struct Module {
+    pub globals: Vec<Global>,
+    pub functions: Vec<Function>,
+}
+
+#[derive(Debug, Serialize)]
+pub enum Function {
     External(ExternalFunction),
     Internal(InternalFunction),
 }
 
-struct ExternalFunction {
-    name: String,
+#[derive(Debug, Serialize)]
+pub struct ExternalFunction {
+    pub name: String,
 }
 
-struct InternalFunction {
-    name: String,
-    body: Vec<BasicBlock>,
-    locals: Vec<Local>,
+/// Consider move alloca rvalue to an independent stack slots vec,
+/// because allocas should always be called at the beginning of a function
+/// and never in loops or conditionals
+#[derive(Debug, Serialize)]
+pub struct InternalFunction {
+    pub name: String,
+    pub blocks: Vec<BasicBlock>,
 }
 
-struct Global {
-    name: String,
-    raw_data: Vec<u8>,
+#[derive(Debug, Serialize)]
+pub struct Global {
+    pub name: String,
+    pub type_id: TypeId,
+    pub raw_data: Vec<u8>,
 }
 
-struct Local {
-    name: String,
+pub type BlockLabel = String;
+
+#[derive(Debug, Serialize)]
+pub struct BasicBlock {
+    pub label: BlockLabel,
+    pub phis: Vec<Phi>,
+    pub instructions: Vec<Instruction>,
+    pub terminator: Terminator,
 }
 
-type BlockLabel = String;
-
-struct BasicBlock {
-    label: BlockLabel,
-    instructions: Vec<Instruction>,
-    terminator: Terminator,
+#[derive(Debug, Serialize)]
+pub struct Phi {
+    pub result: ValueId,
+    pub incoming: Vec<(Operand, BlockLabel)>,
 }
 
-enum Terminator {
+#[derive(Debug, Serialize)]
+pub enum Terminator {
     GoTo(BlockLabel),
-    Return,
-    Call(Call),
+    Return(Operand),
+    Branch {
+        cond: Operand,
+        then_block: BlockLabel,
+        else_block: BlockLabel,
+    },
+    Switch {
+        discr: Operand,
+        targets: Vec<(u128, BlockLabel)>,
+        fallback: BlockLabel,
+    },
     Unreachable,
 }
 
-struct Call {
-    function: usize,
-    args: Vec<Operand>,
-    destination: Place,
-    target: BlockLabel,
-}
-
-enum Instruction {
-    Assign(Place, RValue),
-    // Call(Place, String, Vec<Place>),
+#[derive(Debug, Serialize)]
+pub enum Instruction {
+    Assign(ValueId, RValue),
+    Store { value: Operand, ptr: Operand },
 }
 
 /// Operand represents a atomic value used in expressions
-enum Operand {
-    Load(Place), // Local variable
+#[derive(Debug, Serialize)]
+pub enum Operand {
+    Use(ValueId), // Local variable
     Constant(Constant),
 }
 
-/// L-Value, i.e., a memory location
-struct Place {
-    base: PlaceBase,
-    projection: Vec<ProjectionElem>,
-}
-
-pub enum PlaceBase {
-    Local(usize),
-    Global(usize),
-}
-
-pub enum ProjectionElem {
+#[derive(Debug, Serialize)]
+pub enum RValue {
+    /// Allocate stack slot
+    Alloca(TypeId),
     /// *ptr
-    Deref,
-    /// struct.field
-    Field(usize),
-    /// arr[i]
-    Index(Operand),
+    /// load %ptr in llvm ir
+    Load(ValueId),
+    /// get pointer ()
+    GetElementPtr(ValueId),
+    /// Function call
+    Call(Call),
+    /// Binary operations only for primitive types,
+    /// for other types (like structs), function calls must be used
+    BinaryOp(BinaryOp, Operand, Operand),
 }
 
-enum RValue {
-    /// x = y
-    Use(Operand),
-    /// &y / raw pointer
-    Ref(Place),
-    BinaryOp(BinOp, Operand, Operand),
-    UnaryOp(UnOp, Operand),
+#[derive(Debug, Serialize)]
+pub struct Call {
+    pub function: usize,
+    pub args: Vec<ValueId>,
 }
 
-enum BinOp {
-    /// +
-    Add,
-    /// -
-    Sub,
-    /// *
-    Mul,
-    /// /
-    Div,
-}
-
-enum UnOp {
-    /// -
-    Neg,
-    /// !
-    Not,
-}
-
-pub enum Constant {
-
-}
+#[derive(Debug, Serialize)]
+pub struct Constant {}
