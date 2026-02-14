@@ -91,22 +91,6 @@ impl<T> Spanned<T> {
     }
 
     #[inline]
-    pub fn as_ref(&self) -> Spanned<&T> {
-        Spanned {
-            node: &self.node,
-            span: self.span,
-        }
-    }
-
-    #[inline]
-    pub fn as_mut(&mut self) -> Spanned<&mut T> {
-        Spanned {
-            node: &mut self.node,
-            span: self.span,
-        }
-    }
-
-    #[inline]
     pub fn unwrap(self) -> (T, Span) {
         (self.node, self.span)
     }

@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use serde::Serialize;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 pub enum PrimitiveType {
     Void,
     Bool,

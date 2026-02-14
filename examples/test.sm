@@ -1,4 +1,8 @@
+fn get_y() -> f32 {
+    return 1.1
+}
+
 fn main() {
     let x = 5
-    // let y = x + 10
+    let y = get_y()
 }

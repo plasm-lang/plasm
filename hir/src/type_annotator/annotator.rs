@@ -57,7 +57,7 @@ impl TypeAnnotator {
             }
         }
 
-        (THIR { items: out_items }, errors)
+        (THIR { items: out_items, funcs_map: opt_hir.funcs_map }, errors)
     }
 }
 
@@ -89,13 +89,13 @@ impl FunctionAnnotator {
     }
 
     fn annotate_expr_arena(&mut self, arena: ExprArena<OT>) -> ExprArena<MaybeSpanned<HIRType>> {
-        let mut out_exprs = Vec::with_capacity(arena.0.len());
-        for expr in arena.0.into_iter() {
+        let mut out_exprs = HashMap::with_capacity(arena.0.len());
+        for (expr_id, expr) in arena.0.into_iter() {
             let (expr, span) = expr.unwrap();
             let ty = if let Some(ty) = expr.ty {
                 ty.into_maybe()
             } else {
-                match self.solver.resolve_expr(expr.id) {
+                match self.solver.resolve_expr(expr_id) {
                     Ok(t) => t,
                     Err(e) => {
                         self.errors.push(e);
@@ -112,14 +112,7 @@ impl FunctionAnnotator {
                 ExprKind::Local(lid) => ExprKind::Local(lid),
                 ExprKind::FunctionCall(func_call) => ExprKind::FunctionCall(func_call),
             };
-            out_exprs.push(S::new(
-                Expr {
-                    id: expr.id,
-                    kind,
-                    ty,
-                },
-                span,
-            ));
+            out_exprs.insert(expr_id, S::new(Expr { kind, ty }, span));
         }
         ExprArena(out_exprs)
     }

@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+
+use bimap::BiHashMap;
 use serde::Serialize;
 
 use ast::ast::Literal;
@@ -20,17 +23,12 @@ pub type THIR = HIR<Typed>;
 #[derive(Debug, Default, Serialize)]
 pub struct HIR<T> {
     pub items: Vec<Item<T>>,
+    pub funcs_map: BiHashMap<FuncId, S<String>>,
 }
 
 impl<T> HIR<T> {
-    pub fn with_function(self, func: Function<T>) -> Self {
-        let mut items = self.items;
-        items.push(Item::Function(func));
-        Self { items }
-    }
-
     pub fn empty() -> Self {
-        Self { items: Vec::new() }
+        Self { items: Vec::new(), funcs_map: BiHashMap::new() }
     }
 }
 
@@ -95,7 +93,7 @@ pub struct VariableDeclaration {
 // --- Expression-related --- //
 
 #[derive(Debug, Default, Serialize)]
-pub struct ExprArena<T>(pub Vec<S<Expr<T>>>);
+pub struct ExprArena<T>(pub HashMap<ExprId, S<Expr<T>>>);
 
 impl<T> ExprArena<T> {
     pub fn join(self, other: Self) -> Self {
@@ -104,14 +102,17 @@ impl<T> ExprArena<T> {
         Self(v)
     }
 
-    pub fn add(&mut self, expr: S<Expr<T>>) {
-        self.0.push(expr);
+    pub fn insert(&mut self, id: ExprId, expr: S<Expr<T>>) {
+        self.0.insert(id, expr);
+    }
+
+    pub fn get(&self, id: ExprId) -> Option<&S<Expr<T>>> {
+        self.0.get(&id)
     }
 }
 
 #[derive(Debug, Serialize)]
 pub struct Expr<T> {
-    pub id: ExprId,
     pub ty: T,
     pub kind: ExprKind<T>,
 }

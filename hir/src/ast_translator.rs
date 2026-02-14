@@ -1,5 +1,3 @@
-use bimap::BiHashMap;
-
 use diagnostic::{MaybeSpanned, Spanned};
 use utils::ids::{ExprId, FuncId, LocalId};
 use utils::primitive_types::PrimitiveType;
@@ -35,7 +33,6 @@ fn ast_to_opt_hir(ast: ast::AST) -> (OptHIR, Vec<S<Error>>) {
 struct ASTTranslator {
     hir: OptHIR,
     errors: Vec<S<Error>>,
-    funcs_map: BiHashMap<S<String>, FuncId>,
     next_func_id: FuncId,
     next_local_id: LocalId,
     next_expr_id: ExprId,
@@ -46,7 +43,6 @@ impl ASTTranslator {
         Self {
             hir: OptHIR::default(),
             errors: Vec::new(),
-            funcs_map: BiHashMap::new(),
             next_func_id: FuncId::one(),
             next_local_id: LocalId::one(),
             next_expr_id: ExprId::one(),
@@ -79,10 +75,11 @@ impl ASTTranslator {
                     let id = self.get_next_func_id();
 
                     // Check for duplicate function definitions
-                    if let Some(prev) = self.funcs_map.get_by_left(&func.name) {
+                    if let Some(prev) = self.hir.funcs_map.get_by_right(&func.name) {
                         let first = self
+                            .hir
                             .funcs_map
-                            .get_by_right(prev)
+                            .get_by_left(prev)
                             .cloned()
                             .expect("BiHashMap invariant broken");
 
@@ -94,7 +91,7 @@ impl ASTTranslator {
                         continue;
                     }
 
-                    self.funcs_map.insert(func.name.clone(), id);
+                    self.hir.funcs_map.insert(id, func.name.clone());
                 }
             }
         }
@@ -112,7 +109,7 @@ impl ASTTranslator {
     }
 
     fn translate_function(&mut self, func: ast::Function) {
-        let id = self.funcs_map.get_by_left(&func.name).cloned().unwrap();
+        let id = self.hir.funcs_map.get_by_right(&func.name).cloned().unwrap();
         let name = func.name;
         let ret_ty = func
             .return_type
@@ -133,7 +130,28 @@ impl ASTTranslator {
 
         // Translate body
 
-        let (body, expr_arena) = self.translate_block(func.body, &locals);
+        let (mut body, mut expr_arena) = self.translate_block(func.body, &locals);
+
+        if ret_ty.node == HIRType::Primitive(PrimitiveType::Void) {
+            // Check if there are return statements with expressions in void functions
+            let mut has_return = false;
+            for stmt in &body.statements {
+                if let Statement::Return(_) = stmt {
+                    has_return = true;
+                    break;
+                }
+            }
+            if !has_return {
+                let expr_id = self.get_next_expr_id();
+                let return_stmt = Statement::Return(expr_id);
+                let return_expr = Expr::<OT> {
+                    ty: None,
+                    kind: ExprKind::Literal(ast::Literal::Void),
+                };
+                expr_arena.insert(expr_id, S::new(return_expr, name.span));
+                body.statements.push(return_stmt);
+            }
+        }
 
         let signature = FunctionSignature {
             id,
@@ -243,11 +261,10 @@ impl ASTTranslator {
         match expr.node {
             ast::Expr::Literal(lit) => {
                 let hir_expr = Expr::<OT> {
-                    id: expr_id,
                     ty: None,
                     kind: ExprKind::Literal(lit),
                 };
-                expr_arena.add(S::new(hir_expr, expr.span));
+                expr_arena.insert(expr_id, S::new(hir_expr, expr.span));
             }
             ast::Expr::Variable(var) => {
                 // Look up local_id
@@ -259,11 +276,10 @@ impl ASTTranslator {
 
                 if let Some(local_id) = local_id {
                     let hir_expr = Expr::<OT> {
-                        id: expr_id,
                         ty: None,
                         kind: ExprKind::Local(local_id),
                     };
-                    expr_arena.add(S::new(hir_expr, expr.span));
+                    expr_arena.insert(expr_id, S::new(hir_expr, expr.span));
                 } else {
                     let err = Error::UnknownVariable { name: var };
                     self.errors.push(S::new(err, expr.span));
@@ -271,7 +287,7 @@ impl ASTTranslator {
             }
             ast::Expr::FunctionCall(func_call) => {
                 let (name, span) = func_call.name.unwrap();
-                let func_id = self.funcs_map.get_by_left(&name).cloned();
+                let func_id = self.hir.funcs_map.get_by_right(&name).cloned();
                 if let Some(func_id) = func_id {
                     // Translate arguments into ExprIds
                     let mut args = Vec::new();
@@ -285,11 +301,10 @@ impl ASTTranslator {
                     // Build FunctionCall and Expr
                     let func_call = FunctionCall { func_id, args };
                     let hir_expr = Expr::<OT> {
-                        id: expr_id,
                         ty: None,
                         kind: ExprKind::FunctionCall(func_call),
                     };
-                    expr_arena.add(S::new(hir_expr, expr.span));
+                    expr_arena.insert(expr_id, S::new(hir_expr, expr.span));
                 } else {
                     let err = Error::UnknownFunction { name };
                     self.errors.push(S::new(err, span));
@@ -299,11 +314,10 @@ impl ASTTranslator {
                 let (hir_block, local_expr_arena) = self.translate_block(block, locals);
                 expr_arena = expr_arena.join(local_expr_arena);
                 let hir_expr = Expr::<OT> {
-                    id: expr_id,
                     ty: None,
                     kind: ExprKind::Block(hir_block),
                 };
-                expr_arena.add(S::new(hir_expr, expr.span));
+                expr_arena.insert(expr_id, S::new(hir_expr, expr.span));
             }
             // ast::Expr::Binary(expr) => {
 
@@ -340,13 +354,16 @@ mod tests {
                 print(c)
             }"};
         let expected_hir_display = indoc! {"
-            fn print(x: i32) -> void {}
+            fn print(x: i32) -> void {
+                return void
+            }
 
             fn main() -> void {
                 let a: i32 = 5
                 let b: i32 = a
                 let c: i32 = b
                 print(c)
+                return void
             }
         "};
         check_by_display(code, expected_hir_display);
@@ -364,7 +381,9 @@ mod tests {
                 is_true(false)
             }"};
         let expected_hir_display = indoc! {"
-            fn is_true(x: bool) -> void {}
+            fn is_true(x: bool) -> void {
+                return void
+            }
 
             fn main() -> void {
                 let a: bool = true
@@ -372,6 +391,7 @@ mod tests {
                 is_true(a)
                 is_true(b)
                 is_true(false)
+                return void
             }
         "};
         check_by_display(code, expected_hir_display);
@@ -386,11 +406,14 @@ mod tests {
                 let b = a
             }"};
         let expected_hir_display = indoc! {"
-            fn do_nothing() -> void {}
+            fn do_nothing() -> void {
+                return void
+            }
 
             fn main() -> void {
                 let a: void = do_nothing()
                 let b: void = a
+                return void
             }
         "};
         check_by_display(code, expected_hir_display);

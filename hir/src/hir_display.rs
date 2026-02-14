@@ -47,28 +47,9 @@ impl RenderType for Option<Spanned<HIRType>> {
     }
 }
 
-/// Fast access to Expr by id
-struct ArenaView<'a, T> {
-    by_id: HashMap<ExprId, &'a Expr<T>>,
-}
-
-impl<'a, T> ArenaView<'a, T> {
-    fn build(arena: &'a ExprArena<T>) -> Self {
-        let mut by_id = HashMap::with_capacity(arena.0.len());
-        for e in &arena.0 {
-            by_id.insert(e.id, &e.node);
-        }
-        Self { by_id }
-    }
-
-    fn get(&self, id: &ExprId) -> Option<&'a Expr<T>> {
-        self.by_id.get(id).copied()
-    }
-}
-
 /// Context for printing a function
 struct FnCtx<'a, T> {
-    arena: ArenaView<'a, T>,
+    arena: &'a ExprArena<T>,
     local_names: HashMap<LocalId, String>,
     local_types: HashMap<LocalId, String>,
     func_names: &'a HashMap<FuncId, String>,
@@ -118,7 +99,7 @@ fn format_function<T: RenderType>(
     }
 
     let ctx = FnCtx {
-        arena: ArenaView::build(&fun.expr_arena),
+        arena: &fun.expr_arena,
         local_names,
         local_types,
         func_names,
@@ -215,8 +196,8 @@ fn format_block_into<T: RenderType>(
 }
 
 fn format_expr_id_into<T: RenderType>(out: &mut String, id: &ExprId, ctx: &FnCtx<T>) {
-    if let Some(e) = ctx.arena.get(id) {
-        format_expr_into(out, e, ctx);
+    if let Some(e) = ctx.arena.get(*id) {
+        format_expr_into(out, &e.node, ctx);
     } else {
         out.push_str("/*unknown_expr*/");
     }

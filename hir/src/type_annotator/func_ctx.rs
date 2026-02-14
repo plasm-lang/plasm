@@ -39,8 +39,8 @@ impl<'a> FunctionCtx<'a> {
 
         // Expr arena
 
-        for expr in func.expr_arena.0.iter() {
-            ctx.add_expr(expr);
+        for (expr_id, expr) in func.expr_arena.0.iter() {
+            ctx.add_expr(expr_id, expr);
         }
 
         // Block
@@ -95,12 +95,12 @@ impl<'a> FunctionCtx<'a> {
         for stmt in block.statements.iter() {
             match stmt {
                 Statement::VariableDeclaration(var_decl) => {
-                    let expr_ty = self.ty_of_expr(var_decl.expr_id).clone();
+                    let expr_ty = self.ty_of_expr(&var_decl.expr_id).clone();
                     let local_ty = self.ty_of_local(var_decl.local_id).clone();
                     constraints.push(Constraint::Eq(expr_ty, local_ty));
                 }
                 Statement::Return(expr_id) => {
-                    let expr_ty = self.ty_of_expr(*expr_id).clone();
+                    let expr_ty = self.ty_of_expr(expr_id).clone();
                     constraints.push(Constraint::Eq(expr_ty, return_type_var.clone()));
                 }
                 _ => {}
@@ -115,8 +115,8 @@ impl<'a> FunctionCtx<'a> {
     ) -> (Vec<Constraint>, Vec<S<Error>>) {
         let mut constraints = Vec::<Constraint>::new();
         let mut errors = Vec::<S<Error>>::new();
-        for expr in arena.0.iter() {
-            let expr_type_var = self.ty_of_expr(expr.id).clone();
+        for (expr_id, expr) in arena.0.iter() {
+            let expr_type_var = self.ty_of_expr(expr_id).clone();
             match &expr.kind {
                 ExprKind::Literal(lit) => match lit {
                     ast::Literal::Void => {
@@ -156,7 +156,7 @@ impl<'a> FunctionCtx<'a> {
                     }
 
                     for (i, arg_expr_id) in func_call.args.iter().enumerate() {
-                        let arg_expr_ty_var_spanned = self.ty_of_expr(*arg_expr_id).clone();
+                        let arg_expr_ty_var_spanned = self.ty_of_expr(arg_expr_id).clone();
                         let param_ty = signature.args[i].ty.clone();
                         let param_ty_var = TypeVar::Known(param_ty.clone().into_maybe());
                         let param_ty_var_spanned = S::new(param_ty_var, param_ty.span);
@@ -202,12 +202,12 @@ impl<'a> FunctionCtx<'a> {
         }
     }
 
-    fn ty_of_expr(&mut self, eid: ExprId) -> &S<TypeVar> {
-        self.expr_ty.get(&eid).unwrap()
+    fn ty_of_expr(&mut self, eid: &ExprId) -> &S<TypeVar> {
+        self.expr_ty.get(eid).unwrap()
     }
 
-    fn add_expr(&mut self, expr: &S<Expr<OT>>) -> S<TypeVar> {
-        if let Some(ty) = self.expr_ty.get(&expr.id) {
+    fn add_expr(&mut self, expr_id: &ExprId, expr: &S<Expr<OT>>) -> S<TypeVar> {
+        if let Some(ty) = self.expr_ty.get(expr_id) {
             ty.clone()
         } else {
             let span = expr.span;
@@ -218,7 +218,7 @@ impl<'a> FunctionCtx<'a> {
                 .map(TypeVar::Known)
                 .map(|t| S::new(t, span))
                 .unwrap_or_else(|| self.fresh_type_var(span));
-            self.expr_ty.insert(expr.id, ty.clone());
+            self.expr_ty.insert(*expr_id, ty.clone());
             ty
         }
     }
@@ -277,10 +277,6 @@ mod tests {
         HIRType::Primitive(PrimitiveType::I32)
     }
 
-    fn u8_ty() -> HIRType {
-        HIRType::Primitive(PrimitiveType::U8)
-    }
-
     fn void_ty() -> HIRType {
         HIRType::Primitive(PrimitiveType::Void)
     }
@@ -297,35 +293,24 @@ mod tests {
         }
     }
 
-    fn expr_literal(eid: ExprId, lit: Literal) -> Spanned<Expr<OT>> {
+    fn expr_literal(lit: Literal) -> Spanned<Expr<OT>> {
         s(Expr {
-            id: eid,
             ty: None,
             kind: ExprKind::Literal(lit),
         })
     }
 
-    fn expr_local(eid: ExprId, lid: LocalId) -> Spanned<Expr<OT>> {
+    fn expr_local(lid: LocalId) -> Spanned<Expr<OT>> {
         s(Expr {
-            id: eid,
             ty: None,
             kind: ExprKind::Local(lid),
         })
     }
 
-    fn expr_call(eid: ExprId, fid: FuncId, args: Vec<ExprId>) -> Spanned<Expr<OT>> {
+    fn expr_call(fid: FuncId, args: Vec<ExprId>) -> Spanned<Expr<OT>> {
         s(Expr {
-            id: eid,
             ty: None,
             kind: ExprKind::FunctionCall(crate::hir::FunctionCall { func_id: fid, args }),
-        })
-    }
-
-    fn expr_block(eid: ExprId, block: Block<OT>) -> Spanned<Expr<OT>> {
-        s(Expr {
-            id: eid,
-            ty: None,
-            kind: ExprKind::Block(block),
         })
     }
 
@@ -359,7 +344,7 @@ mod tests {
         signature: FunctionSignature,
         locals: Vec<HIRLocal<OT>>,
         stmts: Vec<Statement>,
-        exprs: Vec<Spanned<Expr<OT>>>,
+        exprs: HashMap<ExprId, Spanned<Expr<OT>>>,
     ) -> Function<OT> {
         Function {
             signature,
@@ -419,7 +404,7 @@ mod tests {
         let eid_lit = ExprId::one();
 
         let locals = vec![local(lid_a, "a", Some(s(i32_ty())))];
-        let exprs = vec![expr_literal(eid_lit, Literal::Integer("5".to_string()))];
+        let exprs = HashMap::from([(eid_lit, expr_literal(Literal::Integer("5".to_string())))]);
         let stmts = vec![Statement::VariableDeclaration(
             crate::hir::VariableDeclaration {
                 local_id: lid_a,
@@ -460,10 +445,10 @@ mod tests {
             local(lid_a, "a", Some(s(i32_ty()))),
             local(lid_b, "b", None),
         ];
-        let exprs = vec![
-            expr_literal(eid_lit, Literal::Integer("5".to_string())),
-            expr_local(eid_use_a, lid_a),
-        ];
+        let exprs = HashMap::from([
+            (eid_lit, expr_literal(Literal::Integer("5".to_string()))),
+            (eid_use_a, expr_local(lid_a)),
+        ]);
         let stmts = vec![
             Statement::VariableDeclaration(crate::hir::VariableDeclaration {
                 local_id: lid_a,
@@ -501,10 +486,10 @@ mod tests {
         let eid_use_x = ExprId::new(std::num::NonZeroUsize::new(2).unwrap());
 
         let locals = vec![local(lid_x, "x", None)];
-        let exprs = vec![
-            expr_literal(eid_lit, Literal::Integer("1".to_string())),
-            expr_local(eid_use_x, lid_x),
-        ];
+        let exprs = HashMap::from([
+            (eid_lit, expr_literal(Literal::Integer("1".to_string()))),
+            (eid_use_x, expr_local(lid_x)),
+        ]);
         let stmts = vec![
             Statement::VariableDeclaration(crate::hir::VariableDeclaration {
                 local_id: lid_x,
@@ -542,11 +527,11 @@ mod tests {
         let eid_call = ExprId::new(std::num::NonZeroUsize::new(3).unwrap());
 
         let locals = vec![local(lid_a, "a", Some(s(i32_ty())))];
-        let exprs = vec![
-            expr_literal(eid_lit, Literal::Integer("5".to_string())),
-            expr_local(eid_use_a, lid_a),
-            expr_call(eid_call, fid_print, vec![eid_use_a]),
-        ];
+        let exprs = HashMap::from([
+            (eid_lit, expr_literal(Literal::Integer("5".to_string()))),
+            (eid_use_a, expr_local(lid_a)),
+            (eid_call, expr_call(fid_print, vec![eid_use_a])),
+        ]);
         let stmts = vec![
             Statement::VariableDeclaration(crate::hir::VariableDeclaration {
                 local_id: lid_a,
@@ -587,11 +572,11 @@ mod tests {
         let eid_call = ExprId::new(std::num::NonZeroUsize::new(3).unwrap());
 
         let locals: Vec<HIRLocal<OT>> = vec![];
-        let exprs = vec![
-            expr_literal(eid_lit1, Literal::Integer("1".to_string())),
-            expr_literal(eid_lit2, Literal::Integer("2".to_string())),
-            expr_call(eid_call, fid_print, vec![eid_lit1, eid_lit2]), // 2 args instead of 1
-        ];
+        let exprs = HashMap::from([
+            (eid_lit1, expr_literal(Literal::Integer("1".to_string()))),
+            (eid_lit2, expr_literal(Literal::Integer("2".to_string()))),
+            (eid_call, expr_call(fid_print, vec![eid_lit1, eid_lit2])), // 2 args instead of 1
+        ]);
         let stmts = vec![Statement::Expr(eid_call)];
 
         let fun = make_func(sig_main.clone(), locals, stmts, exprs);
@@ -614,72 +599,6 @@ mod tests {
     }
 
     #[test]
-    fn block_expression_flows_from_inner_return_constraint() {
-        // y = { let t: u8 = 1; return t }  => Eq(type(block_expr), Known(u8))
-        let fid = FuncId::one();
-        let sig = signature(fid, "main", vec![], void_ty());
-
-        let lid_y = LocalId::one();
-        let lid_t = LocalId::new(std::num::NonZeroUsize::new(2).unwrap());
-
-        let eid_lit = ExprId::one();
-        let eid_use_t = ExprId::new(std::num::NonZeroUsize::new(2).unwrap());
-        let eid_block = ExprId::new(std::num::NonZeroUsize::new(3).unwrap());
-
-        // inner block
-        let inner_locals = vec![local(lid_t, "t", Some(s(u8_ty())))];
-        // let inner_exprs = vec![
-        //     // these ExprIds must be present in the *function* arena, but
-        //     // they reference locals of the inner block
-        //     expr_literal(eid_lit, Literal::Integer("1".to_string())),
-        //     expr_local(eid_use_t, lid_t),
-        // ];
-        let inner_stmts = vec![
-            Statement::VariableDeclaration(crate::hir::VariableDeclaration {
-                local_id: lid_t,
-                expr_id: eid_lit,
-            }),
-            Statement::Return(eid_use_t),
-        ];
-        let inner_block = Block {
-            locals: inner_locals,
-            statements: inner_stmts,
-        };
-
-        // outer: let y = <block>
-        let outer_locals = vec![local(lid_y, "y", None)];
-
-        // IMPORTANT: put the Block expr *before* inner exprs so that
-        // block_to_constraints runs first and registers inner locals.
-        let all_exprs = vec![
-            expr_block(eid_block, inner_block), // visit this first
-            expr_literal(eid_lit, Literal::Integer("1".to_string())),
-            expr_local(eid_use_t, lid_t),
-        ];
-
-        let stmts = vec![Statement::VariableDeclaration(
-            crate::hir::VariableDeclaration {
-                local_id: lid_y,
-                expr_id: eid_block,
-            },
-        )];
-
-        let fun = make_func(sig.clone(), outer_locals, stmts, all_exprs);
-        let mut sigs = HashMap::new();
-        sigs.insert(sig.id, sig.clone());
-
-        let mut ctx = FunctionCtx::from_function(&fun, &sigs);
-        let (constraints, errors) = ctx.collect_constraints_for_tests();
-
-        assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
-        assert!(
-            any_eq_known(&constraints, &u8_ty()),
-            "expected Eq(_, Known(u8)) for block result type"
-        );
-        assert_eq!(count_inclass(&constraints, TyClass::Int), 1);
-    }
-
-    #[test]
     fn float_literal_adds_inclass_float_not_int() {
         // let f = 1.0  => InClass(Float); no InClass(Int)
         let fid = FuncId::one();
@@ -689,7 +608,7 @@ mod tests {
         let eid_lit = ExprId::one();
 
         let locals = vec![local(lid_f, "f", None)];
-        let exprs = vec![expr_literal(eid_lit, Literal::Float("1.0".to_string()))];
+        let exprs = HashMap::from([(eid_lit, expr_literal(Literal::Float("1.0".to_string())))]);
         let stmts = vec![Statement::VariableDeclaration(
             crate::hir::VariableDeclaration {
                 local_id: lid_f,

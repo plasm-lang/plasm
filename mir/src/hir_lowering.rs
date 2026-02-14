@@ -1,12 +1,15 @@
+use std::collections::HashMap;
+
+use bimap::BiHashMap;
+
 use hir::{HIRType, THIR};
-use serde::de::value;
-use utils::ids::{TypeId, ValueId};
-use utils::primitive_types::PrimitiveType;
+use utils::ids::{ExprId, LocalId, TypeId, ValueId};
 
 use super::mir::{
-    BasicBlock, Constant, Function, Instruction, InternalFunction, MIR, Module, Operand, RValue,
-    Terminator,
+    BasicBlock, BlockLabel, Constant, Function, FunctionSignature, Instruction, InternalFunction,
+    MIR, Module, Operand, RValue, Terminator, Call,
 };
+use super::types::{MIRType, TypeArena};
 
 pub fn hir_to_mir(hir: THIR) -> MIR {
     let translator = HIRTranslator::new();
@@ -22,11 +25,14 @@ impl HIRTranslator {
         HIRTranslator {
             mir: MIR {
                 modules: vec![Module::default()],
+                type_arena: TypeArena::new(),
+                funcs_map: BiHashMap::new(),
             },
         }
     }
 
     fn translate(mut self, hir: THIR) -> MIR {
+        self.mir.funcs_map = hir.funcs_map;
         for item in hir.items {
             match item {
                 hir::Item::Function(func) => {
@@ -41,62 +47,141 @@ impl HIRTranslator {
     fn translate_function(&mut self, func: hir::TypedFunction) -> Function {
         // For beggining, only support functions with no arguments and void return type
         assert!(func.signature.args.is_empty());
-        assert!(func.signature.ret_ty.node == HIRType::Primitive(PrimitiveType::Void));
+        // assert!(func.signature.ret_ty.node == HIRType::Primitive(PrimitiveType::Void));
 
-        if func.body.statements.is_empty() {
-            return Function::Internal(InternalFunction {
-                name: func.signature.name.node.clone(),
-                blocks: vec![],
-            });
-        }
+        let translator = HIRFunctionTranslator::new(&mut self.mir);
+        Function::Internal(translator.translate(func))
+    }
+}
 
-        let mut instructions = Vec::new();
+struct HIRFunctionTranslator<'a> {
+    vreg_counter: ValueId,
+    blocks: Vec<BasicBlock>,
+    current_block_idx: usize,
 
-        let mut current = ValueId::one();
-        let mut new_value_id = || {
-            let id = current;
-            current = current.increment();
-            id
+    stack_slot_ptrs: HashMap<LocalId, ValueId>,
+    // type_arena: &'a mut TypeArena,
+    // funcs_map: &'a BiHashMap<FuncId, Spanned<String>>,
+    mir: &'a mut MIR,
+    // expr_arena: &'a mut ExprArena,
+}
+
+impl<'a> HIRFunctionTranslator<'a> {
+    fn new(mir: &'a mut MIR) -> Self {
+        let entry_block = BasicBlock {
+            label: "entry".into(),
+            instructions: vec![],
+            terminator: Terminator::Unreachable,
         };
+        Self {
+            blocks: vec![entry_block],
+            current_block_idx: 0,
+            vreg_counter: ValueId::one(),
+            stack_slot_ptrs: HashMap::new(),
+            mir,
+            // type_arena,
+            // funcs_map,
+            // expr_arena,
+        }
+    }
 
-        for statement in func.body.statements {
-            match statement {
-                hir::Statement::VariableDeclaration(decl) => {
-                    // Alloca for stack variable
-                    let type_id = TypeId::one(); // Placeholder, type handling not implemented yet
-                    let stack_ptr = new_value_id();
-                    let rvalue = RValue::Alloca(type_id);
-                    let instruction = Instruction::Assign(stack_ptr, rvalue);
-                    instructions.push(instruction);
+    fn next_vreg(&mut self) -> ValueId {
+        let id = self.vreg_counter;
+        self.vreg_counter = self.vreg_counter.increment();
+        id
+    }
 
-                    // Store value in virtual register
-                    // !!! Placeholder for initializing constant value for now
-                    // let value_id = new_value_id();
-                    // let rvalue = RValue::Constant(Constant {});
-                    // let instruction = Instruction::Assign(value_id, rvalue);
-                    // instructions.push(instruction);
+    fn new_block(&mut self, label: BlockLabel) -> usize {
+        let block = BasicBlock {
+            label,
+            instructions: vec![],
+            terminator: Terminator::Unreachable,
+        };
+        self.blocks.push(block);
+        self.blocks.len() - 1
+    }
 
-                    // Store instruction
-                    let instruction = Instruction::Store {
-                        value: Operand::Constant(Constant {}),
-                        ptr: Operand::Use(stack_ptr),
-                    };
-                    instructions.push(instruction);
-                }
-                _ => unimplemented!(),
+    fn emit_instruction(&mut self, instruction: Instruction) {
+        self.blocks[self.current_block_idx]
+            .instructions
+            .push(instruction);
+    }
+
+    fn set_terminator(&mut self, terminator: Terminator) {
+        self.blocks[self.current_block_idx].terminator = terminator;
+    }
+
+    fn lower_expr(&mut self, expr_id: ExprId, expr_arena: &hir::TypedExprArena) -> Operand {
+        let expr = expr_arena.get(expr_id).unwrap().as_ref();
+        let ty = MIRType::from_hir(expr.ty.node.clone());
+        let type_id = self.mir.type_arena.get_or_insert(ty);
+
+        match &expr.kind {
+            hir::TypedExprKind::Literal(lit) => match lit {
+                hir::Literal::Bool(v) => Operand::Constant(Constant::bool(type_id, *v)),
+                hir::Literal::Integer(v) => Operand::Constant(Constant::int(type_id, v.clone())),
+                hir::Literal::Float(v) => Operand::Constant(Constant::float(type_id, v.clone())),
+                hir::Literal::Void => Operand::Constant(Constant::void(type_id)),
+            },
+            hir::TypedExprKind::FunctionCall(hir_call) => {
+                let value_id = self.next_vreg();
+                let rvalue = RValue::Call(Call {
+                    function: hir_call.func_id,
+                    args: vec![],
+                });
+                self.emit_instruction(Instruction::Assign(value_id, rvalue));
+                Operand::Use(value_id)
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    fn lower_statement(&mut self, statement: hir::Statement, expr_arena: &hir::TypedExprArena) {
+        match statement {
+            hir::Statement::VariableDeclaration(decl) => {
+                let stack_ptr = *self.stack_slot_ptrs.get(&decl.local_id).unwrap();
+                let operand = self.lower_expr(decl.expr_id, expr_arena);
+                let instruction = Instruction::Store {
+                    value: operand,
+                    ptr: Operand::Use(stack_ptr),
+                };
+                self.emit_instruction(instruction);
+            }
+            hir::Statement::Expr(expr_id) => {
+                self.lower_expr(expr_id, expr_arena);
+            }
+            hir::Statement::Return(expr_id) => {
+                let operand = self.lower_expr(expr_id, expr_arena);
+                self.set_terminator(Terminator::Return(operand));
             }
         }
+    }
 
-        let entry_block = BasicBlock {
-            label: "entry".to_string(),
-            phis: vec![],
-            instructions,
-            terminator: Terminator::Return(Operand::Constant(Constant {})),
-        };
+    fn translate(mut self, func: hir::TypedFunction) -> InternalFunction {
+        let return_type = MIRType::from_hir(func.signature.ret_ty.node);
+        let return_type_id = self.mir.type_arena.get_or_insert(return_type);
 
-        Function::Internal(InternalFunction {
-            name: func.signature.name.node.clone(),
-            blocks: vec![entry_block],
-        })
+        for local in &func.body.locals {
+            // Alloca for each local variable
+            let type_id = TypeId::one(); // Placeholder, type handling not implemented yet
+            let stack_ptr = self.next_vreg();
+            let rvalue = RValue::Alloca(type_id);
+            let instruction = Instruction::Assign(stack_ptr, rvalue);
+            self.emit_instruction(instruction);
+            self.stack_slot_ptrs.insert(local.id, stack_ptr);
+        }
+
+        for statement in func.body.statements {
+            self.lower_statement(statement, &func.expr_arena);
+        }
+
+        InternalFunction {
+            signature: FunctionSignature {
+                id: func.signature.id,
+                name: func.signature.name.node.clone(),
+                ret_ty: return_type_id,
+            },
+            blocks: self.blocks,
+        }
     }
 }

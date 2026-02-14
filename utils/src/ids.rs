@@ -75,7 +75,7 @@ impl<T> Id<T> {
 
 impl<T: Display + Default> Display for Id<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "%{}{}", T::default(), self.raw)
+        write!(f, "{}{}", T::default(), self.raw)
     }
 }
 
@@ -98,22 +98,22 @@ impl<T: Display + Default> Serialize for Id<T> {
 
 // Marker structs
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct FuncMarker;
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct LocalMarker;
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct ExprMarker;
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct TypeMarker;
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct TypeVarMarker;
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct ValueMarker;
 
 // Type aliases
