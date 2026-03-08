@@ -3,6 +3,7 @@ use std::io::BufReader;
 use std::path::PathBuf;
 
 use ast::parse;
+use codegen::MIRTranslator;
 use diagnostic::{ErrorMessage, ErrorType, LinesTable, Spanned};
 use hir::ast_to_hir;
 use mir::hir_to_mir;
@@ -57,6 +58,14 @@ pub fn emit(path: PathBuf, ty: PathType, format: Format, stage: Stage, ansi: Ena
 
             if stage == Stage::MIR {
                 print_data(&mir, format);
+                return;
+            }
+
+            let translator = MIRTranslator::new();
+            let llvm_ir = translator.translate(mir);
+
+            if stage == Stage::LlvmIR {
+                print_data(&llvm_ir, format);
                 return;
             }
 

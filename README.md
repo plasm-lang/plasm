@@ -6,6 +6,14 @@ Mainly inspired by [Rust](https://github.com/rust-lang/rust)'s type system, [Ver
 
 [![Discord](https://img.shields.io/badge/Discord-Server-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/FwBDKTAjnw)
 
+### Core Innovative Features
+
+* **Compiler Extension System** - ...
+* **Compile-Time Meta Programming** - ...
+* **Affine Algebraic Effects** - ...
+* **Memory Region System** - ...
+* **Deepest IDE Integration** - ...
+
 ### Core Design Principles
 
 * **Extensibility** - ...
@@ -16,25 +24,25 @@ Mainly inspired by [Rust](https://github.com/rust-lang/rust)'s type system, [Ver
 
 ## Quick Start
 
-For cli help reference:
-
-```shell
-cargo run --help
-```
-
-For example, following command will parse `test.sm` file, analyse, stop on HIR stage and emit the result in a text format:
-
-```shell
-cargo run emit test.sm --stage hir --format text
-```
-
-To use cli directly without Cargo execute:
+Install from source using Cargo:
 
 ```shell
 cargo install --path cli
 ```
+> [!NOTE]
+> Reqire `zstd` lib for the compiler compilation. For Ubuntu: `sudo apt install libzstd-dev`.
 
-And then you can write just `plasm --help`.
+For cli help reference:
+
+```shell
+plasm --help
+```
+
+For example, following command will parse `test.sm` file, analyse, stop on LLVM-IR stage and emit the result in a text format:
+
+```shell
+plasm emit test.sm --stage llvm-ir --format text
+```
 
 ## Status
 
@@ -49,8 +57,8 @@ This is the roadmap for implementing a minimal working framework that will serve
 - [x] AST to OptHIR translator
 - [x] OptHIR to THIR translator (type inference)
 - [x] MIR definition
-- [ ] THIR to MIR lowering
-- [ ] MIR to LLVM-IR lowering
+- [X] THIR to MIR lowering
+- [x] MIR to LLVM-IR lowering
 - [ ] LLVM-IR to object file compilation
 - [ ] Object files linking
 
@@ -78,7 +86,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>✅</td>
       <td>✅</td>
-      <td>⬜</td>
+      <td>✅</td>
       <td><code>let x = 1</code></td>
     </tr>
     <tr>
@@ -87,7 +95,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>✅</td>
       <td>✅</td>
-      <td>⬜</td>
+      <td>✅</td>
       <td><code>fn func() {}</code></td>
     </tr>
     <tr>
@@ -104,8 +112,8 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>✅</td>
       <td>✅</td>
-      <td>⬜</td>
-      <td>⬜</td>
+      <td>✅</td>
+      <td>✅</td>
       <td><code>fn func() -> i32 {}</code></td>
     </tr>
     <tr>
@@ -114,7 +122,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>✅</td>
       <td>✅</td>
-      <td>⬜</td>
+      <td>✅</td>
       <td><code>func()</code></td>
     </tr>
     <tr>
@@ -152,6 +160,33 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td><code>let a = "Hello world"</code></td>
+    </tr>
+    <tr>
+      <th>Module System</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>import some_module</code></td>
+    </tr>
+    <tr>
+      <th>If</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>if cond {...}</code></td>
+    </tr>
+    <tr>
+      <th>While</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>while cond {...}</code></td>
     </tr>
     <tr>
       <th colspan="7" align="center">Structs & Enums</th>
@@ -238,6 +273,15 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>???</td>
     </tr>
     <tr>
+      <th>Anonymous Enums</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>A | B | C</code></td>
+    </tr>
+    <tr>
       <th colspan="7" align="center">Polymorphism</th>
     </tr>
     <tr>
@@ -284,6 +328,15 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td><code>fn func(arg: T) where T: Default & Add {...}</code></td>
+    </tr>
+    <tr>
+      <th>For</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>for val in iter {}</code></td>
     </tr>
     <tr>
       <th colspan="7" align="center">Metaprogramming & Compile-time</th>
@@ -347,6 +400,7 @@ CLI         Command Line Interface
 - `mir/` - Middle-level IR + translator from HIR
 - `orchestrator/` - Compilation flow management utilities (Parallel compilation, linkers controller, configuration reader)
 - `tokenizer/` - Tokens description + lexer + from bytes to tokens stream
+- `utils/` - Common for mostly modules (shared data types)
 
 ---
 

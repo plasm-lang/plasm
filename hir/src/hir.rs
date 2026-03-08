@@ -20,6 +20,8 @@ pub type Typed = MaybeS<HIRType>;
 pub type THIR = HIR<Typed>;
 
 /// High-level Intermediate Representation
+/// TODO: Later rename to HIRModule, and make HIR be a collection of modules
+/// For now, we only support one module, so HIR and HIRModule are the same
 #[derive(Debug, Default, Serialize)]
 pub struct HIR<T> {
     pub items: Vec<Item<T>>,
@@ -28,7 +30,10 @@ pub struct HIR<T> {
 
 impl<T> HIR<T> {
     pub fn empty() -> Self {
-        Self { items: Vec::new(), funcs_map: BiHashMap::new() }
+        Self {
+            items: Vec::new(),
+            funcs_map: BiHashMap::new(),
+        }
     }
 }
 

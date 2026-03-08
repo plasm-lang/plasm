@@ -57,7 +57,13 @@ impl TypeAnnotator {
             }
         }
 
-        (THIR { items: out_items, funcs_map: opt_hir.funcs_map }, errors)
+        (
+            THIR {
+                items: out_items,
+                funcs_map: opt_hir.funcs_map,
+            },
+            errors,
+        )
     }
 }
 

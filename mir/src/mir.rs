@@ -3,21 +3,21 @@ use serde::Serialize;
 
 use diagnostic::Spanned;
 use utils::binop::BinaryOp;
-use utils::ids::{TypeId, ValueId, FuncId};
+use utils::ids::{FuncId, TypeId, ValueId};
 
 use super::types::{MIRType, TypeArena};
 
 #[derive(Debug, Default, Serialize)]
 pub struct MIR {
     pub modules: Vec<Module>,
-    pub type_arena: TypeArena,
-    pub funcs_map: BiHashMap<FuncId, Spanned<String>>,
 }
 
 #[derive(Debug, Default, Serialize)]
 pub struct Module {
     pub globals: Vec<Global>,
     pub functions: Vec<Function>,
+    pub funcs_map: BiHashMap<FuncId, Spanned<String>>,
+    pub type_arena: TypeArena,
 }
 
 #[derive(Debug, Serialize)]
@@ -101,7 +101,7 @@ pub enum RValue {
     Alloca(TypeId),
     /// *ptr
     /// load %ptr in llvm ir
-    Load(ValueId),
+    Load(TypeId, ValueId),
     /// get pointer ()
     GetElementPtr(ValueId),
     /// Function call

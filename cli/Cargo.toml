@@ -13,6 +13,7 @@ tokenizer = { path = "../tokenizer" }
 ast = { path = "../ast" }
 hir = { path = "../hir" }
 mir = { path = "../mir" }
+codegen = { path = "../codegen" }
 utils = { path = "../utils" }
 
 serde.workspace = true

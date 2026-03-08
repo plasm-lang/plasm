@@ -109,7 +109,12 @@ impl ASTTranslator {
     }
 
     fn translate_function(&mut self, func: ast::Function) {
-        let id = self.hir.funcs_map.get_by_right(&func.name).cloned().unwrap();
+        let id = self
+            .hir
+            .funcs_map
+            .get_by_right(&func.name)
+            .cloned()
+            .unwrap();
         let name = func.name;
         let ret_ty = func
             .return_type

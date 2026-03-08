@@ -6,8 +6,8 @@ use hir::{HIRType, THIR};
 use utils::ids::{ExprId, LocalId, TypeId, ValueId};
 
 use super::mir::{
-    BasicBlock, BlockLabel, Constant, Function, FunctionSignature, Instruction, InternalFunction,
-    MIR, Module, Operand, RValue, Terminator, Call,
+    BasicBlock, BlockLabel, Call, Constant, Function, FunctionSignature, Instruction,
+    InternalFunction, MIR, Module, Operand, RValue, Terminator,
 };
 use super::types::{MIRType, TypeArena};
 
@@ -24,15 +24,18 @@ impl HIRTranslator {
     fn new() -> Self {
         HIRTranslator {
             mir: MIR {
-                modules: vec![Module::default()],
-                type_arena: TypeArena::new(),
-                funcs_map: BiHashMap::new(),
+                modules: vec![Module {
+                    globals: vec![],
+                    functions: vec![],
+                    funcs_map: BiHashMap::new(),
+                    type_arena: TypeArena::new(),
+                }],
             },
         }
     }
 
     fn translate(mut self, hir: THIR) -> MIR {
-        self.mir.funcs_map = hir.funcs_map;
+        self.mir.modules[0].funcs_map = hir.funcs_map;
         for item in hir.items {
             match item {
                 hir::Item::Function(func) => {
@@ -49,7 +52,7 @@ impl HIRTranslator {
         assert!(func.signature.args.is_empty());
         // assert!(func.signature.ret_ty.node == HIRType::Primitive(PrimitiveType::Void));
 
-        let translator = HIRFunctionTranslator::new(&mut self.mir);
+        let translator = HIRFunctionTranslator::new(&mut self.mir.modules[0]);
         Function::Internal(translator.translate(func))
     }
 }
@@ -60,14 +63,11 @@ struct HIRFunctionTranslator<'a> {
     current_block_idx: usize,
 
     stack_slot_ptrs: HashMap<LocalId, ValueId>,
-    // type_arena: &'a mut TypeArena,
-    // funcs_map: &'a BiHashMap<FuncId, Spanned<String>>,
-    mir: &'a mut MIR,
-    // expr_arena: &'a mut ExprArena,
+    module: &'a mut Module,
 }
 
 impl<'a> HIRFunctionTranslator<'a> {
-    fn new(mir: &'a mut MIR) -> Self {
+    fn new(module: &'a mut Module) -> Self {
         let entry_block = BasicBlock {
             label: "entry".into(),
             instructions: vec![],
@@ -78,10 +78,7 @@ impl<'a> HIRFunctionTranslator<'a> {
             current_block_idx: 0,
             vreg_counter: ValueId::one(),
             stack_slot_ptrs: HashMap::new(),
-            mir,
-            // type_arena,
-            // funcs_map,
-            // expr_arena,
+            module,
         }
     }
 
@@ -114,7 +111,7 @@ impl<'a> HIRFunctionTranslator<'a> {
     fn lower_expr(&mut self, expr_id: ExprId, expr_arena: &hir::TypedExprArena) -> Operand {
         let expr = expr_arena.get(expr_id).unwrap().as_ref();
         let ty = MIRType::from_hir(expr.ty.node.clone());
-        let type_id = self.mir.type_arena.get_or_insert(ty);
+        let type_id = self.module.type_arena.get_or_insert(ty);
 
         match &expr.kind {
             hir::TypedExprKind::Literal(lit) => match lit {
@@ -159,11 +156,12 @@ impl<'a> HIRFunctionTranslator<'a> {
 
     fn translate(mut self, func: hir::TypedFunction) -> InternalFunction {
         let return_type = MIRType::from_hir(func.signature.ret_ty.node);
-        let return_type_id = self.mir.type_arena.get_or_insert(return_type);
+        let return_type_id = self.module.type_arena.get_or_insert(return_type);
 
-        for local in &func.body.locals {
+        for local in func.body.locals {
             // Alloca for each local variable
-            let type_id = TypeId::one(); // Placeholder, type handling not implemented yet
+            let ty = MIRType::from_hir(local.ty.node);
+            let type_id = self.module.type_arena.get_or_insert(ty);
             let stack_ptr = self.next_vreg();
             let rvalue = RValue::Alloca(type_id);
             let instruction = Instruction::Assign(stack_ptr, rvalue);
