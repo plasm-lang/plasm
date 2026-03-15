@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use super::mir::{
-    Constant, ConstantValue, Function, Global, Instruction, MIR, Module, Operand, RValue,
+    Constant, ConstantValue, Function, Global, Instruction, MIR, MetaInfo, Module, Operand, RValue,
     Terminator,
 };
 use super::types::MIRType;
@@ -64,13 +64,13 @@ fn format_function(func: &Function, module: &Module) -> String {
                 for instruction in &block.instructions {
                     result.push_str(&format!(
                         "        {}\n",
-                        format_instruction(instruction, module)
+                        format_instruction(instruction, module, &func.metainfo)
                     ));
                 }
 
                 result.push_str(&format!(
                     "        {}\n",
-                    format_terminator(&block.terminator, module)
+                    format_terminator(&block.terminator, module, &func.metainfo)
                 ));
 
                 result.push_str("    }\n");
@@ -82,34 +82,38 @@ fn format_function(func: &Function, module: &Module) -> String {
     }
 }
 
-fn format_terminator(terminator: &Terminator, module: &Module) -> String {
+fn format_terminator(terminator: &Terminator, module: &Module, metainfo: &MetaInfo) -> String {
     match terminator {
         Terminator::GoTo(label) => {
             format!("goto {}", label)
         }
         Terminator::Return(operand) => {
-            format!("return {}", format_operand(operand, module))
+            format!("return {}", format_operand(operand, module, metainfo))
         }
         _ => unimplemented!(),
     }
 }
 
-fn format_instruction(instruction: &Instruction, module: &Module) -> String {
+fn format_instruction(instruction: &Instruction, module: &Module, metainfo: &MetaInfo) -> String {
     match instruction {
         Instruction::Assign(id, rvalue) => {
-            format!("%{} = {}", id, format_rvalue(rvalue, module))
+            format!(
+                "%{} = {}",
+                metainfo.get_variable_name(*id),
+                format_rvalue(rvalue, module, metainfo)
+            )
         }
         Instruction::Store { value, ptr } => {
             format!(
                 "store {}, ptr {}",
-                format_operand(value, module),
-                format_operand(ptr, module)
+                format_operand(value, module, metainfo),
+                format_operand(ptr, module, metainfo)
             )
         }
     }
 }
 
-fn format_rvalue(rvalue: &RValue, module: &Module) -> String {
+fn format_rvalue(rvalue: &RValue, module: &Module, metainfo: &MetaInfo) -> String {
     match rvalue {
         RValue::Alloca(ty_id) => {
             let ty = module.type_arena.get(*ty_id).unwrap();
@@ -132,17 +136,17 @@ fn format_rvalue(rvalue: &RValue, module: &Module) -> String {
         RValue::BinaryOp(op, left, right) => {
             format!(
                 "{} {} {}",
-                format_operand(left, module),
+                format_operand(left, module, metainfo),
                 op,
-                format_operand(right, module)
+                format_operand(right, module, metainfo)
             )
         }
     }
 }
 
-fn format_operand(operand: &Operand, module: &Module) -> String {
+fn format_operand(operand: &Operand, module: &Module, metainfo: &MetaInfo) -> String {
     match operand {
-        Operand::Use(val_id) => format!("%{}", val_id),
+        Operand::Use(val_id) => format!("%{}", metainfo.get_variable_name(*val_id)),
         Operand::Constant(constant) => {
             let ty = module.type_arena.get(constant.type_id).unwrap();
             format!("{} {}", ty, constant)

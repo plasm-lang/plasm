@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use bimap::BiHashMap;
 use serde::Serialize;
 
@@ -5,7 +7,7 @@ use diagnostic::Spanned;
 use utils::binop::BinaryOp;
 use utils::ids::{FuncId, TypeId, ValueId};
 
-use super::types::{MIRType, TypeArena};
+use super::types::TypeArena;
 
 #[derive(Debug, Default, Serialize)]
 pub struct MIR {
@@ -38,6 +40,7 @@ pub struct ExternalFunction {
 pub struct InternalFunction {
     pub signature: FunctionSignature,
     pub blocks: Vec<BasicBlock>,
+    pub metainfo: MetaInfo,
 }
 
 #[derive(Debug, Serialize)]
@@ -162,4 +165,38 @@ pub enum ConstantValue {
     Int(String),
     Float(String),
     Void,
+}
+
+#[derive(Debug, Serialize, Default)]
+pub struct MetaInfo {
+    pub variable_names: HashMap<String, Vec<ValueId>>,
+}
+
+impl MetaInfo {
+    pub fn add_variable_name(&mut self, name: String, value_id: ValueId) {
+        self.variable_names
+            .entry(name)
+            .or_insert_with(Vec::new)
+            .push(value_id);
+    }
+
+    pub fn get_variable_name(&self, value_id: ValueId) -> String {
+        for (name, ids) in &self.variable_names {
+            if ids.contains(&value_id) {
+                return name.clone();
+            }
+        }
+        value_id.to_string()
+    }
+
+    pub fn bind_values(&mut self, existing_id: ValueId, new_id: ValueId) {
+        for (_, ids) in &mut self.variable_names {
+            if ids.contains(&existing_id) {
+                if !ids.contains(&new_id) {
+                    ids.push(new_id);
+                }
+                return;
+            }
+        }
+    }
 }

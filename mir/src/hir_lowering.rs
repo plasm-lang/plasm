@@ -7,7 +7,7 @@ use utils::ids::{ExprId, LocalId, TypeId, ValueId};
 
 use super::mir::{
     BasicBlock, BlockLabel, Call, Constant, Function, FunctionSignature, Instruction,
-    InternalFunction, MIR, Module, Operand, RValue, Terminator,
+    InternalFunction, MIR, MetaInfo, Module, Operand, RValue, Terminator,
 };
 use super::types::{MIRType, TypeArena};
 
@@ -61,6 +61,7 @@ struct HIRFunctionTranslator<'a> {
     vreg_counter: ValueId,
     blocks: Vec<BasicBlock>,
     current_block_idx: usize,
+    metainfo: MetaInfo,
 
     stack_slot_ptrs: HashMap<LocalId, ValueId>,
     module: &'a mut Module,
@@ -78,6 +79,7 @@ impl<'a> HIRFunctionTranslator<'a> {
             current_block_idx: 0,
             vreg_counter: ValueId::one(),
             stack_slot_ptrs: HashMap::new(),
+            metainfo: MetaInfo::default(),
             module,
         }
     }
@@ -138,6 +140,11 @@ impl<'a> HIRFunctionTranslator<'a> {
             hir::Statement::VariableDeclaration(decl) => {
                 let stack_ptr = *self.stack_slot_ptrs.get(&decl.local_id).unwrap();
                 let operand = self.lower_expr(decl.expr_id, expr_arena);
+
+                if let Operand::Use(value_id) = operand {
+                    self.metainfo.bind_values(stack_ptr, value_id);
+                }
+
                 let instruction = Instruction::Store {
                     value: operand,
                     ptr: Operand::Use(stack_ptr),
@@ -163,6 +170,9 @@ impl<'a> HIRFunctionTranslator<'a> {
             let ty = MIRType::from_hir(local.ty.node);
             let type_id = self.module.type_arena.get_or_insert(ty);
             let stack_ptr = self.next_vreg();
+
+            self.metainfo.add_variable_name(local.name.node, stack_ptr);
+
             let rvalue = RValue::Alloca(type_id);
             let instruction = Instruction::Assign(stack_ptr, rvalue);
             self.emit_instruction(instruction);
@@ -180,6 +190,7 @@ impl<'a> HIRFunctionTranslator<'a> {
                 ret_ty: return_type_id,
             },
             blocks: self.blocks,
+            metainfo: self.metainfo,
         }
     }
 }

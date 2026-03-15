@@ -1,9 +1,13 @@
 use std::collections::HashMap;
 
+use inkwell::OptimizationLevel;
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
+use inkwell::targets::{
+    CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
+};
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
 use inkwell::values::{BasicValue, BasicValueEnum};
 
@@ -11,20 +15,34 @@ use mir::MIR;
 use utils::ids::ValueId;
 use utils::primitive_types::PrimitiveType;
 
-pub struct MIRTranslator {}
+pub fn mir_to_llvm_ir_string(mir: MIR) -> String {
+    let context = Context::create();
+    let mir_module = mir.modules.into_iter().next().unwrap();
+    MIRModuleTranslator::new(&context, mir_module).translate_to_llvm_ir_string()
+}
 
-impl MIRTranslator {
-    pub fn new() -> Self {
-        Self {}
-    }
+pub fn mir_to_asm_string(mir: MIR) -> String {
+    let context = Context::create();
+    let mir_module = mir.modules.into_iter().next().unwrap();
+    let target_machine = get_target_machine();
+    MIRModuleTranslator::new(&context, mir_module).translate_to_asm_string(target_machine)
+}
 
-    pub fn translate(&self, mir: MIR) -> String {
-        let context = Context::create();
-        let mir_module = mir.modules.into_iter().next().unwrap();
-        let module = MIRModuleTranslator::new(&context, mir_module).translate();
+fn get_target_machine() -> TargetMachine {
+    Target::initialize_all(&InitializationConfig::default());
+    let target_triple = TargetMachine::get_default_triple();
+    let target = Target::from_triple(&target_triple).unwrap();
 
-        module.print_to_string().to_string()
-    }
+    target
+        .create_target_machine(
+            &target_triple,
+            "generic",
+            "",
+            OptimizationLevel::Default,
+            RelocMode::Default,
+            CodeModel::Default,
+        )
+        .unwrap()
 }
 
 pub struct MIRModuleTranslator<'ctx> {
@@ -46,7 +64,22 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
         }
     }
 
-    pub fn translate(self) -> Module<'ctx> {
+    pub fn translate_to_asm_string(self, target_machine: TargetMachine) -> String {
+        let memory_buffer = target_machine
+            .write_to_memory_buffer(&self.module, FileType::Assembly)
+            .unwrap();
+        let asm_bytes = memory_buffer.as_slice();
+        let asm_string = String::from_utf8_lossy(asm_bytes).into_owned();
+        asm_string
+    }
+
+    pub fn translate_to_llvm_ir_string(self) -> String {
+        let llvm_module = self.translate();
+        llvm_module.verify().unwrap();
+        llvm_module.print_to_string().to_string()
+    }
+
+    fn translate(self) -> Module<'ctx> {
         // First pass: register functions (LLVM declare)
         for func in self.mir_module.functions.iter() {
             self.register_function(func);
