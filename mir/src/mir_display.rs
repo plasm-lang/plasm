@@ -57,7 +57,23 @@ fn format_function(func: &Function, module: &Module) -> String {
         }
         Function::Internal(func) => {
             let ret_ty = module.type_arena.get(func.signature.ret_ty).unwrap();
-            let mut result = format!("fn {}() -> {} {{\n", func.signature.name, ret_ty);
+
+            let arg_types = func
+                .signature
+                .args
+                .iter()
+                .map(|(arg_ty_id, value_id)| {
+                    let arg_name = func.metainfo.get_variable_name(*value_id);
+                    let arg_type = module.type_arena.get(*arg_ty_id).unwrap();
+                    format!("%{}: {}", arg_name, arg_type)
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            let mut result = format!(
+                "fn {}({}) -> {} {{\n",
+                func.signature.name, arg_types, ret_ty
+            );
 
             for block in &func.blocks {
                 result.push_str(&format!("    {} {{\n", block.label));
@@ -121,7 +137,8 @@ fn format_rvalue(rvalue: &RValue, module: &Module, metainfo: &MetaInfo) -> Strin
         }
         RValue::Load(type_id, ptr) => {
             let ty = module.type_arena.get(*type_id).unwrap();
-            format!("load {}, ptr {}", ty, ptr)
+            let ptr_str = format!("%{}", metainfo.get_variable_name(*ptr));
+            format!("load {}, ptr {}", ty, ptr_str)
         }
         RValue::GetElementPtr(val_id) => format!("getelementptr {}", val_id),
         RValue::Call(call) => {
@@ -131,7 +148,13 @@ fn format_rvalue(rvalue: &RValue, module: &Module, metainfo: &MetaInfo) -> Strin
                 .unwrap()
                 .node
                 .as_str();
-            format!("call @{func_name}()")
+            let args = call
+                .args
+                .iter()
+                .map(|arg| format_operand(arg, module, metainfo))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("call @{func_name}({args})")
         }
         RValue::BinaryOp(op, left, right) => {
             format!(

@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use bimap::BiHashMap;
 
-use hir::{HIRType, THIR};
-use utils::ids::{ExprId, LocalId, TypeId, ValueId};
+use hir::THIR;
+use utils::ids::{ExprId, LocalId, ValueId};
 
 use super::mir::{
     BasicBlock, BlockLabel, Call, Constant, Function, FunctionSignature, Instruction,
@@ -48,10 +48,6 @@ impl HIRTranslator {
     }
 
     fn translate_function(&mut self, func: hir::TypedFunction) -> Function {
-        // For beggining, only support functions with no arguments and void return type
-        assert!(func.signature.args.is_empty());
-        // assert!(func.signature.ret_ty.node == HIRType::Primitive(PrimitiveType::Void));
-
         let translator = HIRFunctionTranslator::new(&mut self.mir.modules[0]);
         Function::Internal(translator.translate(func))
     }
@@ -124,14 +120,28 @@ impl<'a> HIRFunctionTranslator<'a> {
             },
             hir::TypedExprKind::FunctionCall(hir_call) => {
                 let value_id = self.next_vreg();
+
+                let args = hir_call
+                    .args
+                    .iter()
+                    .map(|arg_expr_id| self.lower_expr(*arg_expr_id, expr_arena))
+                    .collect();
+
                 let rvalue = RValue::Call(Call {
                     function: hir_call.func_id,
-                    args: vec![],
+                    args,
                 });
                 self.emit_instruction(Instruction::Assign(value_id, rvalue));
                 Operand::Use(value_id)
             }
-            _ => unimplemented!(),
+            hir::TypedExprKind::Local(local_id) => {
+                let stack_ptr = *self.stack_slot_ptrs.get(local_id).unwrap();
+                let value_id = self.next_vreg();
+                let rvalue = RValue::Load(type_id, stack_ptr);
+                self.emit_instruction(Instruction::Assign(value_id, rvalue));
+                Operand::Use(value_id)
+            }
+            _ => unimplemented!("Expression kind not supported yet: {:?}", expr.kind),
         }
     }
 
@@ -141,9 +151,9 @@ impl<'a> HIRFunctionTranslator<'a> {
                 let stack_ptr = *self.stack_slot_ptrs.get(&decl.local_id).unwrap();
                 let operand = self.lower_expr(decl.expr_id, expr_arena);
 
-                if let Operand::Use(value_id) = operand {
-                    self.metainfo.bind_values(stack_ptr, value_id);
-                }
+                // if let Operand::Use(value_id) = operand {
+                //     self.metainfo.bind_values(stack_ptr, value_id);
+                // }
 
                 let instruction = Instruction::Store {
                     value: operand,
@@ -171,13 +181,36 @@ impl<'a> HIRFunctionTranslator<'a> {
             let type_id = self.module.type_arena.get_or_insert(ty);
             let stack_ptr = self.next_vreg();
 
-            self.metainfo.add_variable_name(local.name.node, stack_ptr);
+            self.metainfo
+                .add_variable_name(format!("{}_ptr", local.name.node), stack_ptr);
 
             let rvalue = RValue::Alloca(type_id);
             let instruction = Instruction::Assign(stack_ptr, rvalue);
             self.emit_instruction(instruction);
             self.stack_slot_ptrs.insert(local.id, stack_ptr);
         }
+
+        let args = func
+            .signature
+            .args
+            .into_iter()
+            .map(|arg| {
+                let ty = MIRType::from_hir(arg.node.ty.node);
+                let type_id = self.module.type_arena.get_or_insert(ty);
+                let value_id = self.next_vreg();
+                self.metainfo
+                    .add_variable_name(arg.node.name.node, value_id);
+
+                let ptr = self.stack_slot_ptrs.get(&arg.node.local_id).unwrap();
+                let instruction = Instruction::Store {
+                    value: Operand::Use(value_id),
+                    ptr: Operand::Use(*ptr),
+                };
+                self.emit_instruction(instruction);
+
+                (type_id, value_id)
+            })
+            .collect();
 
         for statement in func.body.statements {
             self.lower_statement(statement, &func.expr_arena);
@@ -188,6 +221,7 @@ impl<'a> HIRFunctionTranslator<'a> {
                 id: func.signature.id,
                 name: func.signature.name.node.clone(),
                 ret_ty: return_type_id,
+                args,
             },
             blocks: self.blocks,
             metainfo: self.metainfo,

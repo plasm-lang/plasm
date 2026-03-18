@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::borrow::Cow;
 
 use bimap::BiHashMap;
 use serde::Serialize;
@@ -47,7 +47,7 @@ pub struct InternalFunction {
 pub struct FunctionSignature {
     pub id: FuncId,
     pub name: String,
-    // pub args: Vec<TypeId>,
+    pub args: Vec<(TypeId, ValueId)>,
     pub ret_ty: TypeId,
 }
 
@@ -169,34 +169,18 @@ pub enum ConstantValue {
 
 #[derive(Debug, Serialize, Default)]
 pub struct MetaInfo {
-    pub variable_names: HashMap<String, Vec<ValueId>>,
+    pub variable_names: BiHashMap<String, ValueId>,
 }
 
 impl MetaInfo {
     pub fn add_variable_name(&mut self, name: String, value_id: ValueId) {
-        self.variable_names
-            .entry(name)
-            .or_insert_with(Vec::new)
-            .push(value_id);
+        self.variable_names.insert(name, value_id);
     }
 
-    pub fn get_variable_name(&self, value_id: ValueId) -> String {
-        for (name, ids) in &self.variable_names {
-            if ids.contains(&value_id) {
-                return name.clone();
-            }
-        }
-        value_id.to_string()
-    }
-
-    pub fn bind_values(&mut self, existing_id: ValueId, new_id: ValueId) {
-        for (_, ids) in &mut self.variable_names {
-            if ids.contains(&existing_id) {
-                if !ids.contains(&new_id) {
-                    ids.push(new_id);
-                }
-                return;
-            }
+    pub fn get_variable_name(&self, value_id: ValueId) -> Cow<'_, str> {
+        match self.variable_names.get_by_right(&value_id) {
+            Some(name) => Cow::Borrowed(name),
+            None => Cow::Owned(value_id.to_string()),
         }
     }
 }

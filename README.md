@@ -102,9 +102,9 @@ This is the roadmap for implementing a minimal working framework that will serve
       <th>Input Args</th>
       <td>✅</td>
       <td>✅</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
       <td><code>fn func(arg: i32) {}</code></td>
     </tr>
     <tr>
@@ -129,10 +129,19 @@ This is the roadmap for implementing a minimal working framework that will serve
       <th>Args Passing</th>
       <td>✅</td>
       <td>✅</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
       <td><code>func(var1, var2)</code></td>
+    </tr>
+    <tr>
+      <th>Binary & Unary Operations</th>
+      <td>✅</td>
+      <td>✅</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>let y = x + 2</code></td>
     </tr>
     <tr>
       <th>Named Args</th>
@@ -342,13 +351,13 @@ This is the roadmap for implementing a minimal working framework that will serve
       <th colspan="7" align="center">Metaprogramming & Compile-time</th>
     </tr>
     <tr>
+      <th colspan="7" align="center">Compiler Extensions</th>
+    </tr>
+    <tr>
       <th colspan="7" align="center">Algebraic Effects</th>
     </tr>
     <tr>
       <th colspan="7" align="center">Regions</th>
-    </tr>
-    <tr>
-      <th colspan="7" align="center">Compiler Extensions</th>
     </tr>
     <tr>
       <th colspan="7" align="center">Standard Library</th>

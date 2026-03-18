@@ -98,7 +98,16 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
         };
 
         let ret_ty = self.mir_module.type_arena.get(signature.ret_ty).unwrap();
-        let param_types: Vec<BasicMetadataTypeEnum> = vec![];
+        let param_types: Vec<BasicMetadataTypeEnum> = signature
+            .args
+            .iter()
+            .map(|(arg_ty_id, _)| {
+                let arg_ty = self.mir_module.type_arena.get(*arg_ty_id).unwrap();
+                self.get_llvm_type(arg_ty)
+                    .unwrap()
+                    .into()
+            })
+            .collect();
 
         let fn_type = match self.get_llvm_type(ret_ty) {
             Some(basic_ret_ty) => basic_ret_ty.fn_type(&param_types, false),
@@ -128,6 +137,12 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
         }
 
         let mut value_map: HashMap<ValueId, BasicValueEnum<'ctx>> = HashMap::new();
+
+        for (i, (_, value_id)) in func.signature.args.iter().enumerate() {
+            let arg = function.get_nth_param(i as u32).unwrap();
+            value_map.insert(*value_id, arg);
+        }
+
         for block in &func.blocks {
             self.builder.position_at_end(bb_map[block.label.as_str()]);
             self.translate_basic_block(block, &bb_map, &mut value_map);
@@ -157,13 +172,13 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
                 value_map.insert(*id, llvm_value);
             }
             mir::Instruction::Store { value, ptr } => {
-                let llvm_val_opt = self.translate_operand(value, value_map);
-                let llvm_ptr_opt = self
+                let llvm_val = self.translate_operand(value, value_map).unwrap();
+                let llvm_ptr = self
                     .translate_operand(ptr, value_map)
-                    .map(|v| v.into_pointer_value());
-                if let (Some(llvm_val), Some(llvm_ptr)) = (llvm_val_opt, llvm_ptr_opt) {
-                    self.builder.build_store(llvm_ptr, llvm_val).unwrap();
-                }
+                    .unwrap()
+                    .into_pointer_value();
+
+                self.builder.build_store(llvm_ptr, llvm_val).unwrap();
             }
         }
     }
@@ -244,9 +259,13 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
                     .as_str();
                 let llvm_func = self.module.get_function(func_name).unwrap();
 
-                // TODO: handle arguments
+                let args = call
+                    .args
+                    .iter()
+                    .map(|arg| self.translate_operand(arg, value_map).unwrap().into())
+                    .collect::<Vec<_>>();
 
-                let call_site = self.builder.build_call(llvm_func, &[], "call_tmp").unwrap();
+                let call_site = self.builder.build_call(llvm_func, &args, "call_tmp").unwrap();
                 call_site.set_tail_call(true);
                 call_site.try_as_basic_value().unwrap_basic()
             }
