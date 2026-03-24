@@ -4,11 +4,11 @@ use inkwell::OptimizationLevel;
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
-use inkwell::module::Module;
+use inkwell::module::{Linkage, Module};
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
-use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
+use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StringRadix};
 use inkwell::values::{BasicValue, BasicValueEnum};
 
 use mir::MIR;
@@ -32,12 +32,14 @@ fn get_target_machine() -> TargetMachine {
     Target::initialize_all(&InitializationConfig::default());
     let target_triple = TargetMachine::get_default_triple();
     let target = Target::from_triple(&target_triple).unwrap();
+    let cpu = TargetMachine::get_host_cpu_name().to_string();
+    let features = TargetMachine::get_host_cpu_features().to_string();
 
     target
         .create_target_machine(
             &target_triple,
-            "generic",
-            "",
+            &cpu,
+            &features,
             OptimizationLevel::Default,
             RelocMode::Default,
             CodeModel::Default,
@@ -54,7 +56,7 @@ pub struct MIRModuleTranslator<'ctx> {
 
 impl<'ctx> MIRModuleTranslator<'ctx> {
     pub fn new(context: &'ctx Context, mir_module: mir::Module) -> Self {
-        let module = context.create_module("module_name");
+        let module = context.create_module("main");
         let builder = context.create_builder();
         Self {
             context,
@@ -65,8 +67,11 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
     }
 
     pub fn translate_to_asm_string(self, target_machine: TargetMachine) -> String {
+        let llvm_module = self.translate();
+        llvm_module.verify().unwrap();
+
         let memory_buffer = target_machine
-            .write_to_memory_buffer(&self.module, FileType::Assembly)
+            .write_to_memory_buffer(&llvm_module, FileType::Assembly)
             .unwrap();
         let asm_bytes = memory_buffer.as_slice();
         let asm_string = String::from_utf8_lossy(asm_bytes).into_owned();
@@ -97,34 +102,45 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
             mir::Function::Internal(int_func) => &int_func.signature,
         };
 
+        let metainfo = match func {
+            mir::Function::External(ext_func) => &ext_func.metainfo,
+            mir::Function::Internal(int_func) => &int_func.metainfo,
+        };
+
         let ret_ty = self.mir_module.type_arena.get(signature.ret_ty).unwrap();
-        let param_types: Vec<BasicMetadataTypeEnum> = signature
+        let arg_types: Vec<BasicMetadataTypeEnum> = signature
             .args
             .iter()
             .map(|(arg_ty_id, _)| {
                 let arg_ty = self.mir_module.type_arena.get(*arg_ty_id).unwrap();
-                self.get_llvm_type(arg_ty)
-                    .unwrap()
-                    .into()
+                self.get_llvm_type(arg_ty).unwrap().into()
             })
             .collect();
 
         let fn_type = match self.get_llvm_type(ret_ty) {
-            Some(basic_ret_ty) => basic_ret_ty.fn_type(&param_types, false),
-            None => self.context.void_type().fn_type(&param_types, false),
+            Some(basic_ret_ty) => basic_ret_ty.fn_type(&arg_types, false),
+            None => self.context.void_type().fn_type(&arg_types, false),
         };
-        self.module.add_function(&signature.name, fn_type, None);
+
+        let linkage = match func {
+            mir::Function::External(_) => Some(Linkage::External),
+            mir::Function::Internal(_) => None,
+        };
+
+        let llvm_fn = self.module.add_function(&signature.name, fn_type, linkage);
+
+        for (i, (_, value_id)) in signature.args.iter().enumerate() {
+            let arg_name = metainfo.get_variable_name(*value_id);
+            let arg = llvm_fn.get_nth_param(i as u32).unwrap();
+            arg.set_name(&arg_name);
+        }
     }
 
     fn translate_function(&self, func: &mir::Function) {
         match func {
-            mir::Function::External(ext_func) => self.translate_external_function(ext_func),
             mir::Function::Internal(int_func) => self.translate_internal_function(int_func),
+            mir::Function::External(_ext_func) => {} // No body to translate for external functions
         }
-    }
-
-    fn translate_external_function(&self, func: &mir::ExternalFunction) {
-        unimplemented!()
     }
 
     fn translate_internal_function(&self, func: &mir::InternalFunction) {
@@ -140,12 +156,14 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
 
         for (i, (_, value_id)) in func.signature.args.iter().enumerate() {
             let arg = function.get_nth_param(i as u32).unwrap();
+            let arg_name = func.metainfo.get_variable_name(*value_id);
+            arg.set_name(&arg_name);
             value_map.insert(*value_id, arg);
         }
 
         for block in &func.blocks {
             self.builder.position_at_end(bb_map[block.label.as_str()]);
-            self.translate_basic_block(block, &bb_map, &mut value_map);
+            self.translate_basic_block(block, &bb_map, &mut value_map, &func.metainfo);
         }
     }
 
@@ -154,9 +172,10 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
         block: &mir::BasicBlock,
         bb_map: &HashMap<&str, BasicBlock<'ctx>>,
         value_map: &mut HashMap<ValueId, BasicValueEnum<'ctx>>,
+        metainfo: &mir::MetaInfo,
     ) {
         for instruction in &block.instructions {
-            self.translate_instruction(instruction, value_map);
+            self.translate_instruction(instruction, value_map, metainfo);
         }
         self.translate_terminator(&block.terminator, bb_map, value_map);
     }
@@ -165,10 +184,12 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
         &self,
         instruction: &mir::Instruction,
         value_map: &mut HashMap<ValueId, BasicValueEnum<'ctx>>,
+        metainfo: &mir::MetaInfo,
     ) {
         match instruction {
             mir::Instruction::Assign(id, rvalue) => {
-                let llvm_value = self.translate_rvalue(rvalue, value_map);
+                let name = metainfo.get_variable_name(*id);
+                let llvm_value = self.translate_rvalue(rvalue, value_map, &name);
                 value_map.insert(*id, llvm_value);
             }
             mir::Instruction::Store { value, ptr } => {
@@ -230,22 +251,19 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
         &self,
         rvalue: &mir::RValue,
         value_map: &HashMap<ValueId, BasicValueEnum<'ctx>>,
+        name: &str,
     ) -> BasicValueEnum<'ctx> {
         match rvalue {
             mir::RValue::Alloca(type_id) => {
                 let mir_ty = self.mir_module.type_arena.get(*type_id).unwrap();
                 let llvm_ty = self.get_llvm_type(mir_ty).unwrap();
-                self.builder.build_alloca(llvm_ty, "alloca").unwrap().into()
+                self.builder.build_alloca(llvm_ty, name).unwrap().into()
             }
             mir::RValue::Load(type_id, ptr_id) => {
                 let ptr_val = value_map.get(ptr_id).unwrap().into_pointer_value();
                 let mir_ty = self.mir_module.type_arena.get(*type_id).unwrap();
                 let llvm_ty = self.get_llvm_type(mir_ty).unwrap();
-                // TODO: Replace "load_tmp" with original variable name (+ Add variable name info into MIR)
-                let load_res = self
-                    .builder
-                    .build_load(llvm_ty, ptr_val, "load_tmp")
-                    .unwrap();
+                let load_res = self.builder.build_load(llvm_ty, ptr_val, name).unwrap();
                 load_res
             }
             mir::RValue::GetElementPtr(value_id) => todo!(),
@@ -265,7 +283,7 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
                     .map(|arg| self.translate_operand(arg, value_map).unwrap().into())
                     .collect::<Vec<_>>();
 
-                let call_site = self.builder.build_call(llvm_func, &args, "call_tmp").unwrap();
+                let call_site = self.builder.build_call(llvm_func, &args, name).unwrap();
                 call_site.set_tail_call(true);
                 call_site.try_as_basic_value().unwrap_basic()
             }
@@ -278,13 +296,13 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
         match &constant.value {
             mir::ConstantValue::Int(val_str) => {
                 let llvm_ty = self.get_llvm_type(mir_ty).unwrap().into_int_type();
-                let val: u64 = val_str.parse().unwrap(); // TODO: handle larger integers and signed integers
-                Some(llvm_ty.const_int(val, false).into())
+                llvm_ty
+                    .const_int_from_string(val_str, StringRadix::Decimal)
+                    .map(|v| v.into())
             }
             mir::ConstantValue::Float(val_str) => {
                 let llvm_ty = self.get_llvm_type(mir_ty).unwrap().into_float_type();
-                let val: f64 = val_str.parse().unwrap(); // TODO: handle different float sizes
-                Some(llvm_ty.const_float(val).into())
+                Some(unsafe { llvm_ty.const_float_from_string(val_str) }.into())
             }
             mir::ConstantValue::Void => None,
         }

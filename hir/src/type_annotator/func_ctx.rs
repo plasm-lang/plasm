@@ -5,7 +5,8 @@ use utils::ids::{ExprId, FuncId, LocalId, TypeVarId};
 
 use crate::error::Error;
 use crate::hir::{
-    Block, Expr, ExprArena, ExprKind, Function, FunctionSignature, HIRLocal, HIRType, Statement,
+    Block, Expr, ExprArena, ExprKind, FunctionSignature, HIRLocal, HIRType, InternalFunction,
+    Statement,
 };
 
 use super::solver::Solver;
@@ -18,7 +19,7 @@ type S<T> = Spanned<T>;
 /// Temporary function context for generating type constraints
 pub struct FunctionCtx<'a> {
     next_type_var_id: TypeVarId,
-    func: &'a Function<OT>,
+    func: &'a InternalFunction<OT>,
     used_func_signatures: &'a HashMap<FuncId, FunctionSignature>,
     expr_ty: HashMap<ExprId, S<TypeVar>>,
     local_ty: HashMap<LocalId, S<TypeVar>>,
@@ -26,7 +27,7 @@ pub struct FunctionCtx<'a> {
 
 impl<'a> FunctionCtx<'a> {
     pub fn from_function(
-        func: &'a Function<OT>,
+        func: &'a InternalFunction<OT>,
         func_signatures: &'a HashMap<FuncId, FunctionSignature>,
     ) -> Self {
         let mut ctx = Self {
@@ -345,8 +346,8 @@ mod tests {
         locals: Vec<HIRLocal<OT>>,
         stmts: Vec<Statement>,
         exprs: HashMap<ExprId, Spanned<Expr<OT>>>,
-    ) -> Function<OT> {
-        Function {
+    ) -> InternalFunction<OT> {
+        InternalFunction {
             signature,
             body: Block {
                 locals,

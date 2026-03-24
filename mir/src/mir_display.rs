@@ -1,8 +1,8 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use super::mir::{
-    Constant, ConstantValue, Function, Global, Instruction, MIR, MetaInfo, Module, Operand, RValue,
-    Terminator,
+    Constant, ConstantValue, Function, FunctionSignature, Global, Instruction, MIR, MetaInfo,
+    Module, Operand, RValue, Terminator,
 };
 use super::types::MIRType;
 use super::types::TypeArena;
@@ -52,28 +52,13 @@ impl Display for MIRType {
 fn format_function(func: &Function, module: &Module) -> String {
     match func {
         Function::External(func) => {
-            let ret_ty = module.type_arena.get(func.signature.ret_ty).unwrap();
-            format!("external fn {}() -> {}", func.signature.name, ret_ty)
+            let mut result = format_signature(&func.signature, module, &func.metainfo);
+            result.push_str("\n");
+            result
         }
         Function::Internal(func) => {
-            let ret_ty = module.type_arena.get(func.signature.ret_ty).unwrap();
-
-            let arg_types = func
-                .signature
-                .args
-                .iter()
-                .map(|(arg_ty_id, value_id)| {
-                    let arg_name = func.metainfo.get_variable_name(*value_id);
-                    let arg_type = module.type_arena.get(*arg_ty_id).unwrap();
-                    format!("%{}: {}", arg_name, arg_type)
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-
-            let mut result = format!(
-                "fn {}({}) -> {} {{\n",
-                func.signature.name, arg_types, ret_ty
-            );
+            let mut result = format_signature(&func.signature, module, &func.metainfo);
+            result.push_str(" {\n");
 
             for block in &func.blocks {
                 result.push_str(&format!("    {} {{\n", block.label));
@@ -96,6 +81,23 @@ fn format_function(func: &Function, module: &Module) -> String {
             result
         }
     }
+}
+
+fn format_signature(signature: &FunctionSignature, module: &Module, metainfo: &MetaInfo) -> String {
+    let ret_ty = module.type_arena.get(signature.ret_ty).unwrap();
+
+    let args = signature
+        .args
+        .iter()
+        .map(|(arg_ty_id, value_id)| {
+            let arg_name = metainfo.get_variable_name(*value_id);
+            let arg_type = module.type_arena.get(*arg_ty_id).unwrap();
+            format!("%{}: {}", arg_name, arg_type)
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    format!("fn {}({}) -> {}", signature.name, args, ret_ty)
 }
 
 fn format_terminator(terminator: &Terminator, module: &Module, metainfo: &MetaInfo) -> String {

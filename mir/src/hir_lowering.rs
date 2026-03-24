@@ -6,8 +6,8 @@ use hir::THIR;
 use utils::ids::{ExprId, LocalId, ValueId};
 
 use super::mir::{
-    BasicBlock, BlockLabel, Call, Constant, Function, FunctionSignature, Instruction,
-    InternalFunction, MIR, MetaInfo, Module, Operand, RValue, Terminator,
+    BasicBlock, BlockLabel, Call, Constant, ExternalFunction, Function, FunctionSignature,
+    Instruction, InternalFunction, MIR, MetaInfo, Module, Operand, RValue, Terminator,
 };
 use super::types::{MIRType, TypeArena};
 
@@ -49,7 +49,7 @@ impl HIRTranslator {
 
     fn translate_function(&mut self, func: hir::TypedFunction) -> Function {
         let translator = HIRFunctionTranslator::new(&mut self.mir.modules[0]);
-        Function::Internal(translator.translate(func))
+        translator.translate(func)
     }
 }
 
@@ -151,10 +151,6 @@ impl<'a> HIRFunctionTranslator<'a> {
                 let stack_ptr = *self.stack_slot_ptrs.get(&decl.local_id).unwrap();
                 let operand = self.lower_expr(decl.expr_id, expr_arena);
 
-                // if let Operand::Use(value_id) = operand {
-                //     self.metainfo.bind_values(stack_ptr, value_id);
-                // }
-
                 let instruction = Instruction::Store {
                     value: operand,
                     ptr: Operand::Use(stack_ptr),
@@ -171,9 +167,59 @@ impl<'a> HIRFunctionTranslator<'a> {
         }
     }
 
-    fn translate(mut self, func: hir::TypedFunction) -> InternalFunction {
-        let return_type = MIRType::from_hir(func.signature.ret_ty.node);
+    fn translate(self, func: hir::TypedFunction) -> Function {
+        match func {
+            hir::TypedFunction::Internal(internal) => {
+                Function::Internal(self.translate_internal_func(internal))
+            }
+            hir::TypedFunction::External(external) => {
+                Function::External(self.translate_external_func(external))
+            }
+        }
+    }
+
+    fn translate_signature(&mut self, signature: hir::FunctionSignature) -> FunctionSignature {
+        let return_type = MIRType::from_hir(signature.ret_ty.node);
         let return_type_id = self.module.type_arena.get_or_insert(return_type);
+
+        let args = signature
+            .args
+            .into_iter()
+            .map(|arg| {
+                let ty = MIRType::from_hir(arg.node.ty.node);
+                let type_id = self.module.type_arena.get_or_insert(ty);
+                let value_id = self.next_vreg();
+                self.metainfo
+                    .add_variable_name(arg.node.name.node, value_id);
+                (type_id, value_id)
+            })
+            .collect();
+
+        FunctionSignature {
+            id: signature.id,
+            name: signature.name.node.clone(),
+            ret_ty: return_type_id,
+            args,
+        }
+    }
+
+    fn emit_store_instructions_for_args(
+        &mut self,
+        hir_signature: &hir::FunctionSignature,
+        mir_signature: &FunctionSignature,
+    ) {
+        for (hir_arg, (_, value_id)) in hir_signature.args.iter().zip(mir_signature.args.iter()) {
+            let ptr = *self.stack_slot_ptrs.get(&hir_arg.node.local_id).unwrap();
+            let instruction = Instruction::Store {
+                value: Operand::Use(*value_id),
+                ptr: Operand::Use(ptr),
+            };
+            self.emit_instruction(instruction);
+        }
+    }
+
+    fn translate_internal_func(mut self, func: hir::TypedInternalFunction) -> InternalFunction {
+        let hir_signature = func.signature;
 
         for local in func.body.locals {
             // Alloca for each local variable
@@ -190,40 +236,24 @@ impl<'a> HIRFunctionTranslator<'a> {
             self.stack_slot_ptrs.insert(local.id, stack_ptr);
         }
 
-        let args = func
-            .signature
-            .args
-            .into_iter()
-            .map(|arg| {
-                let ty = MIRType::from_hir(arg.node.ty.node);
-                let type_id = self.module.type_arena.get_or_insert(ty);
-                let value_id = self.next_vreg();
-                self.metainfo
-                    .add_variable_name(arg.node.name.node, value_id);
-
-                let ptr = self.stack_slot_ptrs.get(&arg.node.local_id).unwrap();
-                let instruction = Instruction::Store {
-                    value: Operand::Use(value_id),
-                    ptr: Operand::Use(*ptr),
-                };
-                self.emit_instruction(instruction);
-
-                (type_id, value_id)
-            })
-            .collect();
+        let signature = self.translate_signature(hir_signature.clone());
+        self.emit_store_instructions_for_args(&hir_signature, &signature);
 
         for statement in func.body.statements {
             self.lower_statement(statement, &func.expr_arena);
         }
 
         InternalFunction {
-            signature: FunctionSignature {
-                id: func.signature.id,
-                name: func.signature.name.node.clone(),
-                ret_ty: return_type_id,
-                args,
-            },
+            signature,
             blocks: self.blocks,
+            metainfo: self.metainfo,
+        }
+    }
+
+    fn translate_external_func(mut self, func: hir::ExternalFunction) -> ExternalFunction {
+        let signature = self.translate_signature(func.signature);
+        ExternalFunction {
+            signature,
             metainfo: self.metainfo,
         }
     }

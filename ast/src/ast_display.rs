@@ -1,10 +1,9 @@
 use std::fmt::{Display, Formatter, Result};
 
-use utils::binop::BinaryOp;
-
 use super::ast::{
-    AST, Argument, BinaryExpr, CallArgument, Expr, Function, FunctionCall, Item, Literal,
-    Statement, Type, UnaryExpr, UnaryOp, VariableDeclaration,
+    AST, Argument, BinaryExpr, CallArgument, Expr, ExternalFunction, Function, FunctionCall,
+    FunctionSignature, InternalFunction, Item, Literal, Statement, Type, UnaryExpr, UnaryOp,
+    VariableDeclaration,
 };
 
 impl Display for AST {
@@ -30,6 +29,37 @@ impl Display for Item {
 
 impl Display for Function {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Function::External(func) => write!(f, "{func}"),
+            Function::Internal(func) => write!(f, "{func}"),
+        }
+    }
+}
+
+impl Display for ExternalFunction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        writeln!(f, "{}", self.signature)
+    }
+}
+
+impl Display for InternalFunction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.signature)?;
+
+        if self.body.is_empty() {
+            return writeln!(f, " {{}}");
+        }
+
+        writeln!(f, " {{")?;
+        for stmt in &self.body {
+            write!(f, "{}", Indent::new(&stmt.node))?;
+        }
+        writeln!(f, "}}")
+    }
+}
+
+impl Display for FunctionSignature {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "fn {}(", self.name)?;
         for (i, arg) in self.args.iter().enumerate() {
             if i > 0 {
@@ -41,16 +71,7 @@ impl Display for Function {
         if let Some(ret_type) = &self.return_type {
             write!(f, " -> {ret_type}")?;
         }
-
-        if self.body.is_empty() {
-            return writeln!(f, " {{}}");
-        }
-
-        writeln!(f, " {{")?;
-        for stmt in &self.body {
-            write!(f, "{}", Indent::new(&stmt.node))?;
-        }
-        writeln!(f, "}}")
+        Ok(())
     }
 }
 

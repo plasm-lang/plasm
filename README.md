@@ -135,6 +135,15 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td><code>func(var1, var2)</code></td>
     </tr>
     <tr>
+      <th>Promised Functions (C FFI)</th>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td><code>fn f(x: i32) -> i32</code></td>
+    </tr>
+    <tr>
       <th>Binary & Unary Operations</th>
       <td>✅</td>
       <td>✅</td>

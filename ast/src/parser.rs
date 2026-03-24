@@ -6,8 +6,9 @@ use tokenizer::{Bracket, Keyword, Number, SpecialSymbol, Token};
 use utils::binop::BinaryOp;
 
 use super::ast::{
-    AST, Argument, BinaryExpr, Block, CallArgument, Expr, Function, FunctionCall, Literal,
-    Statement, Type, UnaryExpr, UnaryOp, VariableDeclaration,
+    AST, Argument, BinaryExpr, Block, CallArgument, Expr, ExternalFunction, Function, FunctionCall,
+    FunctionSignature, InternalFunction, Literal, Statement, Type, UnaryExpr, UnaryOp,
+    VariableDeclaration,
 };
 use super::error::ParseError;
 
@@ -165,7 +166,7 @@ where
         let (func_name, func_name_span) = self.expect_ident()?;
         self.expect(Token::Bracket(Bracket::RoundOpen))?;
 
-        // parse arguments
+        // Parse arguments
 
         let mut args = Vec::new();
         loop {
@@ -212,51 +213,46 @@ where
             }
         }
 
-        let (block, return_type) = match self.iter.peek() {
+        let return_type = match self.iter.peek() {
             Some((token, _span)) => match token {
-                // Function without return type
-                Token::Bracket(Bracket::CurlyOpen) => {
-                    let block = self.parse_block()?.node;
-                    (block, None)
-                }
-                // Function with return type
                 Token::SpecialSymbol(SpecialSymbol::Minus) => {
                     self.take_next(); // consume '-'
                     self.expect(Token::SpecialSymbol(SpecialSymbol::GreaterThan))?;
                     let (type_name, type_name_span) = self.expect_ident()?;
                     let ty = Type::from_str(&type_name);
-                    let return_type = Some(Spanned::new(ty, type_name_span));
-                    let block = self.parse_block()?.node;
-                    (block, return_type)
+                    Some(Spanned::new(ty, type_name_span))
                 }
-                _ => {
-                    let (token, span) = self.take_next()?;
-                    let err = ParseError::UnexpectedToken {
-                        token,
-                        expected: "`-> T {` or `{`".to_string(),
-                    };
-                    self.errors.push(Spanned::new(err, span));
-                    return None;
-                }
+                _ => None,
             },
-            None => {
-                self.errors.push(Spanned::new(
-                    ParseError::UnexpectedEOF {
-                        expected: "`-> T {` or `{`".to_string(),
-                    },
-                    self.last_span,
-                ));
-                return None;
-            }
+            None => None,
         };
 
-        let func = Function {
+        let signature = FunctionSignature {
             name: Spanned::new(func_name, func_name_span),
             args,
             return_type,
-            body: block,
         };
-        Some(func)
+
+        match self.iter.peek() {
+            Some((token, _span)) => match token {
+                Token::Bracket(Bracket::CurlyOpen) => {
+                    let block = self.parse_block()?.node;
+                    let func = Function::Internal(InternalFunction {
+                        signature,
+                        body: block,
+                    });
+                    Some(func)
+                }
+                _ => {
+                    let func = Function::External(ExternalFunction { signature });
+                    Some(func)
+                }
+            },
+            None => {
+                let func = Function::External(ExternalFunction { signature });
+                Some(func)
+            }
+        }
     }
 
     fn parse_block(&mut self) -> Option<Spanned<Block>> {
@@ -713,6 +709,12 @@ mod tests {
                 return true
             }
 
+            fn ext_no_args()
+
+            fn ext_one_arg(x: i32)
+
+            fn ext_two_args(x: i32, y: f64) -> bool
+
             fn multi_line(
                 x: i32,
                 y: f64,
@@ -752,6 +754,12 @@ mod tests {
             fn boolf() -> bool {
                 return true
             }
+
+            fn ext_no_args()
+
+            fn ext_one_arg(x: i32)
+
+            fn ext_two_args(x: i32, y: f64) -> bool
 
             fn multi_line(x: i32, y: f64, z: bool) -> void {
                 return

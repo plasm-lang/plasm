@@ -5,8 +5,8 @@ use diagnostic::{MaybeSpanned, Spanned};
 use utils::ids::{ExprId, FuncId, LocalId};
 
 use super::hir::{
-    Block, Expr, ExprArena, ExprKind, Function, FunctionCall, FunctionSignature, HIR, HIRType,
-    Item, Statement,
+    Block, Expr, ExprArena, ExprKind, ExternalFunction, Function, FunctionCall, FunctionSignature,
+    HIR, HIRType, InternalFunction, Item, Statement,
 };
 
 /// Render type for THIR/OptHIR.
@@ -59,8 +59,9 @@ impl<T: RenderType> Display for HIR<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let mut func_names = HashMap::<FuncId, String>::new();
         for item in &self.items {
-            if let Item::Function(fun) = item {
-                func_names.insert(fun.signature.id, fun.signature.name.node.clone());
+            if let Item::Function(func) = item {
+                let signature = func.signature();
+                func_names.insert(signature.id, signature.name.node.clone());
             }
         }
 
@@ -80,26 +81,36 @@ impl<T: RenderType> Display for HIR<T> {
 }
 
 fn format_function<T: RenderType>(
-    fun: &Function<T>,
+    func: &Function<T>,
+    func_names: &HashMap<FuncId, String>,
+) -> String {
+    match func {
+        Function::Internal(internal) => format_internal_function(internal, func_names),
+        Function::External(external) => format_external_function(external),
+    }
+}
+
+fn format_internal_function<T: RenderType>(
+    func: &InternalFunction<T>,
     func_names: &HashMap<FuncId, String>,
 ) -> String {
     // Build function context
     let mut local_names = HashMap::<LocalId, String>::new();
     let mut local_types = HashMap::<LocalId, String>::new();
 
-    for a in &fun.signature.args {
+    for a in &func.signature.args {
         let arg = &a.node;
         local_names.insert(arg.local_id, arg.name.node.clone());
         local_types.insert(arg.local_id, arg.ty.node.render_ty());
     }
 
-    for l in &fun.body.locals {
+    for l in &func.body.locals {
         local_names.insert(l.id, l.name.node.clone());
         local_types.insert(l.id, l.ty.render_ty());
     }
 
     let ctx = FnCtx {
-        arena: &fun.expr_arena,
+        arena: &func.expr_arena,
         local_names,
         local_types,
         func_names,
@@ -108,9 +119,9 @@ fn format_function<T: RenderType>(
     let mut out = String::new();
 
     // Function signature
-    format_function_signature(&mut out, &fun.signature);
+    format_function_signature(&mut out, &func.signature);
 
-    if fun.body.statements.is_empty() {
+    if func.body.statements.is_empty() {
         out.push_str(" {}\n");
         return out;
     }
@@ -118,9 +129,16 @@ fn format_function<T: RenderType>(
     out.push_str(" {\n");
 
     // Body
-    format_block_into(&mut out, &fun.body, &ctx, 1);
+    format_block_into(&mut out, &func.body, &ctx, 1);
 
     out.push_str("}\n");
+    out
+}
+
+fn format_external_function(func: &ExternalFunction) -> String {
+    let mut out = String::new();
+    format_function_signature(&mut out, &func.signature);
+    out.push('\n');
     out
 }
 

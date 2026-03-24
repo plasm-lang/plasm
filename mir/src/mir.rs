@@ -31,6 +31,7 @@ pub enum Function {
 #[derive(Debug, Serialize)]
 pub struct ExternalFunction {
     pub signature: FunctionSignature,
+    pub metainfo: MetaInfo,
 }
 
 /// Consider move alloca rvalue to an independent stack slots vec,

@@ -4,7 +4,8 @@ use diagnostic::{MaybeSpanned, Spanned};
 
 use crate::error::Error;
 use crate::hir::{
-    Block, Expr, ExprArena, ExprKind, Function, HIRLocal, HIRType, Item, OptHIR, THIR,
+    Block, Expr, ExprArena, ExprKind, Function, HIRLocal, HIRType, InternalFunction, Item, OptHIR,
+    THIR,
 };
 
 use super::func_ctx::FunctionCtx;
@@ -35,7 +36,7 @@ impl TypeAnnotator {
             .iter()
             .filter_map(|item| {
                 if let Item::Function(func) = item {
-                    Some((func.signature.id, func.signature.clone()))
+                    Some((func.signature().id, func.signature().clone()))
                 } else {
                     None
                 }
@@ -44,15 +45,18 @@ impl TypeAnnotator {
 
         for item in opt_hir.items {
             match item {
-                Item::Function(func) => {
+                Item::Function(Function::Internal(func)) => {
                     let (solver, constraint_errors) =
                         FunctionCtx::from_function(&func, &signatures).into_solver();
                     errors.extend(constraint_errors);
 
                     let annotator = FunctionAnnotator::new(solver);
                     let (annotated_func, func_errors) = annotator.annotate(func);
-                    out_items.push(Item::Function(annotated_func));
+                    out_items.push(Item::Function(Function::Internal(annotated_func)));
                     errors.extend(func_errors);
+                }
+                Item::Function(Function::External(func)) => {
+                    out_items.push(Item::Function(Function::External(func)));
                 }
             }
         }
@@ -80,12 +84,15 @@ impl FunctionAnnotator {
         }
     }
 
-    fn annotate(mut self, func: Function<OT>) -> (Function<MaybeSpanned<HIRType>>, Vec<S<Error>>) {
+    fn annotate(
+        mut self,
+        func: InternalFunction<OT>,
+    ) -> (InternalFunction<MaybeSpanned<HIRType>>, Vec<S<Error>>) {
         let arena = self.annotate_expr_arena(func.expr_arena);
         let block = self.annotate_block(func.body);
 
         (
-            Function {
+            InternalFunction {
                 signature: func.signature,
                 body: block,
                 expr_arena: arena,

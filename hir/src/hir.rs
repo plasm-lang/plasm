@@ -48,10 +48,30 @@ pub enum Item<T> {
 }
 
 #[derive(Debug, Serialize)]
-pub struct Function<T> {
+pub enum Function<T> {
+    Internal(InternalFunction<T>),
+    External(ExternalFunction),
+}
+
+impl<T> Function<T> {
+    pub fn signature(&self) -> &FunctionSignature {
+        match self {
+            Function::Internal(func) => &func.signature,
+            Function::External(func) => &func.signature,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct InternalFunction<T> {
     pub signature: FunctionSignature,
     pub body: Block<T>,
     pub expr_arena: ExprArena<T>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExternalFunction {
+    pub signature: FunctionSignature,
 }
 
 #[derive(Debug, Clone, Serialize)]

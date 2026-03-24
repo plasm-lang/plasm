@@ -4,8 +4,9 @@ use utils::primitive_types::PrimitiveType;
 
 use super::error::Error;
 use super::hir::{
-    Argument, Block, Expr, ExprArena, ExprKind, Function, FunctionCall, FunctionSignature,
-    HIRLocal, HIRType, Item, OptHIR, Statement, THIR, VariableDeclaration,
+    Argument, Block, Expr, ExprArena, ExprKind, ExternalFunction, Function, FunctionCall,
+    FunctionSignature, HIRLocal, HIRType, InternalFunction, Item, OptHIR, Statement, THIR,
+    VariableDeclaration,
 };
 use super::type_annotator::opt_hir_to_t_hir;
 
@@ -75,7 +76,7 @@ impl ASTTranslator {
                     let id = self.get_next_func_id();
 
                     // Check for duplicate function definitions
-                    if let Some(prev) = self.hir.funcs_map.get_by_right(&func.name) {
+                    if let Some(prev) = self.hir.funcs_map.get_by_right(&func.signature().name) {
                         let first = self
                             .hir
                             .funcs_map
@@ -85,13 +86,13 @@ impl ASTTranslator {
 
                         let error = Error::FunctionMultipleDefinitions {
                             first,
-                            second: func.name.clone(),
+                            second: func.signature().name.clone(),
                         };
-                        self.errors.push(S::new(error, func.name.span));
+                        self.errors.push(S::new(error, func.signature().name.span));
                         continue;
                     }
 
-                    self.hir.funcs_map.insert(id, func.name.clone());
+                    self.hir.funcs_map.insert(id, func.signature().name.clone());
                 }
             }
         }
@@ -109,14 +110,23 @@ impl ASTTranslator {
     }
 
     fn translate_function(&mut self, func: ast::Function) {
+        match func {
+            ast::Function::Internal(func) => self.translate_internal_function(func),
+            ast::Function::External(func) => self.translate_external_function(func),
+        }
+    }
+
+    fn translate_signature(
+        &mut self,
+        signature: ast::FunctionSignature,
+    ) -> (FunctionSignature, Vec<HIRLocal<OT>>) {
         let id = self
             .hir
             .funcs_map
-            .get_by_right(&func.name)
+            .get_by_right(&signature.name)
             .cloned()
             .unwrap();
-        let name = func.name;
-        let ret_ty = func
+        let ret_ty = signature
             .return_type
             .map(|ty| ty.map(|t| self.translate_type(t)).into_maybe())
             .unwrap_or(MaybeS::new(HIRType::Primitive(PrimitiveType::Void)));
@@ -127,11 +137,25 @@ impl ASTTranslator {
 
         // TODO: Handle duplicate argument names
         let mut args = Vec::new();
-        for ast_arg in func.args.into_iter() {
+        for ast_arg in signature.args.into_iter() {
             let (hir_arg, local) = self.translate_arg(ast_arg);
             args.push(hir_arg);
             locals.push(local);
         }
+
+        let signature = FunctionSignature {
+            id,
+            name: signature.name,
+            args,
+            ret_ty,
+        };
+
+        (signature, locals)
+    }
+
+    fn translate_internal_function(&mut self, func: ast::InternalFunction) {
+        let (signature, locals) = self.translate_signature(func.signature);
+        let ret_ty = &signature.ret_ty;
 
         // Translate body
 
@@ -153,23 +177,22 @@ impl ASTTranslator {
                     ty: None,
                     kind: ExprKind::Literal(ast::Literal::Void),
                 };
-                expr_arena.insert(expr_id, S::new(return_expr, name.span));
+                expr_arena.insert(expr_id, S::new(return_expr, signature.name.span));
                 body.statements.push(return_stmt);
             }
         }
 
-        let signature = FunctionSignature {
-            id,
-            name,
-            args,
-            ret_ty,
-        };
-
-        let hir_func = Function {
+        let hir_func = Function::Internal(InternalFunction {
             signature,
             body,
             expr_arena,
-        };
+        });
+        self.hir.items.push(Item::Function(hir_func));
+    }
+
+    fn translate_external_function(&mut self, func: ast::ExternalFunction) {
+        let (signature, _) = self.translate_signature(func.signature);
+        let hir_func = Function::External(ExternalFunction { signature });
         self.hir.items.push(Item::Function(hir_func));
     }
 
@@ -418,6 +441,25 @@ mod tests {
             fn main() -> void {
                 let a: void = do_nothing()
                 let b: void = a
+                return void
+            }
+        "};
+        check_by_display(code, expected_hir_display);
+    }
+
+    #[test]
+    fn external_function_translation_test() {
+        let code = indoc! {"
+            fn print(x: i32)
+            fn main() {
+                print(5)
+            }
+        "};
+        let expected_hir_display = indoc! {"
+            fn print(x: i32) -> void
+
+            fn main() -> void {
+                print(5)
                 return void
             }
         "};

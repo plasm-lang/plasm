@@ -31,11 +31,36 @@ pub enum Item {
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
-pub struct Function {
+pub enum Function {
+    External(ExternalFunction),
+    Internal(InternalFunction),
+}
+
+impl Function {
+    pub fn signature(&self) -> &FunctionSignature {
+        match self {
+            Function::Internal(func) => &func.signature,
+            Function::External(func) => &func.signature,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct InternalFunction {
+    pub signature: FunctionSignature,
+    pub body: Block,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct ExternalFunction {
+    pub signature: FunctionSignature,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct FunctionSignature {
     pub name: S<String>,
     pub args: Vec<S<Argument>>,
     pub return_type: Option<S<Type>>,
-    pub body: Block,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]

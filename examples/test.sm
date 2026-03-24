@@ -1,8 +1,5 @@
-fn get_y(y: f32) -> f32 {
-    return y
-}
+fn f(x: i32) -> i32
 
 fn main() {
-    let x = 5
-    let y = get_y(5.5)
+    let y = f(42)
 }
