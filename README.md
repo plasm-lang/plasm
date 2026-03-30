@@ -38,10 +38,10 @@ For cli help reference:
 plasm --help
 ```
 
-For example, following command will parse `test.sm` file, analyse, stop on LLVM-IR stage and emit the result in a text format:
+For example, following command will parse `test.sm` file, analyse, stop on assembly stage and emit the result in a text format:
 
 ```shell
-plasm emit test.sm --stage llvm-ir --format text
+plasm emit test.sm --stage asm
 ```
 
 ## Status
@@ -147,7 +147,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <th>Binary & Unary Operations</th>
       <td>✅</td>
       <td>✅</td>
-      <td>⬜</td>
+      <td>✅</td>
       <td>⬜</td>
       <td>⬜</td>
       <td><code>let y = x + 2</code></td>
@@ -169,15 +169,6 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td><code>let SOME_CONSTANT: i32 = 42</code></td>
-    </tr>
-    <tr>
-      <th>String Literals</th>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td><code>let a = "Hello world"</code></td>
     </tr>
     <tr>
       <th>Module System</th>
@@ -205,6 +196,15 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td><code>while cond {...}</code></td>
+    </tr>
+    <tr>
+      <th>Reference Type</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>&x</code></td>
     </tr>
     <tr>
       <th colspan="7" align="center">Structs & Enums</th>
@@ -235,6 +235,15 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td><code>impl myType {...}</code></td>
+    </tr>
+    <tr>
+      <th>String Literals</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>let a = "Hello world"</code></td>
     </tr>
     <tr>
       <th>Struct Field Defaults</th>
@@ -373,8 +382,6 @@ This is the roadmap for implementing a minimal working framework that will serve
     </tr>
   </tbody>
 </table>
-
-Higher position - higher priority.
 
 For more information visit [the specification repo](https://github.com/plasm-lang/spec).
 

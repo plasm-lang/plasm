@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-#[derive(Debug, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 pub enum BinaryOp {
     // Arithemetic operations
     /// a + b
@@ -50,6 +50,56 @@ pub enum BinaryOp {
 }
 
 impl BinaryOp {
+    pub const ALL: [BinaryOp; 20] = [
+        BinaryOp::Add,
+        BinaryOp::Sub,
+        BinaryOp::Mul,
+        BinaryOp::Div,
+        BinaryOp::Mod,
+        BinaryOp::DivInt,
+        BinaryOp::Pow,
+        BinaryOp::BitAnd,
+        BinaryOp::BitOr,
+        BinaryOp::BitXor,
+        BinaryOp::Shl,
+        BinaryOp::Shr,
+        BinaryOp::And,
+        BinaryOp::Or,
+        BinaryOp::Eq,
+        BinaryOp::Neq,
+        BinaryOp::Lt,
+        BinaryOp::Leq,
+        BinaryOp::Gt,
+        BinaryOp::Geq,
+    ];
+
+    pub const fn name(&self) -> &'static str {
+        match self {
+            BinaryOp::Add => "add",
+            BinaryOp::Sub => "sub",
+            BinaryOp::Mul => "mul",
+            BinaryOp::Div => "div",
+            BinaryOp::Mod => "mod",
+            BinaryOp::DivInt => "div_int",
+            BinaryOp::Pow => "pow",
+
+            BinaryOp::BitAnd => "bit_and",
+            BinaryOp::BitOr => "bit_or",
+            BinaryOp::BitXor => "bit_xor",
+            BinaryOp::Shl => "shl",
+            BinaryOp::Shr => "shr",
+
+            BinaryOp::And => "and",
+            BinaryOp::Or => "or",
+            BinaryOp::Eq => "eq",
+            BinaryOp::Neq => "neq",
+            BinaryOp::Lt => "lt",
+            BinaryOp::Gt => "gt",
+            BinaryOp::Geq => "geq",
+            BinaryOp::Leq => "leq",
+        }
+    }
+
     /// Returns (left_binding_power, right_binding_power)
     /// Higher binding power means higher precedence
     /// Source: https://en.wikipedia.org/wiki/Order_of_operations

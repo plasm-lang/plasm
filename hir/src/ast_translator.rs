@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use diagnostic::{MaybeSpanned, Spanned};
+use utils::binop::BinaryOp;
 use utils::ids::{ExprId, FuncId, LocalId};
 use utils::primitive_types::PrimitiveType;
 
@@ -37,6 +40,8 @@ struct ASTTranslator {
     next_func_id: FuncId,
     next_local_id: LocalId,
     next_expr_id: ExprId,
+
+    binary_functions: HardcodedBinaryFunctions,
 }
 
 impl ASTTranslator {
@@ -47,6 +52,7 @@ impl ASTTranslator {
             next_func_id: FuncId::one(),
             next_local_id: LocalId::one(),
             next_expr_id: ExprId::one(),
+            binary_functions: HardcodedBinaryFunctions::new(),
         }
     }
 
@@ -66,6 +72,19 @@ impl ASTTranslator {
         let id = self.next_expr_id;
         self.next_expr_id = self.next_expr_id.increment();
         id
+    }
+
+    fn get_binary_function(&mut self, op: BinaryOp, ty: PrimitiveType) -> FuncId {
+        if let Some(func_id) = self.binary_functions.get(op, ty) {
+            func_id
+        } else {
+            let func_id = self.get_next_func_id();
+            let external_func = self.binary_functions.create(op, ty, func_id);
+            self.hir
+                .items
+                .push(Item::Function(Function::External(external_func)));
+            func_id
+        }
     }
 
     pub fn translate(mut self, ast: ast::AST) -> (OptHIR, Vec<S<Error>>) {
@@ -347,12 +366,79 @@ impl ASTTranslator {
                 };
                 expr_arena.insert(expr_id, S::new(hir_expr, expr.span));
             }
-            // ast::Expr::Binary(expr) => {
+            ast::Expr::Binary(bi_expr) => {
+                let (left_expr_id, left_expr_arena) = self.translate_expr(*bi_expr.left, locals);
+                let (right_expr_id, right_expr_arena) = self.translate_expr(*bi_expr.right, locals);
+                expr_arena = expr_arena.join(left_expr_arena).join(right_expr_arena);
 
-            // }
-            _ => todo!(),
+                // Translate BinaryOp into function call.
+                // Any binary operation is represented as a common built-in function ob HIR level.
+                // It's needed for consistency sake of Traits.
+                let ty = PrimitiveType::I32; // TODO: Infer type properly
+                let func_id = self.get_binary_function(bi_expr.op, ty);
+                let func_call = FunctionCall {
+                    func_id,
+                    args: vec![left_expr_id, right_expr_id],
+                };
+                let hir_expr = Expr::<OT> {
+                    ty: None,
+                    kind: ExprKind::FunctionCall(func_call),
+                };
+                expr_arena.insert(expr_id, S::new(hir_expr, expr.span));
+            }
+            ast::Expr::Unary(expr) => {
+                todo!()
+            }
         }
         (expr_id, expr_arena)
+    }
+}
+
+struct HardcodedBinaryFunctions {
+    funcs: HashMap<(BinaryOp, PrimitiveType), FuncId>,
+}
+
+impl HardcodedBinaryFunctions {
+    fn new() -> Self {
+        Self {
+            funcs: HashMap::new(),
+        }
+    }
+
+    fn get(&mut self, op: BinaryOp, ty: PrimitiveType) -> Option<FuncId> {
+        self.funcs.get(&(op, ty)).cloned()
+    }
+
+    fn create(&mut self, op: BinaryOp, ty: PrimitiveType, func_id: FuncId) -> ExternalFunction {
+        let name = format!("{}_{}", op.name(), ty);
+        let ret_ty = HIRType::Primitive(ty);
+
+        // Left argument
+        let left_arg_local_id = LocalId::one();
+        let left_arg = Argument {
+            name: S::zero("left".to_string()),
+            local_id: left_arg_local_id,
+            ty: S::zero(HIRType::Primitive(ty)),
+        };
+
+        // Right argument
+        let right_arg_local_id = left_arg_local_id.increment();
+        let right_arg = Argument {
+            name: S::zero("right".to_string()),
+            local_id: right_arg_local_id,
+            ty: S::zero(HIRType::Primitive(ty)),
+        };
+
+        let signature = FunctionSignature {
+            id: func_id,
+            name: S::zero(name),
+            args: vec![S::zero(left_arg), S::zero(right_arg)],
+            ret_ty: MaybeS::new(ret_ty),
+        };
+
+        self.funcs.insert((op, ty), func_id);
+
+        ExternalFunction { signature }
     }
 }
 

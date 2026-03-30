@@ -1,5 +1,7 @@
-fn f(x: i32) -> i32
+fn print_i32(x: i32)
 
 fn main() {
-    let y = f(42)
+    let x1 = 5
+    let x2 = 6
+    print_i32(x1 + x2 + 1)
 }
