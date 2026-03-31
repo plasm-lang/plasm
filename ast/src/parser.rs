@@ -301,7 +301,22 @@ where
                                     spanned_call.map(Expr::FunctionCall).map(Statement::Expr)
                                 })
                             }
-                            Token::SpecialSymbol(SpecialSymbol::Equals) => todo!(), // Variable assignment
+                            // Variable assignment
+                            // TODO: Add support for variable type annotation in assignment, e.g. `let x: i32 = 5`
+                            Token::SpecialSymbol(SpecialSymbol::Equals) => {
+                                self.take_next(); // consume '='
+                                let expr = self.parse_expression(0)?;
+                                let end_span = expr.span;
+                                let var_decl = VariableDeclaration {
+                                    name: Spanned::new(id, span),
+                                    ty: None,
+                                    value: expr,
+                                };
+                                Some(Spanned::new(
+                                    Statement::VariableDeclaration(var_decl),
+                                    span.join(end_span),
+                                ))
+                            }
                             _ => {
                                 let (token, span) = self.take_next()?;
                                 let err = ParseError::UnexpectedToken {

@@ -9,7 +9,7 @@ use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StringRadix};
-use inkwell::values::{BasicValue, BasicValueEnum};
+use inkwell::values::{BasicValue, BasicValueEnum, CallSiteValue};
 
 use mir::MIR;
 use utils::ids::ValueId;
@@ -40,7 +40,7 @@ fn get_target_machine() -> TargetMachine {
             &target_triple,
             &cpu,
             &features,
-            OptimizationLevel::Default,
+            OptimizationLevel::None,
             RelocMode::Default,
             CodeModel::Default,
         )
@@ -192,6 +192,9 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
                 let llvm_value = self.translate_rvalue(rvalue, value_map, &name);
                 value_map.insert(*id, llvm_value);
             }
+            mir::Instruction::Call(call) => {
+                let _ = self.translate_call(call, value_map);
+            }
             mir::Instruction::Store { value, ptr } => {
                 let llvm_val = self.translate_operand(value, value_map).unwrap();
                 let llvm_ptr = self
@@ -268,27 +271,39 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
             }
             mir::RValue::GetElementPtr(value_id) => todo!(),
             mir::RValue::Call(call) => {
-                let func_name = self
-                    .mir_module
-                    .funcs_map
-                    .get_by_left(&call.function)
-                    .unwrap()
-                    .node
-                    .as_str();
-                let llvm_func = self.module.get_function(func_name).unwrap();
-
-                let args = call
-                    .args
-                    .iter()
-                    .map(|arg| self.translate_operand(arg, value_map).unwrap().into())
-                    .collect::<Vec<_>>();
-
-                let call_site = self.builder.build_call(llvm_func, &args, name).unwrap();
-                call_site.set_tail_call(true);
+                let call_site = self.translate_call(call, value_map);
                 call_site.try_as_basic_value().unwrap_basic()
             }
             mir::RValue::BinaryOp(binary_op, operand, operand1) => todo!(),
         }
+    }
+
+    fn translate_call(
+        &self,
+        call: &mir::Call,
+        value_map: &HashMap<ValueId, BasicValueEnum<'ctx>>,
+    ) -> CallSiteValue<'ctx> {
+        let func_name = self
+            .mir_module
+            .funcs_map
+            .get_by_left(&call.function)
+            .unwrap()
+            .node
+            .as_str();
+        let llvm_func = self.module.get_function(func_name).unwrap();
+
+        let args = call
+            .args
+            .iter()
+            .map(|arg| self.translate_operand(arg, value_map).unwrap().into())
+            .collect::<Vec<_>>();
+
+        let call_site = self
+            .builder
+            .build_call(llvm_func, &args, "call_tmp")
+            .unwrap();
+        call_site.set_tail_call(true);
+        call_site
     }
 
     fn translate_constant(&self, constant: &mir::Constant) -> Option<BasicValueEnum<'ctx>> {

@@ -18,7 +18,7 @@ mod types;
 
 pub use hir_lowering::hir_to_mir;
 pub use mir::{
-    BasicBlock, Constant, ConstantValue, ExternalFunction, Function, FunctionSignature,
+    BasicBlock, Call, Constant, ConstantValue, ExternalFunction, Function, FunctionSignature,
     Instruction, InternalFunction, MIR, MetaInfo, Module, Operand, RValue, Terminator,
 };
 pub use types::{MIRType, TypeArena};

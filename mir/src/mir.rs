@@ -89,6 +89,7 @@ pub enum Terminator {
 #[derive(Debug, Serialize)]
 pub enum Instruction {
     Assign(ValueId, RValue),
+    Call(Call),
     Store { value: Operand, ptr: Operand },
 }
 

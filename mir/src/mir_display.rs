@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use super::mir::{
-    Constant, ConstantValue, Function, FunctionSignature, Global, Instruction, MIR, MetaInfo,
+    Call, Constant, ConstantValue, Function, FunctionSignature, Global, Instruction, MIR, MetaInfo,
     Module, Operand, RValue, Terminator,
 };
 use super::types::MIRType;
@@ -121,6 +121,7 @@ fn format_instruction(instruction: &Instruction, module: &Module, metainfo: &Met
                 format_rvalue(rvalue, module, metainfo)
             )
         }
+        Instruction::Call(call) => format_call(call, module, metainfo),
         Instruction::Store { value, ptr } => {
             format!(
                 "store {}, ptr {}",
@@ -143,21 +144,7 @@ fn format_rvalue(rvalue: &RValue, module: &Module, metainfo: &MetaInfo) -> Strin
             format!("load {}, ptr {}", ty, ptr_str)
         }
         RValue::GetElementPtr(val_id) => format!("getelementptr {}", val_id),
-        RValue::Call(call) => {
-            let func_name = module
-                .funcs_map
-                .get_by_left(&call.function)
-                .unwrap()
-                .node
-                .as_str();
-            let args = call
-                .args
-                .iter()
-                .map(|arg| format_operand(arg, module, metainfo))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("call @{func_name}({args})")
-        }
+        RValue::Call(call) => format_call(call, module, metainfo),
         RValue::BinaryOp(op, left, right) => {
             format!(
                 "{} {} {}",
@@ -167,6 +154,22 @@ fn format_rvalue(rvalue: &RValue, module: &Module, metainfo: &MetaInfo) -> Strin
             )
         }
     }
+}
+
+fn format_call(call: &Call, module: &Module, metainfo: &MetaInfo) -> String {
+    let func_name = module
+        .funcs_map
+        .get_by_left(&call.function)
+        .unwrap()
+        .node
+        .as_str();
+    let args = call
+        .args
+        .iter()
+        .map(|arg| format_operand(arg, module, metainfo))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("call @{func_name}({args})")
 }
 
 fn format_operand(operand: &Operand, module: &Module, metainfo: &MetaInfo) -> String {

@@ -1,0 +1,109 @@
+// Warning: This example can't be compiled yet.
+// It's written for syntax demonstration.
+
+// The most simple way to aggregate datatypes inside
+// a enum is usage of union notation:
+
+type Result[T] = T | None
+
+// Comparing this with Rust's result there is no need
+// in `Some` variant because we can use T directly.
+
+// This is very useful espessially for function signatures
+// as there is no need for a separated type definition that
+// will be used only inside signle function signature:
+
+fn sum_i32(left: i32, right: i32) -> i32 | OverflowError
+
+fn get(used_id: i32) -> User | None
+
+// With union notation there is no need in special `Option` or
+// `Result` type - it's possible to replace them with inline syntax.
+
+// It's possible to declare structs inside enums:
+
+type Device = enum {
+    struct CPU { cores: i32 },
+    struct GPU { cores: i32, vmemory_size: usize },
+}
+
+// As well as to declare enums inside structs:
+
+type Connection = struct {
+    port: u16,
+    status: enum { New, Opened, Closed },
+}
+
+It's possible to ignore keywords `struct` and `enum` inside compositions:
+
+type Device = enum {
+    CPU { cores: i32 },
+    GPU { cores: i32, vmemory_size: usize },
+}
+
+type Connection = struct {
+    port: u16,
+    status: { New, Opened, Closed },
+}
+
+// Often inside large codebases there is a need to combine separated
+// datatypes with in-line defined, so there is special keyword `use`
+// to mark difference between new and existing types:
+
+type Quaternion = struct {
+    w: f32,
+    x: f32,
+    y: f32,
+    z: f32,
+}
+
+type Orientation = enum {
+    Euler { x: f32, y: f32, z: f32 },
+    use Quaternion,
+}
+
+// With `use` notation there is no need to write `Quaternion(Quaternion)`
+// to make a types composition.
+
+// I find this composition abbilities espessially useful for heavy DTO descriptions:
+
+// A globally defined struct that we want to reuse
+type Transform = struct {
+    x: f32,
+    y: f32,
+    z: f32,
+}
+
+// A heavy DTO representing a network event
+type ServerPacket = struct {
+    packet_id: u64,
+    timestamp: u64,
+    
+    // Deep inline composition
+    payload: {
+        // Inline struct with an inline enum inside
+        PlayerJoined {
+            user_id: u32,
+            nickname: String,
+            role: { Player, Moderator, Admin },
+        },
+
+        // Reusing existing type `Transform` inside a variant
+        PlayerRotated {
+            client_id: u32,
+            use Transform, 
+        },
+
+        // Deeply nested enums for complex states without Option/Result
+        Disconnected {
+            reason: {
+                Timeout,
+                Kicked { admin_id: u32, message: String | None },
+                Banned { expires_at: u64 | None }, 
+            }
+        },
+
+        // A simple unit variant
+        Ping,
+    }
+}

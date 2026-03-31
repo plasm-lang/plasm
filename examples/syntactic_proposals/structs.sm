@@ -1,0 +1,41 @@
+// Warning: This example can't be compiled yet.
+// It's written for syntax demonstration.
+
+// There is a way to create a struct with named params:
+
+type Position2D = struct {
+    x: i32,
+    y: i32,
+}
+
+// And there is a way for unnamed params:
+
+type Position3D = (i32, i32, i32)
+
+// You also can specify a `struct` keyword for multi-line definition:
+
+type Position5D = struct (
+    i32,
+    i32,
+    i32,
+    i32,
+    i32,
+)
+
+fn print_i32(x: i32)
+
+fn print_position_2d(pos: Position2D) {
+    print_i32(pos.x)
+    print_i32(pos.y)
+}
+
+fn print_position_3d(pos: Position3D) {
+    print_i32(pos.0)
+    print_i32(pos.1)
+    print_i32(pos.2)
+}
+
+fn main() {
+    print_position_2d(Position2D { x: 5, y: -5 })
+    print_position_3d(Position3D ( 1, 2, 3 ))
+}

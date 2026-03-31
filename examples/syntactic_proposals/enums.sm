@@ -1,0 +1,8 @@
+// Warning: This example can't be compiled yet.
+// It's written for syntax demonstration.
+
+type Device = enum {
+    CPU,
+    GPU,
+    TPU,
+}

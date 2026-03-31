@@ -4,6 +4,7 @@ use bimap::BiHashMap;
 
 use hir::THIR;
 use utils::ids::{ExprId, LocalId, ValueId};
+use utils::primitive_types::PrimitiveType;
 
 use super::mir::{
     BasicBlock, BlockLabel, Call, Constant, ExternalFunction, Function, FunctionSignature,
@@ -106,7 +107,14 @@ impl<'a> HIRFunctionTranslator<'a> {
         self.blocks[self.current_block_idx].terminator = terminator;
     }
 
-    fn lower_expr(&mut self, expr_id: ExprId, expr_arena: &hir::TypedExprArena) -> Operand {
+    fn is_void_type(&self, type_id: utils::ids::TypeId) -> bool {
+        matches!(
+            self.module.type_arena.get(type_id),
+            Some(MIRType::Primitive(PrimitiveType::Void))
+        )
+    }
+
+    fn lower_expr_value(&mut self, expr_id: ExprId, expr_arena: &hir::TypedExprArena) -> Operand {
         let expr = expr_arena.get(expr_id).unwrap().as_ref();
         let ty = MIRType::from_hir(expr.ty.node.clone());
         let type_id = self.module.type_arena.get_or_insert(ty);
@@ -119,12 +127,16 @@ impl<'a> HIRFunctionTranslator<'a> {
                 hir::Literal::Void => Operand::Constant(Constant::void(type_id)),
             },
             hir::TypedExprKind::FunctionCall(hir_call) => {
+                if self.is_void_type(type_id) {
+                    panic!("void expression cannot be lowered in value context");
+                }
+
                 let value_id = self.next_vreg();
 
                 let args = hir_call
                     .args
                     .iter()
-                    .map(|arg_expr_id| self.lower_expr(*arg_expr_id, expr_arena))
+                    .map(|arg_expr_id| self.lower_expr_value(*arg_expr_id, expr_arena))
                     .collect();
 
                 let rvalue = RValue::Call(Call {
@@ -145,11 +157,38 @@ impl<'a> HIRFunctionTranslator<'a> {
         }
     }
 
+    fn lower_expr_stmt(&mut self, expr_id: ExprId, expr_arena: &hir::TypedExprArena) {
+        let expr = expr_arena.get(expr_id).unwrap().as_ref();
+
+        match &expr.kind {
+            hir::TypedExprKind::FunctionCall(hir_call) => {
+                let args = hir_call
+                    .args
+                    .iter()
+                    .map(|arg_expr_id| self.lower_expr_value(*arg_expr_id, expr_arena))
+                    .collect();
+
+                self.emit_instruction(Instruction::Call(Call {
+                    function: hir_call.func_id,
+                    args,
+                }));
+            }
+            // Expression statements without side effects should not materialize vregs.
+            hir::TypedExprKind::Literal(_) | hir::TypedExprKind::Local(_) => {}
+            _ => {
+                unimplemented!(
+                    "Statement expression lowering not implemented for: {:?}",
+                    expr.kind
+                );
+            }
+        }
+    }
+
     fn lower_statement(&mut self, statement: hir::Statement, expr_arena: &hir::TypedExprArena) {
         match statement {
             hir::Statement::VariableDeclaration(decl) => {
                 let stack_ptr = *self.stack_slot_ptrs.get(&decl.local_id).unwrap();
-                let operand = self.lower_expr(decl.expr_id, expr_arena);
+                let operand = self.lower_expr_value(decl.expr_id, expr_arena);
 
                 let instruction = Instruction::Store {
                     value: operand,
@@ -158,10 +197,10 @@ impl<'a> HIRFunctionTranslator<'a> {
                 self.emit_instruction(instruction);
             }
             hir::Statement::Expr(expr_id) => {
-                self.lower_expr(expr_id, expr_arena);
+                self.lower_expr_stmt(expr_id, expr_arena);
             }
             hir::Statement::Return(expr_id) => {
-                let operand = self.lower_expr(expr_id, expr_arena);
+                let operand = self.lower_expr_value(expr_id, expr_arena);
                 self.set_terminator(Terminator::Return(operand));
             }
         }
