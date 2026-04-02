@@ -12,16 +12,6 @@ type Position2D = struct {
 
 type Position3D = (i32, i32, i32)
 
-// You also can specify a `struct` keyword for multi-line definition:
-
-type Position5D = struct (
-    i32,
-    i32,
-    i32,
-    i32,
-    i32,
-)
-
 fn print_i32(x: i32)
 
 fn print_position_2d(pos: Position2D) {

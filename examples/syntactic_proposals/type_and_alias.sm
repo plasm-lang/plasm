@@ -1,42 +1,39 @@
 // Warning: This example can't be compiled yet.
 // It's written for syntax demonstration.
 
-// There are 2 ways to declare a datatype:
-// Using `type` or using `alias` keywords.
-// Difference is simple: If `type` used,
-// the datatype is binded to type's name,
-// so there will be type name matching used.
-// If `alias` used, structed type matching in game.
-
-alias 3DPosAlias = (i32, i32, i32)
-// Alias is not a named type - used for unnamed structed
-// type checking (Exactly same like `type` word in Rust).
-
 type 3DPosType = (i32, i32, i32)
 // A new independend type. Passing (i32, i32, i32) into
 // function that accepts 3DPosType will be considered as an error.
+// `type` is used to define a new datatype.
+
+alias 3DPosAlias = (i32, i32, i32)
+// For convenience, you can also make aliases for types,
+// e.g. you can write alias 3DPosAlias = (i32, i32, i32),
+// and then you can write 3DPosAlias interchangeably with
+// (i32, i32, i32) in function signatures, type definitions, etc.
+
+fn func_type_arg(x: 3DPosType)
 
 fn func_raw_arg(x: (i32, i32, i32))
 
 fn func_alias_arg(x: 3DPosAlias)
 
-fn func_type_arg(x: 3DPosType)
 
 fn main() {
     let x = 1, 2, 3 // Type: (i32, i32, i32)
+    func_type_arg(x) // Error: Expected 3DPosType, but got (i32, i32, i32).
     func_raw_arg(x) // It's ok
     func_alias_arg(x) // It's ok
-    func_type_arg(x) // Error: Expected 3DPosType, but got (i32, i32, i32).
 
     // The same as above, but explicitly
     let x: 3DPosAlias = 1, 2, 3
+    func_type_arg(x) // Error: Expected 3DPosType, but got (i32, i32, i32).
     func_raw_arg(x) // It's ok
     func_alias_arg(x) // It's ok
-    func_type_arg(x) // Error: Expected 3DPosType, but got (i32, i32, i32).
 
     let x = 3DPosType(1, 2, 3)
     // or `let pos: 3DPosType = 1, 2, 3`
+    func_type_arg(x) // It's right
     func_raw_arg(x) // Error: Expected (i32, i32, i32), but got 3DPosType.
     func_alias_arg(x) // Error: Expected (i32, i32, i32), but got 3DPosType.
-    func_type_arg(x) // It's right
 }
