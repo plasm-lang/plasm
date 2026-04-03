@@ -207,25 +207,43 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td><code>&x</code></td>
     </tr>
     <tr>
-      <th colspan="7" align="center">Structs & Enums</th>
+      <th colspan="7" align="center">Typing System</th>
+    </tr>
+    <tr>
+      <th>Primitive Types</th>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>boolean, integers (signed/unsigned), floats</td>
+    </tr>
+    <tr>
+      <th>Tuples</th>
+      <td>✅</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>(i32, i32, i32)</code></td>
     </tr>
     <tr>
       <th>Structs</th>
+      <td>✅</td>
+      <td>✅</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td><code>struct MyType {}</code></td>
+      <td><code>type MyType = struct {}</code></td>
     </tr>
     <tr>
       <th>Struct Fields</th>
+      <td>✅</td>
+      <td>✅</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td><code>struct MyType { filed: i32 }</code></td>
+      <td><code>type MyType = struct { filed: i32 }</code></td>
     </tr>
     <tr>
       <th>Linked Functions</th>
@@ -247,21 +265,21 @@ This is the roadmap for implementing a minimal working framework that will serve
     </tr>
     <tr>
       <th>Struct Field Defaults</th>
+      <td>✅</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td>⬜</td>
-      <td><code>struct MyType { filed: i32 = 1 }</code></td>
+      <td><code>type MyType = struct { filed: i32 = 1 }</code></td>
     </tr>
     <tr>
       <th>Zero-Size Structs</th>
+      <td>✅</td>
+      <td>✅</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td><code>struct Void</code></td>
+      <td><code>type Void = struct {}</code></td>
     </tr>
     <tr>
       <th>Enums</th>
@@ -270,7 +288,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>enum MyEnum { A, B, C}</code></td>
+      <td><code>type MyEnum = enum { A, B, C }</code></td>
     </tr>
     <tr>
       <th>Enum Defaults</th>
@@ -288,7 +306,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>enum Never</code></td>
+      <td><code>type Never = enum {}</code></td>
     </tr>
     <tr>
       <th>Structs<->Enums Composition</th>
@@ -297,10 +315,10 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td>???</td>
+      <td>See Examples Folder</td>
     </tr>
     <tr>
-      <th>Anonymous Enums</th>
+      <th>Unions</th>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>

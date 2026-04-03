@@ -95,6 +95,8 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
             "fn" => Token::Keyword(Keyword::Fn),
             "let" => Token::Keyword(Keyword::Let),
             "return" => Token::Keyword(Keyword::Return),
+            "type" => Token::Keyword(Keyword::Type),
+            "struct" => Token::Keyword(Keyword::Struct),
             _ => Token::Identifier(self.accumulated.clone()),
         };
         let span = Span::new(start_i, end_i);
@@ -420,6 +422,8 @@ mod tests {
                     Keyword::Fn => assert_eq!(str_by_span, "fn"),
                     Keyword::Let => assert_eq!(str_by_span, "let"),
                     Keyword::Return => assert_eq!(str_by_span, "return"),
+                    Keyword::Type => assert_eq!(str_by_span, "type"),
+                    Keyword::Struct => assert_eq!(str_by_span, "struct"),
                 },
                 Token::Identifier(id) => assert_eq!(id, str_by_span),
                 Token::Number(number) => assert_eq!(number.raw_value(), str_by_span),

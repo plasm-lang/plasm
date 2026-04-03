@@ -24,6 +24,8 @@ impl Display for Keyword {
             Keyword::Fn => "fn",
             Keyword::Let => "let",
             Keyword::Return => "return",
+            Keyword::Type => "type",
+            Keyword::Struct => "struct",
         };
         write!(f, "{s}")
     }

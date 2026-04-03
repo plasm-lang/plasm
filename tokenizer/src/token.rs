@@ -3,6 +3,8 @@ pub enum Keyword {
     Fn,
     Let,
     Return,
+    Type,
+    Struct,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

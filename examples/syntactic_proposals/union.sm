@@ -1,0 +1,34 @@
+// Warning: This example can't be compiled yet.
+// It's written for syntax demonstration.
+
+// Union `|` is just sugar for enums. 
+
+type Result[T] = T | None
+
+// is equivalent to
+
+type Result[T] = enum {
+    use T,
+    use None,
+}
+
+// Comparing this with Rust's `Result` there is no need
+// in `Some` variant because we can use T directly.
+
+// Real power of this notation:
+
+fn sum(a: i32, b: i32) -> i32 | OverflowError | OutOfMemoryError
+
+// Here for return type, an anonymous enum will be created,
+// every element of which will reference an existing type.
+
+// In Rust it would look like:
+
+enum SumError {
+    OverflowError {...},
+    OutOfMemoryError {...}
+}
+
+impl Error for SumError {}
+
+fn sum(a: i32, b: i32) -> Result<i32, SumError> {}

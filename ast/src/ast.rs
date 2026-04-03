@@ -23,11 +23,16 @@ impl AST {
     pub fn add_function(&mut self, func: Function) {
         self.items.push(Item::Function(func));
     }
+
+    pub fn add_type_definition(&mut self, ty_def: TypeDefinition) {
+        self.items.push(Item::TypeDefinition(ty_def));
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum Item {
     Function(Function),
+    TypeDefinition(TypeDefinition),
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -149,9 +154,16 @@ pub struct CallArgument {
     pub value: S<Expr>,
 }
 
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct TypeDefinition {
+    pub name: S<String>,
+    pub ty: S<Type>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum Type {
     Primitive(PrimitiveType),
+    Struct(StructType),
     // String, // TODO
     // Path,   // TODO
 }
@@ -164,4 +176,15 @@ impl Type {
 
         todo!()
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct StructType {
+    pub fields: Vec<S<StructField>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct StructField {
+    pub name: S<String>,
+    pub ty: S<Type>,
 }

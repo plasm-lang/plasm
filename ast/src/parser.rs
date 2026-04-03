@@ -7,8 +7,8 @@ use utils::binop::BinaryOp;
 
 use super::ast::{
     AST, Argument, BinaryExpr, Block, CallArgument, Expr, ExternalFunction, Function, FunctionCall,
-    FunctionSignature, InternalFunction, Literal, Statement, Type, UnaryExpr, UnaryOp,
-    VariableDeclaration,
+    FunctionSignature, InternalFunction, Literal, Statement, StructField, StructType, Type,
+    TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
 };
 use super::error::ParseError;
 
@@ -57,29 +57,37 @@ where
         Some((token, span))
     }
 
+    fn push_unexpected_token(&mut self, token: Token, span: Span, expected: impl Into<String>) {
+        self.errors.push(Spanned::new(
+            ParseError::UnexpectedToken {
+                token,
+                expected: expected.into(),
+            },
+            span,
+        ));
+    }
+
+    fn push_unexpected_eof(&mut self, expected: impl Into<String>) {
+        self.errors.push(Spanned::new(
+            ParseError::UnexpectedEOF {
+                expected: expected.into(),
+            },
+            self.last_span,
+        ));
+    }
+
     fn expect(&mut self, expected: Token) -> Option<Span> {
         match self.take_next() {
             Some((token, span)) => {
                 if token == expected {
                     Some(span)
                 } else {
-                    self.errors.push(Spanned::new(
-                        ParseError::UnexpectedToken {
-                            token,
-                            expected: format!("`{expected}`"),
-                        },
-                        span,
-                    ));
+                    self.push_unexpected_token(token, span, format!("`{expected}`"));
                     None
                 }
             }
             None => {
-                self.errors.push(Spanned::new(
-                    ParseError::UnexpectedEOF {
-                        expected: format!("`{expected:?}`"),
-                    },
-                    self.last_span,
-                ));
+                self.push_unexpected_eof(format!("`{expected:?}`"));
                 None
             }
         }
@@ -93,23 +101,12 @@ where
             Some((token, span)) => match extract(token.clone()) {
                 Some(val) => Some((val, span)),
                 None => {
-                    self.errors.push(Spanned::new(
-                        ParseError::UnexpectedToken {
-                            token,
-                            expected: expected.to_string(),
-                        },
-                        span,
-                    ));
+                    self.push_unexpected_token(token, span, expected);
                     None
                 }
             },
             None => {
-                self.errors.push(Spanned::new(
-                    ParseError::UnexpectedEOF {
-                        expected: expected.to_string(),
-                    },
-                    self.last_span,
-                ));
+                self.push_unexpected_eof(expected);
                 None
             }
         }
@@ -135,6 +132,77 @@ where
         )
     }
 
+    // Parses a comma-separated list of items (for function arguments and struct fields).
+    fn parse_comma_separated<T, F>(
+        &mut self,
+        // Token that terminates the list.
+        end_token: &Token,
+        // Error message when an item is expected.
+        item_expected_msg: &str,
+        // Error message when a separator is expected.
+        separator_expected_msg: &str,
+        mut parse_item: F,
+    ) -> Vec<T>
+    where
+        F: FnMut(&mut Self) -> Option<T>,
+    {
+        let mut items = Vec::new();
+        let mut expect_item = true;
+
+        loop {
+            // End token closes the list and returns accumulated items.
+            match self.iter.peek() {
+                Some((token, _end_span)) if token == end_token => {
+                    self.take_next();
+                    return items;
+                }
+                // A comma while expecting an item means a missing item.
+                Some((Token::SpecialSymbol(SpecialSymbol::Comma), _)) if expect_item => {
+                    let (token, span) = match self.take_next() {
+                        Some(value) => value,
+                        None => {
+                            self.push_unexpected_eof(item_expected_msg);
+                            return items;
+                        }
+                    };
+                    self.push_unexpected_token(token, span, item_expected_msg);
+                    return items;
+                }
+                // Parse the next item when it is expected.
+                Some(_) if expect_item => {
+                    if let Some(item) = parse_item(self) {
+                        items.push(item);
+                        expect_item = false;
+                    } else {
+                        return items;
+                    }
+                }
+                // Comma after an item switches back to expecting the next item.
+                Some((Token::SpecialSymbol(SpecialSymbol::Comma), _)) => {
+                    self.take_next();
+                    expect_item = true;
+                }
+                // Any non-comma token after an item is a separator error.
+                Some(_) => {
+                    let (token, span) = match self.take_next() {
+                        Some(value) => value,
+                        None => {
+                            self.push_unexpected_eof(separator_expected_msg);
+                            return items;
+                        }
+                    };
+                    self.push_unexpected_token(token, span, separator_expected_msg);
+                    return items;
+                }
+                // EOF while still parsing the list.
+                None => {
+                    self.push_unexpected_eof(separator_expected_msg);
+                    return items;
+                }
+            }
+        }
+    }
+
     pub fn parse(mut self) -> (AST, Vec<Spanned<ParseError>>) {
         let mut ast = AST::new();
 
@@ -145,15 +213,16 @@ where
                         ast.add_function(func);
                     }
                 }
+                Token::Keyword(Keyword::Type) => {
+                    if let Some(ty_def) = self.parse_type_definition() {
+                        ast.add_type_definition(ty_def);
+                    }
+                }
                 _ => {
                     let Some((token, span)) = self.take_next() else {
                         continue;
                     };
-                    let err = ParseError::UnexpectedToken {
-                        token,
-                        expected: "function definition".to_string(),
-                    };
-                    self.errors.push(Spanned::new(err, span));
+                    self.push_unexpected_token(token, span, "function or type definition");
                 }
             }
         }
@@ -161,66 +230,101 @@ where
         (ast, self.errors)
     }
 
+    fn parse_type_definition(&mut self) -> Option<TypeDefinition> {
+        self.expect(Token::Keyword(Keyword::Type))?;
+        let (type_name, type_name_span) = self.expect_ident()?;
+        self.expect(Token::SpecialSymbol(SpecialSymbol::Equals))?;
+        let ty = self.parse_type()?;
+        let ty_def = TypeDefinition {
+            name: Spanned::new(type_name, type_name_span),
+            ty,
+        };
+        Some(ty_def)
+    }
+
+    fn parse_type(&mut self) -> Option<Spanned<Type>> {
+        match self.iter.peek() {
+            Some((Token::Identifier(_), _)) => {
+                let (type_name, type_name_span) = self.expect_ident()?;
+                let ty = Type::from_str(&type_name);
+                Some(Spanned::new(ty, type_name_span))
+            }
+            Some((Token::Keyword(Keyword::Struct), _)) => {
+                let (struct_type, span) = self.parse_struct()?.unwrap();
+                Some(Spanned::new(Type::Struct(struct_type), span))
+            }
+            Some(_) => {
+                let (token, span) = self.take_next()?;
+                self.push_unexpected_token(token, span, "type");
+                None
+            }
+            None => {
+                self.push_unexpected_eof("type");
+                None
+            }
+        }
+    }
+
+    fn parse_struct(&mut self) -> Option<Spanned<StructType>> {
+        let start_span = self.expect(Token::Keyword(Keyword::Struct))?;
+        self.expect(Token::Bracket(Bracket::CurlyOpen))?;
+
+        let fields = self.parse_comma_separated(
+            &Token::Bracket(Bracket::CurlyClose),
+            "struct field or `}`",
+            "`,` or `}`",
+            Self::parse_struct_field,
+        );
+
+        let struct_type = StructType { fields };
+        let span = start_span.join(self.last_span);
+        Some(Spanned::new(struct_type, span))
+    }
+
+    fn parse_struct_field(&mut self) -> Option<Spanned<StructField>> {
+        let (field_name, field_name_span) = self.expect_ident()?;
+        self.expect(Token::SpecialSymbol(SpecialSymbol::Colon))?;
+        let ty = self.parse_type()?;
+        let type_span = ty.span.clone();
+        Some(Spanned::new(
+            StructField {
+                name: Spanned::new(field_name, field_name_span),
+                ty,
+            },
+            field_name_span.join(type_span),
+        ))
+    }
+
+    fn parse_function_arg(&mut self) -> Option<Spanned<Argument>> {
+        let (arg_name, arg_name_span) = self.expect_ident()?;
+        self.expect(Token::SpecialSymbol(SpecialSymbol::Colon))?;
+        let ty = self.parse_type()?;
+        let arg = Argument {
+            name: Spanned::new(arg_name, arg_name_span),
+            ty,
+        };
+        let arg_span = arg.name.span.join(arg.ty.span);
+        Some(Spanned::new(arg, arg_span))
+    }
+
     fn parse_function(&mut self) -> Option<Function> {
         self.expect(Token::Keyword(Keyword::Fn))?;
         let (func_name, func_name_span) = self.expect_ident()?;
         self.expect(Token::Bracket(Bracket::RoundOpen))?;
 
-        // Parse arguments
-
-        let mut args = Vec::new();
-        loop {
-            match self.iter.peek() {
-                Some((token, _span)) => match token {
-                    Token::Identifier(_) => {
-                        let (arg_name, arg_name_span) = self.expect_ident()?;
-                        self.expect(Token::SpecialSymbol(SpecialSymbol::Colon))?;
-                        let (type_name, type_name_span) = self.expect_ident()?;
-                        let ty = Type::from_str(&type_name);
-                        let arg = Argument {
-                            name: Spanned::new(arg_name, arg_name_span),
-                            ty: Spanned::new(ty, type_name_span),
-                        };
-                        let arg_span = arg.name.span.join(arg.ty.span);
-                        args.push(Spanned::new(arg, arg_span));
-                    }
-                    Token::Bracket(Bracket::RoundClose) => {
-                        self.take_next();
-                        break;
-                    }
-                    Token::SpecialSymbol(SpecialSymbol::Comma) => {
-                        self.take_next();
-                    }
-                    _ => {
-                        let (token, span) = self.take_next()?;
-                        let err = ParseError::UnexpectedToken {
-                            token,
-                            expected: "function argument or `)`".to_string(),
-                        };
-                        self.errors.push(Spanned::new(err, span));
-                        return None;
-                    }
-                },
-                None => {
-                    self.errors.push(Spanned::new(
-                        ParseError::UnexpectedEOF {
-                            expected: "function argument or `)`".to_string(),
-                        },
-                        self.last_span,
-                    ));
-                    return None;
-                }
-            }
-        }
+        let args = self.parse_comma_separated(
+            &Token::Bracket(Bracket::RoundClose),
+            "function argument or `)`",
+            "`,` or `)`",
+            Self::parse_function_arg,
+        );
 
         let return_type = match self.iter.peek() {
             Some((token, _span)) => match token {
                 Token::SpecialSymbol(SpecialSymbol::Minus) => {
                     self.take_next(); // consume '-'
                     self.expect(Token::SpecialSymbol(SpecialSymbol::GreaterThan))?;
-                    let (type_name, type_name_span) = self.expect_ident()?;
-                    let ty = Type::from_str(&type_name);
-                    Some(Spanned::new(ty, type_name_span))
+                    Some(self.parse_type()?)
                 }
                 _ => None,
             },
@@ -243,15 +347,9 @@ where
                     });
                     Some(func)
                 }
-                _ => {
-                    let func = Function::External(ExternalFunction { signature });
-                    Some(func)
-                }
+                _ => Some(Function::External(ExternalFunction { signature })),
             },
-            None => {
-                let func = Function::External(ExternalFunction { signature });
-                Some(func)
-            }
+            None => Some(Function::External(ExternalFunction { signature })),
         }
     }
 
@@ -274,12 +372,7 @@ where
                     }
                 },
                 None => {
-                    self.errors.push(Spanned::new(
-                        ParseError::UnexpectedEOF {
-                            expected: "statement or `}`".to_string(),
-                        },
-                        self.last_span,
-                    ));
+                    self.push_unexpected_eof("statement or `}`");
                     break Some(Spanned::new(block, start_span.join(self.last_span)));
                 }
             }
@@ -287,154 +380,120 @@ where
     }
 
     fn parse_statement(&mut self) -> Option<Spanned<Statement>> {
-        match self.iter.peek() {
-            Some((token, _span)) => match token {
-                Token::Keyword(Keyword::Let) => self.parse_variable_declaration(),
-                Token::Identifier(_) => {
-                    let Some((Token::Identifier(id), span)) = self.take_next() else {
-                        unreachable!(); // Unreachable: we peeked and saw Identifier
-                    };
-                    match self.iter.peek() {
-                        Some((token, _span)) => match token {
-                            Token::Bracket(Bracket::RoundOpen) => {
-                                self.parse_function_call(id, span).map(|spanned_call| {
-                                    spanned_call.map(Expr::FunctionCall).map(Statement::Expr)
-                                })
-                            }
-                            // Variable assignment
-                            // TODO: Add support for variable type annotation in assignment, e.g. `let x: i32 = 5`
-                            Token::SpecialSymbol(SpecialSymbol::Equals) => {
-                                self.take_next(); // consume '='
-                                let expr = self.parse_expression(0)?;
-                                let end_span = expr.span;
-                                let var_decl = VariableDeclaration {
-                                    name: Spanned::new(id, span),
-                                    ty: None,
-                                    value: expr,
-                                };
-                                Some(Spanned::new(
-                                    Statement::VariableDeclaration(var_decl),
-                                    span.join(end_span),
-                                ))
-                            }
-                            _ => {
-                                let (token, span) = self.take_next()?;
-                                let err = ParseError::UnexpectedToken {
-                                    token,
-                                    expected: "`(` or `=`".to_string(),
-                                };
-                                self.errors.push(Spanned::new(err, span));
-                                None
-                            }
-                        },
-                        None => {
-                            self.take_next();
-                            let err = ParseError::UnexpectedEOF {
-                                expected: "`(` or `=`".to_string(),
-                            };
-                            self.errors.push(Spanned::new(err, self.last_span));
-                            None
-                        }
-                    }
-                }
-                Token::Keyword(Keyword::Return) => {
-                    let (_, return_span) = self.take_next()?;
-                    match self.iter.peek() {
-                        Some((token, _span)) => match token {
-                            Token::Identifier(_)
-                            | Token::Number(_)
-                            | Token::Bracket(Bracket::RoundOpen)
-                            | Token::Bracket(Bracket::CurlyOpen)
-                            | Token::SpecialSymbol(SpecialSymbol::Minus)
-                            | Token::SpecialSymbol(SpecialSymbol::Exclamation)
-                            | Token::SpecialSymbol(SpecialSymbol::Tilde) => {
-                                let expr = self.parse_expression(0)?;
-                                let end_span = expr.span;
-                                Some(Spanned::new(
-                                    Statement::Return(Some(expr)),
-                                    return_span.join(end_span),
-                                ))
-                            }
-                            _ => Some(Spanned::new(Statement::Return(None), return_span)),
-                        },
-                        None => {
-                            self.take_next();
-                            let err = ParseError::UnexpectedEOF {
-                                expected: "expression or new line with `}`".to_string(),
-                            };
-                            self.errors.push(Spanned::new(err, self.last_span));
-                            None
-                        }
-                    }
-                }
-                _ => {
-                    let (token, span) = self.take_next()?;
-                    let err = ParseError::UnexpectedToken {
-                        token,
-                        expected: "statement (function call, new variable, return, etc.)"
-                            .to_string(),
-                    };
-                    self.errors.push(Spanned::new(err, span));
-                    None
-                }
-            },
-            None => {
-                self.errors.push(Spanned::new(
-                    ParseError::UnexpectedEOF {
-                        expected: "statement (function call, new variable, return, etc.)"
-                            .to_string(),
-                    },
-                    self.last_span,
-                ));
+        let Some((token, _)) = self.iter.peek() else {
+            self.push_unexpected_eof("statement (function call, new variable, return, etc.)");
+            return None;
+        };
+
+        match token {
+            Token::Keyword(Keyword::Let) => self.parse_variable_declaration(),
+            Token::Identifier(_) => self.parse_identifier_statement(),
+            Token::Keyword(Keyword::Return) => self.parse_return_statement(),
+            _ => {
+                let (token, span) = self.take_next()?;
+                self.push_unexpected_token(
+                    token,
+                    span,
+                    "statement (function call, new variable, return, etc.)",
+                );
                 None
             }
         }
     }
 
-    fn parse_function_call(&mut self, id: String, span: Span) -> Option<Spanned<FunctionCall>> {
-        self.expect(Token::Bracket(Bracket::RoundOpen))?;
-        let mut arguments = Vec::new();
-        let end_span: Span;
-        loop {
-            match self.iter.peek() {
-                Some((token, next_span)) => match token {
-                    Token::Bracket(Bracket::RoundClose) => {
-                        end_span = *next_span;
-                        self.take_next();
-                        break;
-                    }
-                    Token::SpecialSymbol(SpecialSymbol::Comma) => {
-                        self.take_next();
-                    }
-                    _ => {
-                        let Some(expr) = self.parse_expression(0) else {
-                            continue;
-                        };
-                        let arg = CallArgument {
-                            name: None,
-                            value: expr,
-                        };
-                        arguments.push(arg);
-                    }
-                },
-                None => {
-                    self.errors.push(Spanned::new(
-                        ParseError::UnexpectedEOF {
-                            expected: "function argument or ')'".to_string(),
-                        },
-                        self.last_span,
-                    ));
-                    return None;
-                }
+    fn parse_identifier_statement(&mut self) -> Option<Spanned<Statement>> {
+        let Some((Token::Identifier(id), span)) = self.take_next() else {
+            unreachable!(); // Unreachable: parse_statement dispatches this branch only for identifiers.
+        };
+
+        let Some((next_token, _)) = self.iter.peek() else {
+            self.push_unexpected_eof("`(` or `=`");
+            return None;
+        };
+
+        match next_token {
+            Token::Bracket(Bracket::RoundOpen) => self
+                .parse_function_call(id, span)
+                .map(|spanned_call| spanned_call.map(Expr::FunctionCall).map(Statement::Expr)),
+            // Variable assignment
+            // TODO: Add support for variable type annotation in assignment, e.g. `let x: i32 = 5`
+            Token::SpecialSymbol(SpecialSymbol::Equals) => {
+                self.take_next(); // consume '='
+                let expr = self.parse_expression(0)?;
+                let end_span = expr.span;
+                let var_decl = VariableDeclaration {
+                    name: Spanned::new(id, span),
+                    ty: None,
+                    value: expr,
+                };
+                Some(Spanned::new(
+                    Statement::VariableDeclaration(var_decl),
+                    span.join(end_span),
+                ))
+            }
+            _ => {
+                let (token, span) = self.take_next()?;
+                self.push_unexpected_token(token, span, "`(` or `=`");
+                None
             }
         }
+    }
+
+    fn parse_return_statement(&mut self) -> Option<Spanned<Statement>> {
+        let (_, return_span) = self.take_next()?;
+        let Some((token, _)) = self.iter.peek() else {
+            self.push_unexpected_eof("expression or new line with `}`");
+            return None;
+        };
+
+        if Self::is_expression_start(token) {
+            let expr = self.parse_expression(0)?;
+            let end_span = expr.span;
+            return Some(Spanned::new(
+                Statement::Return(Some(expr)),
+                return_span.join(end_span),
+            ));
+        }
+
+        Some(Spanned::new(Statement::Return(None), return_span))
+    }
+
+    fn is_expression_start(token: &Token) -> bool {
+        matches!(
+            token,
+            Token::Identifier(_)
+                | Token::Number(_)
+                | Token::Bracket(Bracket::RoundOpen)
+                | Token::Bracket(Bracket::CurlyOpen)
+                | Token::SpecialSymbol(SpecialSymbol::Minus)
+                | Token::SpecialSymbol(SpecialSymbol::Exclamation)
+                | Token::SpecialSymbol(SpecialSymbol::Tilde)
+        )
+    }
+
+    fn parse_function_call(&mut self, id: String, span: Span) -> Option<Spanned<FunctionCall>> {
+        self.expect(Token::Bracket(Bracket::RoundOpen))?;
+        let parse_call_arg = |parser: &mut Self| {
+            let expr = parser.parse_expression(0)?;
+            Some(CallArgument {
+                name: None,
+                value: expr,
+            })
+        };
+
+        let arguments = self.parse_comma_separated(
+            &Token::Bracket(Bracket::RoundClose),
+            "function argument or `)`",
+            "`,` or `)`",
+            parse_call_arg,
+        );
 
         Some(Spanned::new(
             FunctionCall {
                 name: Spanned::new(id, span),
                 args: arguments,
             },
-            span.join(end_span),
+            span.join(self.last_span),
         ))
     }
 
@@ -459,14 +518,13 @@ where
             }
             // If type is specified, expect ': Type =' next
             Some((Token::SpecialSymbol(SpecialSymbol::Colon), _span)) => {
-                let (type_name, type_name_span) = self.expect_ident()?;
-                let ty = Type::from_str(&type_name);
+                let ty = self.parse_type()?;
                 self.expect(Token::SpecialSymbol(SpecialSymbol::Equals))?;
                 let expr = self.parse_expression(0)?;
                 let end_span = expr.span;
                 let stmt = VariableDeclaration {
                     name: Spanned::new(var_name, var_name_span),
-                    ty: Some(Spanned::new(ty, type_name_span)),
+                    ty: Some(ty),
                     value: expr,
                 };
                 Some(Spanned::new(
@@ -475,22 +533,11 @@ where
                 ))
             }
             Some((token, span)) => {
-                self.errors.push(Spanned::new(
-                    ParseError::UnexpectedToken {
-                        token,
-                        expected: "`:` or `=`".to_string(),
-                    },
-                    span,
-                ));
+                self.push_unexpected_token(token, span, "`:` or `=`");
                 None
             }
             None => {
-                self.errors.push(Spanned::new(
-                    ParseError::UnexpectedEOF {
-                        expected: "`:` or `=`".to_string(),
-                    },
-                    self.last_span,
-                ));
+                self.push_unexpected_eof("`:` or `=`");
                 None
             }
         }
@@ -530,12 +577,7 @@ where
                     _ => break,
                 },
                 None => {
-                    self.errors.push(Spanned::new(
-                        ParseError::UnexpectedEOF {
-                            expected: "expression".to_string(),
-                        },
-                        self.last_span,
-                    ));
+                    self.push_unexpected_eof("expression");
                     return None;
                 }
             };
@@ -591,10 +633,7 @@ where
                             _ => Some(Spanned::new(Expr::Variable(id), span)),
                         },
                         None => {
-                            let err = ParseError::UnexpectedEOF {
-                                expected: "'('".to_string(),
-                            };
-                            self.errors.push(Spanned::new(err, self.last_span));
+                            self.push_unexpected_eof("'('");
                             None
                         }
                     }
@@ -652,21 +691,12 @@ where
                 }
                 _ => {
                     let (token, span) = self.take_next()?;
-                    let err = ParseError::UnexpectedToken {
-                        token,
-                        expected: "expression".to_string(),
-                    };
-                    self.errors.push(Spanned::new(err, span));
+                    self.push_unexpected_token(token, span, "expression");
                     None
                 }
             },
             None => {
-                self.errors.push(Spanned::new(
-                    ParseError::UnexpectedEOF {
-                        expected: "expression".to_string(),
-                    },
-                    self.last_span,
-                ));
+                self.push_unexpected_eof("expression");
                 None
             }
         }
@@ -689,6 +719,27 @@ mod tests {
         let (ast, errors) = ASTParser::new(&mut token_iter).parse();
         assert!(errors.is_empty());
         assert_eq!(format!("{ast}"), expected_display);
+    }
+
+    fn parse_and_get_errors(code: &str) -> Vec<Spanned<ParseError>> {
+        let mut token_iter = tokenize(code.char_indices());
+        let (_ast, errors) = ASTParser::new(&mut token_iter).parse();
+        errors
+    }
+
+    fn assert_unexpected_token(code: &str, expected: &str) {
+        let errors = parse_and_get_errors(code);
+        assert!(!errors.is_empty());
+        match &errors[0].node {
+            ParseError::UnexpectedToken {
+                expected: actual, ..
+            } => {
+                assert_eq!(actual, expected);
+            }
+            ParseError::UnexpectedEOF { .. } => {
+                panic!("expected UnexpectedToken as first error")
+            }
+        }
     }
 
     #[test]
@@ -916,5 +967,137 @@ mod tests {
         "};
 
         parse_and_check_by_display(code, expected_display);
+    }
+
+    #[test]
+    fn test_struct_field_commas_valid() {
+        let code = indoc! {"
+            type Pos = struct {
+                x: i32,
+                y: i32,
+            }
+
+            type Pos2 = struct {
+                x: i32,
+                y: i32
+            }
+
+            type Pos3 = struct { x: i32, y: i32 }
+        "};
+
+        assert!(parse_and_get_errors(code).is_empty());
+    }
+
+    #[test]
+    fn test_struct_field_commas_invalid() {
+        assert_unexpected_token(
+            indoc! {"
+                type Pos = struct {
+                    x: i32
+                    y: i32,
+                }
+            "},
+            "`,` or `}`",
+        );
+
+        assert_unexpected_token(
+            indoc! {"
+                type Pos = struct {
+                    x: i32,,,,,
+                    y: i32,
+                }
+            "},
+            "struct field or `}`",
+        );
+
+        assert_unexpected_token(
+            indoc! {"
+                type Pos = struct { x: i32 y: i32 }
+            "},
+            "`,` or `}`",
+        );
+
+        assert_unexpected_token(
+            indoc! {"
+                type Pos = struct {,
+                    x: i32,
+                    y: i32,
+                }
+            "},
+            "struct field or `}`",
+        );
+    }
+
+    #[test]
+    fn test_function_signature_commas_invalid() {
+        assert_unexpected_token(
+            indoc! {"
+                fn bad(x: i32 y: i32) {
+                    return
+                }
+            "},
+            "`,` or `)`",
+        );
+
+        assert_unexpected_token(
+            indoc! {"
+                fn bad(x: i32,, y: i32) {
+                    return
+                }
+            "},
+            "function argument or `)`",
+        );
+
+        assert_unexpected_token(
+            indoc! {"
+                fn bad(, x: i32) {
+                    return
+                }
+            "},
+            "function argument or `)`",
+        );
+    }
+
+    #[test]
+    fn test_function_call_commas_valid() {
+        let code = indoc! {"
+            fn main() {
+                foo(1, 2)
+                foo(1, 2,)
+                foo()
+            }
+        "};
+
+        assert!(parse_and_get_errors(code).is_empty());
+    }
+
+    #[test]
+    fn test_function_call_commas_invalid() {
+        assert_unexpected_token(
+            indoc! {"
+                fn main() {
+                    foo(1 2)
+                }
+            "},
+            "`,` or `)`",
+        );
+
+        assert_unexpected_token(
+            indoc! {"
+                fn main() {
+                    foo(1,,2)
+                }
+            "},
+            "function argument or `)`",
+        );
+
+        assert_unexpected_token(
+            indoc! {"
+                fn main() {
+                    foo(,1)
+                }
+            "},
+            "function argument or `)`",
+        );
     }
 }

@@ -2,8 +2,8 @@ use std::fmt::{Display, Formatter, Result};
 
 use super::ast::{
     AST, Argument, BinaryExpr, CallArgument, Expr, ExternalFunction, Function, FunctionCall,
-    FunctionSignature, InternalFunction, Item, Literal, Statement, Type, UnaryExpr, UnaryOp,
-    VariableDeclaration,
+    FunctionSignature, InternalFunction, Item, Literal, Statement, StructField, StructType, Type,
+    TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
 };
 
 impl Display for AST {
@@ -23,7 +23,14 @@ impl Display for Item {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Item::Function(func) => write!(f, "{func}"),
+            Item::TypeDefinition(ty_def) => write!(f, "{ty_def}"),
         }
+    }
+}
+
+impl Display for TypeDefinition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "type {} = {}", self.name, self.ty)
     }
 }
 
@@ -85,6 +92,7 @@ impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Type::Primitive(primitive_type) => write!(f, "{primitive_type}"),
+            Type::Struct(struct_type) => write!(f, "{struct_type}"),
         }
     }
 }
@@ -97,6 +105,26 @@ impl Display for Literal {
             Literal::Integer(value) => write!(f, "{value}"),
             Literal::Float(spanned) => write!(f, "{spanned}"),
         }
+    }
+}
+
+impl Display for StructType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        if self.fields.is_empty() {
+            return writeln!(f, "struct {{}}");
+        }
+
+        writeln!(f, "struct {{")?;
+        for field in &self.fields {
+            writeln!(f, "    {field}")?;
+        }
+        writeln!(f, "}}")
+    }
+}
+
+impl Display for StructField {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}: {},", self.name, self.ty)
     }
 }
 

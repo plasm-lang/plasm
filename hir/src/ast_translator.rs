@@ -113,6 +113,7 @@ impl ASTTranslator {
 
                     self.hir.funcs_map.insert(id, func.signature().name.clone());
                 }
+                ast::Item::TypeDefinition(ty_def) => todo!(),
             }
         }
 
@@ -122,6 +123,7 @@ impl ASTTranslator {
                 ast::Item::Function(func) => {
                     self.translate_function(func);
                 }
+                ast::Item::TypeDefinition(ty_def) => todo!(),
             }
         }
 
@@ -238,6 +240,7 @@ impl ASTTranslator {
     fn translate_type(&self, ty: ast::Type) -> HIRType {
         match ty {
             ast::Type::Primitive(p) => HIRType::Primitive(p),
+            ast::Type::Struct(s) => todo!(),
         }
     }
 

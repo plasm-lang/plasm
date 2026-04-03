@@ -1,10 +1,12 @@
 // Actually, this is not a example - It's a code for internal
 // development testing of new functionality.
 
+type Pos = struct {
+    x: i32,
+    y: i32,
+}
+
 fn print_i32(x: i32)
 
 fn main() {
-    let x1 = 5
-    let x2 = 6
-    print_i32(x1 + x2 + 1)
 }

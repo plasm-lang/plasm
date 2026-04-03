@@ -1,0 +1,17 @@
+// Warning: This example can't be compiled yet.
+// It's written for syntax demonstration.
+
+type Pos = struct {
+    x: i32,
+    y: i32,
+}
+
+impl Pos {
+    fn new(x: i32, y: i32) -> self {
+        self { x, y }
+    }
+
+    fn len(&self) -> f32 {
+        return sqrt(x * x + y * y)
+    }
+}
