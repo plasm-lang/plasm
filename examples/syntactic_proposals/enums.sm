@@ -6,3 +6,14 @@ type Device = enum {
     GPU,
     TPU,
 }
+
+// Backing type and discriminant values
+
+@repr(u32)
+type HTTPCode = enum {
+    @repr(200)
+    Success,
+
+    @repr(404)
+    NotFound,
+}

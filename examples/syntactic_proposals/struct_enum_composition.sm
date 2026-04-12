@@ -4,8 +4,8 @@
 // It's possible to declare structs inside enums:
 
 type Device = enum {
-    struct CPU { cores: i32 },
-    struct GPU { cores: i32, vmemory_size: usize },
+    CPU: struct { cores: i32 },
+    GPU: struct { cores: i32, vmemory_size: usize },
 }
 
 // As well as to declare enums inside structs:
@@ -13,18 +13,6 @@ type Device = enum {
 type Connection = struct {
     port: u16,
     status: enum { New, Opened, Closed },
-}
-
-It's possible to ignore keywords `struct` and `enum` inside compositions:
-
-type Device = enum {
-    CPU { cores: i32 },
-    GPU { cores: i32, vmemory_size: usize },
-}
-
-type Connection = struct {
-    port: u16,
-    status: { New, Opened, Closed },
 }
 
 // Often inside large codebases there is a need to combine separated
@@ -61,26 +49,26 @@ type ServerPacket = struct {
     timestamp: u64,
     
     // Deep inline composition
-    payload: {
+    payload: enum {
         // Inline struct with an inline enum inside
-        PlayerJoined {
+        PlayerJoined: struct {
             user_id: u32,
             nickname: String,
-            role: { Player, Moderator, Admin },
+            role: enum { Player, Moderator, Admin },
         },
 
         // Reusing existing type `Transform` inside a variant
-        PlayerRotated {
+        PlayerRotated: struct {
             client_id: u32,
             use Transform, 
         },
 
         // Deeply nested enums for complex states without Option/Result
-        Disconnected {
-            reason: {
+        Disconnected: struct {
+            reason: enum {
                 Timeout,
-                Kicked { admin_id: u32, message: String | None },
-                Banned { expires_at: u64 | None }, 
+                Kicked: struct { admin_id: u32, message: String | None },
+                Banned: struct { expires_at: u64 | None }, 
             }
         },
 

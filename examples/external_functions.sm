@@ -10,8 +10,8 @@ fn print_i32(x: i32)
 // `void` is not nessesary
 
 fn main() {
-    x1 = 42
-    let y = sum(x1, 15)
+    let x = 42
+    let y = sum(x, 15)
     print_i32(y)
     print_u8(255) 
 }
