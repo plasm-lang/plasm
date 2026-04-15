@@ -3,9 +3,8 @@ use std::fmt::{Display, Formatter};
 use diagnostic::{ErrorType, MaybeSpanned, Spanned};
 use utils::ids::{ExprId, LocalId};
 
-use super::hir::HIRType;
-use super::hir_display::RenderType;
 use super::type_annotator::TyClass;
+use super::types::HIRType;
 
 #[derive(Debug)]
 pub enum Error {

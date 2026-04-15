@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use bimap::BiHashMap;
 
-use hir::THIR;
-use utils::ids::{ExprId, LocalId, ValueId};
+use hir::{THIR, TypeArena as HIRTypeArena};
+use utils::ids::{ExprId, HIRTypeId, LocalId, MIRTypeId, ValueId};
 use utils::primitive_types::PrimitiveType;
 
 use super::mir::{
@@ -37,10 +37,11 @@ impl HIRTranslator {
 
     fn translate(mut self, hir: THIR) -> MIR {
         self.mir.modules[0].funcs_map = hir.funcs_map;
+        let hir_type_arena = hir.type_arena;
         for item in hir.items {
             match item {
                 hir::Item::Function(func) => {
-                    let func = self.translate_function(func);
+                    let func = self.translate_function(func, &hir_type_arena);
                     self.mir.modules[0].functions.push(func);
                 }
             }
@@ -48,8 +49,12 @@ impl HIRTranslator {
         self.mir
     }
 
-    fn translate_function(&mut self, func: hir::TypedFunction) -> Function {
-        let translator = HIRFunctionTranslator::new(&mut self.mir.modules[0]);
+    fn translate_function(
+        &mut self,
+        func: hir::TypedFunction,
+        hir_type_arena: &HIRTypeArena,
+    ) -> Function {
+        let translator = HIRFunctionTranslator::new(&mut self.mir.modules[0], hir_type_arena);
         translator.translate(func)
     }
 }
@@ -62,10 +67,11 @@ struct HIRFunctionTranslator<'a> {
 
     stack_slot_ptrs: HashMap<LocalId, ValueId>,
     module: &'a mut Module,
+    hir_type_arena: &'a HIRTypeArena,
 }
 
 impl<'a> HIRFunctionTranslator<'a> {
-    fn new(module: &'a mut Module) -> Self {
+    fn new(module: &'a mut Module, hir_type_arena: &'a HIRTypeArena) -> Self {
         let entry_block = BasicBlock {
             label: "entry".into(),
             instructions: vec![],
@@ -78,6 +84,7 @@ impl<'a> HIRFunctionTranslator<'a> {
             stack_slot_ptrs: HashMap::new(),
             metainfo: MetaInfo::default(),
             module,
+            hir_type_arena,
         }
     }
 
@@ -107,17 +114,26 @@ impl<'a> HIRFunctionTranslator<'a> {
         self.blocks[self.current_block_idx].terminator = terminator;
     }
 
-    fn is_void_type(&self, type_id: utils::ids::TypeId) -> bool {
+    fn is_void_type(&self, type_id: MIRTypeId) -> bool {
         matches!(
             self.module.type_arena.get(type_id),
             Some(MIRType::Primitive(PrimitiveType::Void))
         )
     }
 
+    fn lower_hir_type_id(&mut self, id: HIRTypeId) -> MIRTypeId {
+        let hir_ty = self
+            .hir_type_arena
+            .get_by_id(id)
+            .expect("HIRTypeId not found in arena. Internal error.")
+            .clone();
+        let mir_ty = MIRType::from_hir(hir_ty);
+        self.module.type_arena.get_or_insert(mir_ty)
+    }
+
     fn lower_expr_value(&mut self, expr_id: ExprId, expr_arena: &hir::TypedExprArena) -> Operand {
         let expr = expr_arena.get(expr_id).unwrap().as_ref();
-        let ty = MIRType::from_hir(expr.ty.node.clone());
-        let type_id = self.module.type_arena.get_or_insert(ty);
+        let type_id = self.lower_hir_type_id(expr.ty.node);
 
         match &expr.kind {
             hir::TypedExprKind::Literal(lit) => match lit {
@@ -128,7 +144,7 @@ impl<'a> HIRFunctionTranslator<'a> {
             },
             hir::TypedExprKind::FunctionCall(hir_call) => {
                 if self.is_void_type(type_id) {
-                    panic!("void expression cannot be lowered in value context");
+                    panic!("void expression cannot be lowered in value context. Internal error.");
                 }
 
                 let value_id = self.next_vreg();
@@ -218,15 +234,13 @@ impl<'a> HIRFunctionTranslator<'a> {
     }
 
     fn translate_signature(&mut self, signature: hir::FunctionSignature) -> FunctionSignature {
-        let return_type = MIRType::from_hir(signature.ret_ty.node);
-        let return_type_id = self.module.type_arena.get_or_insert(return_type);
+        let return_type_id = self.lower_hir_type_id(signature.ret_ty.node);
 
         let args = signature
             .args
             .into_iter()
             .map(|arg| {
-                let ty = MIRType::from_hir(arg.node.ty.node);
-                let type_id = self.module.type_arena.get_or_insert(ty);
+                let type_id = self.lower_hir_type_id(arg.node.ty.node);
                 let value_id = self.next_vreg();
                 self.metainfo
                     .add_variable_name(arg.node.name.node, value_id);
@@ -262,8 +276,7 @@ impl<'a> HIRFunctionTranslator<'a> {
 
         for local in func.body.locals {
             // Alloca for each local variable
-            let ty = MIRType::from_hir(local.ty.node);
-            let type_id = self.module.type_arena.get_or_insert(ty);
+            let type_id = self.lower_hir_type_id(local.ty.node);
             let stack_ptr = self.next_vreg();
 
             self.metainfo

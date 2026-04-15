@@ -1,10 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use diagnostic::{MaybeSpanned, Spanned};
-use utils::ids::{ExprId, LocalId, TypeVarId};
+use utils::ids::{ExprId, HIRTypeId, LocalId, TypeVarId};
 
 use crate::error::Error;
-use crate::hir::HIRType;
+use crate::types::{HIRType, TypeArena};
 
 use super::type_var::{Constraint, TyClass, TypeVar};
 
@@ -12,21 +12,24 @@ use super::type_var::{Constraint, TyClass, TypeVar};
 type S<T> = Spanned<T>;
 
 /// Unification-based type solver
-pub struct Solver {
+pub struct Solver<'a> {
+    type_arena: &'a mut TypeArena,
     parent: HashMap<TypeVarId, TypeVarId>, // union-find
-    binding: HashMap<TypeVarId, MaybeSpanned<HIRType>>, // Var -> Known(T)
+    binding: HashMap<TypeVarId, MaybeSpanned<HIRTypeId>>, // Var -> Known(T)
     classes: HashMap<TypeVarId, HashSet<TyClass>>, // Var ∈ {...}
     expr_ty: HashMap<ExprId, S<TypeVar>>,
     local_ty: HashMap<LocalId, S<TypeVar>>,
 }
 
-impl Solver {
+impl<'a> Solver<'a> {
     pub fn new(
         constraints: Vec<Constraint>,
         expr_ty: HashMap<ExprId, S<TypeVar>>,
         local_ty: HashMap<LocalId, S<TypeVar>>,
-    ) -> (Solver, Vec<S<Error>>) {
+        type_arena: &'a mut TypeArena,
+    ) -> (Solver<'a>, Vec<S<Error>>) {
         let mut solver = Solver {
+            type_arena,
             parent: HashMap::new(),
             binding: HashMap::new(),
             classes: HashMap::new(),
@@ -87,13 +90,21 @@ impl Solver {
         Ok(())
     }
 
-    fn bind(&mut self, type_var_id: TypeVarId, ty: MaybeSpanned<HIRType>) -> Result<(), Error> {
+    fn bind(&mut self, type_var_id: TypeVarId, ty: MaybeSpanned<HIRTypeId>) -> Result<(), Error> {
         let target_type_var_id = self.find(type_var_id);
         if let Some(prev) = self.binding.get(&target_type_var_id) {
             if prev != &ty {
+                let first_hir = self.type_arena.get_by_id(prev.node).unwrap().clone();
+                let second_hir = self.type_arena.get_by_id(ty.node).unwrap().clone();
                 return Err(Error::TypesConflict {
-                    first: prev.clone(),
-                    second: ty,
+                    first: MaybeSpanned {
+                        node: first_hir,
+                        span: prev.span,
+                    },
+                    second: MaybeSpanned {
+                        node: second_hir,
+                        span: ty.span,
+                    },
                 });
             }
         } else {
@@ -116,9 +127,17 @@ impl Solver {
                 if known_a == known_b {
                     Ok(())
                 } else {
+                    let first_hir = self.type_arena.get_by_id(known_a.node).unwrap().clone();
+                    let second_hir = self.type_arena.get_by_id(known_b.node).unwrap().clone();
                     Err(Error::TypesConflict {
-                        first: known_a,
-                        second: known_b,
+                        first: MaybeSpanned {
+                            node: first_hir,
+                            span: known_a.span,
+                        },
+                        second: MaybeSpanned {
+                            node: second_hir,
+                            span: known_b.span,
+                        },
                     })
                 }
             }
@@ -128,26 +147,31 @@ impl Solver {
         }
     }
 
-    fn resolve(&mut self, type_var: S<TypeVar>) -> Result<MaybeSpanned<HIRType>, S<Error>> {
+    fn resolve(&mut self, type_var: S<TypeVar>) -> Result<MaybeSpanned<HIRTypeId>, S<Error>> {
         match type_var.node {
             TypeVar::Known(known) => Ok(known),
             TypeVar::Var(type_var_id) => {
                 let target_type_var_id = self.find(type_var_id);
 
                 // If type variable is bound to a known type, return it
-                if let Some(known) = self.binding.get(&target_type_var_id).cloned() {
+                if let Some(known) = self.binding.get(&target_type_var_id).copied() {
                     // If known type conflicts with class constraints, error out
                     if let Some(classes) = self.classes.get(&target_type_var_id)
                         && classes.len() == 1
                     {
                         let class = *classes.iter().next().unwrap();
-                        let possible_class = TyClass::from_type(&known.node);
+                        let hir_type = self.type_arena.get_by_id(known.node).unwrap();
+                        let possible_class = TyClass::from_type(hir_type);
                         if let Some(possible_class) = possible_class
                             && possible_class != class
                         {
+                            let known_hir = hir_type.clone();
                             return Err(S::new(
                                 Error::TypesConflict {
-                                    first: known.clone(),
+                                    first: MaybeSpanned {
+                                        node: known_hir,
+                                        span: known.span,
+                                    },
                                     second: MaybeSpanned::new(class.fallback_type()),
                                 },
                                 type_var.span,
@@ -161,10 +185,10 @@ impl Solver {
                 if let Some(classes) = self.classes.get(&target_type_var_id) {
                     if classes.len() == 1 {
                         let c = *classes.iter().next().unwrap();
-                        let fallback_type = MaybeSpanned::new(c.fallback_type());
-                        self.binding
-                            .insert(target_type_var_id, fallback_type.clone());
-                        return Ok(fallback_type);
+                        let fallback_id = self.type_arena.get_or_insert(c.fallback_type());
+                        let fallback = MaybeSpanned::new(fallback_id);
+                        self.binding.insert(target_type_var_id, fallback);
+                        return Ok(fallback);
                     }
 
                     // If multiple classes, error out as ambiguous
@@ -182,7 +206,10 @@ impl Solver {
         }
     }
 
-    pub fn resolve_local(&mut self, local_id: LocalId) -> Result<MaybeSpanned<HIRType>, S<Error>> {
+    pub fn resolve_local(
+        &mut self,
+        local_id: LocalId,
+    ) -> Result<MaybeSpanned<HIRTypeId>, S<Error>> {
         if let Some(tv) = self.local_ty.get(&local_id).cloned() {
             self.resolve(tv)
         } else {
@@ -190,7 +217,7 @@ impl Solver {
         }
     }
 
-    pub fn resolve_expr(&mut self, expr_id: ExprId) -> Result<MaybeSpanned<HIRType>, S<Error>> {
+    pub fn resolve_expr(&mut self, expr_id: ExprId) -> Result<MaybeSpanned<HIRTypeId>, S<Error>> {
         if let Some(tv) = self.expr_ty.get(&expr_id).cloned() {
             self.resolve(tv)
         } else {
@@ -219,11 +246,11 @@ mod tests {
         MaybeSpanned { node, span: None }
     }
 
-    fn i32_ty() -> HIRType {
+    fn i32_hir() -> HIRType {
         HIRType::Primitive(PrimitiveType::I32)
     }
 
-    fn f32_ty() -> HIRType {
+    fn f32_hir() -> HIRType {
         HIRType::Primitive(PrimitiveType::F32)
     }
 
@@ -245,6 +272,9 @@ mod tests {
     fn eq_var_known_binds_and_resolves() {
         // constraints: v1 == i32
         // resolve_expr(e1) => i32
+        let mut arena = TypeArena::new();
+        let i32_id = arena.get_or_insert(i32_hir());
+
         let e1 = expr_id(1);
         let v1 = tvar_id(1);
 
@@ -255,20 +285,23 @@ mod tests {
 
         let constraints = vec![Constraint::Eq(
             s(TypeVar::Var(v1)),
-            s(TypeVar::Known(ms(i32_ty()))),
+            s(TypeVar::Known(ms(i32_id))),
         )];
 
-        let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty);
+        let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
         assert!(errs.is_empty(), "unexpected constraint errors: {:?}", errs);
 
         let ty = solver.resolve_expr(e1).expect("resolve_expr failed");
-        assert_eq!(ty.node, i32_ty());
+        assert_eq!(ty.node, i32_id);
     }
 
     #[test]
     fn inclass_single_class_fallbacks() {
         // constraints: v1 ∈ Int
         // resolve_expr(e1) => fallback of Int (i32)
+        let mut arena = TypeArena::new();
+        let i32_id = arena.get_or_insert(i32_hir());
+
         let e1 = expr_id(1);
         let v1 = tvar_id(1);
 
@@ -278,17 +311,19 @@ mod tests {
 
         let constraints = vec![Constraint::InClass(s(TypeVar::Var(v1)), TyClass::Int)];
 
-        let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty);
+        let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
         assert!(errs.is_empty());
 
         let ty = solver.resolve_expr(e1).expect("resolve_expr failed");
-        assert_eq!(ty.node, i32_ty(), "Int fallback should be i32");
+        assert_eq!(ty.node, i32_id, "Int fallback should be i32");
     }
 
     #[test]
     fn inclass_multiple_classes_is_ambiguous() {
         // constraints: v1 ∈ Int, v1 ∈ Float
         // resolve_expr(e1) => Err(AmbiguousClass)
+        let mut arena = TypeArena::new();
+
         let e1 = expr_id(1);
         let v1 = tvar_id(1);
 
@@ -301,7 +336,7 @@ mod tests {
             Constraint::InClass(s(TypeVar::Var(v1)), TyClass::Float),
         ];
 
-        let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty);
+        let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
         assert!(errs.is_empty());
 
         let err = solver.resolve_expr(e1).unwrap_err();
@@ -311,15 +346,19 @@ mod tests {
     #[test]
     fn conflict_known_known_is_reported_during_new() {
         // constraints: i32 == f32 -> TypesConflict returned from Solver::new
+        let mut arena = TypeArena::new();
+        let i32_id = arena.get_or_insert(i32_hir());
+        let f32_id = arena.get_or_insert(f32_hir());
+
         let expr_ty = HashMap::new();
         let local_ty = HashMap::new();
 
         let constraints = vec![Constraint::Eq(
-            s(TypeVar::Known(ms(i32_ty()))),
-            s(TypeVar::Known(ms(f32_ty()))),
+            s(TypeVar::Known(ms(i32_id))),
+            s(TypeVar::Known(ms(f32_id))),
         )];
 
-        let (_solver, errs) = Solver::new(constraints, expr_ty, local_ty);
+        let (_solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
         assert!(!errs.is_empty(), "expected conflict error");
         let has_conflict = errs
             .iter()
@@ -331,6 +370,9 @@ mod tests {
     fn union_propagates_binding_across_vars() {
         // constraints: v1 == v2, v1 == i32
         // resolve_expr(e2) => i32
+        let mut arena = TypeArena::new();
+        let i32_id = arena.get_or_insert(i32_hir());
+
         let e1 = expr_id(1);
         let e2 = expr_id(2);
         let v1 = tvar_id(1);
@@ -343,23 +385,25 @@ mod tests {
 
         let constraints = vec![
             Constraint::Eq(s(TypeVar::Var(v1)), s(TypeVar::Var(v2))),
-            Constraint::Eq(s(TypeVar::Var(v1)), s(TypeVar::Known(ms(i32_ty())))),
+            Constraint::Eq(s(TypeVar::Var(v1)), s(TypeVar::Known(ms(i32_id)))),
         ];
 
-        let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty);
+        let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
         assert!(errs.is_empty());
 
         let ty2 = solver.resolve_expr(e2).expect("resolve_expr failed");
-        assert_eq!(ty2.node, i32_ty());
+        assert_eq!(ty2.node, i32_id);
     }
 
     #[test]
     fn resolve_local_unregistered_yields_error() {
+        let mut arena = TypeArena::new();
+
         let expr_ty = HashMap::new();
         let local_ty = HashMap::new();
         let constraints = Vec::<Constraint>::new();
 
-        let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty);
+        let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
         assert!(errs.is_empty());
 
         let bogus_local = local_id(42);
@@ -373,6 +417,9 @@ mod tests {
         // resolve_expr(e1) => Err(TypesConflict) (known f32 violates class Int)
         //
         // This relies on TyClass::from_type(HIRType) to classify known types.
+        let mut arena = TypeArena::new();
+        let f32_id = arena.get_or_insert(f32_hir());
+
         let e1 = expr_id(1);
         let v1 = tvar_id(1);
 
@@ -381,11 +428,11 @@ mod tests {
         let local_ty = HashMap::new();
 
         let constraints = vec![
-            Constraint::Eq(s(TypeVar::Var(v1)), s(TypeVar::Known(ms(f32_ty())))),
+            Constraint::Eq(s(TypeVar::Var(v1)), s(TypeVar::Known(ms(f32_id)))),
             Constraint::InClass(s(TypeVar::Var(v1)), TyClass::Int),
         ];
 
-        let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty);
+        let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
         assert!(errs.is_empty(), "no constraint error expected during new");
 
         let err = solver.resolve_expr(e1).unwrap_err();
@@ -400,6 +447,9 @@ mod tests {
         //   v1 == v2
         //   v2 == i32
         // resolve_expr(e1) => i32, resolve_expr(e2) => i32
+        let mut arena = TypeArena::new();
+        let i32_id = arena.get_or_insert(i32_hir());
+
         let e1 = expr_id(1);
         let e2 = expr_id(2);
         let v1 = tvar_id(1);
@@ -414,22 +464,25 @@ mod tests {
             Constraint::InClass(s(TypeVar::Var(v1)), TyClass::Int),
             Constraint::InClass(s(TypeVar::Var(v2)), TyClass::Int),
             Constraint::Eq(s(TypeVar::Var(v1)), s(TypeVar::Var(v2))),
-            Constraint::Eq(s(TypeVar::Var(v2)), s(TypeVar::Known(ms(i32_ty())))),
+            Constraint::Eq(s(TypeVar::Var(v2)), s(TypeVar::Known(ms(i32_id)))),
         ];
 
-        let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty);
+        let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
         assert!(errs.is_empty());
 
         let t1 = solver.resolve_expr(e1).expect("resolve e1");
         let t2 = solver.resolve_expr(e2).expect("resolve e2");
-        assert_eq!(t1.node, i32_ty());
-        assert_eq!(t2.node, i32_ty());
+        assert_eq!(t1.node, i32_id);
+        assert_eq!(t2.node, i32_id);
     }
 
     #[test]
     fn chain_union_path_compression_still_resolves() {
         // constraints: v1==v2, v2==v3, v1==i32
         // resolve_expr(e3) => i32
+        let mut arena = TypeArena::new();
+        let i32_id = arena.get_or_insert(i32_hir());
+
         let e3 = expr_id(3);
         let v1 = tvar_id(1);
         let v2 = tvar_id(2);
@@ -442,13 +495,13 @@ mod tests {
         let constraints = vec![
             Constraint::Eq(s(TypeVar::Var(v1)), s(TypeVar::Var(v2))),
             Constraint::Eq(s(TypeVar::Var(v2)), s(TypeVar::Var(v3))),
-            Constraint::Eq(s(TypeVar::Var(v1)), s(TypeVar::Known(ms(i32_ty())))),
+            Constraint::Eq(s(TypeVar::Var(v1)), s(TypeVar::Known(ms(i32_id)))),
         ];
 
-        let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty);
+        let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
         assert!(errs.is_empty());
 
         let t3 = solver.resolve_expr(e3).expect("resolve e3");
-        assert_eq!(t3.node, i32_ty());
+        assert_eq!(t3.node, i32_id);
     }
 }

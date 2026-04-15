@@ -1,48 +1,18 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-use diagnostic::{MaybeSpanned, Spanned};
 use utils::ids::{ExprId, FuncId, LocalId};
 
 use super::hir::{
     Block, Expr, ExprArena, ExprKind, ExternalFunction, Function, FunctionCall, FunctionSignature,
-    HIR, HIRType, InternalFunction, Item, Statement,
+    InternalFunction, Item, Statement, THIR, Typed,
 };
+use super::types::{HIRType, TypeArena};
 
-/// Render type for THIR/OptHIR.
-pub trait RenderType {
-    fn render_ty(&self) -> String;
-}
-
-impl RenderType for HIRType {
-    fn render_ty(&self) -> String {
+impl HIRType {
+    pub(crate) fn render_ty(&self) -> String {
         match self {
             HIRType::Primitive(p) => format!("{p}"),
-        }
-    }
-}
-
-impl RenderType for MaybeSpanned<HIRType> {
-    fn render_ty(&self) -> String {
-        match self.node {
-            HIRType::Primitive(p) => format!("{p}"),
-        }
-    }
-}
-
-impl RenderType for Spanned<HIRType> {
-    fn render_ty(&self) -> String {
-        match self.node {
-            HIRType::Primitive(p) => format!("{p}"),
-        }
-    }
-}
-
-impl RenderType for Option<Spanned<HIRType>> {
-    fn render_ty(&self) -> String {
-        match self {
-            Some(t) => t.render_ty(),
-            None => "undefined".into(),
         }
     }
 }
@@ -55,7 +25,7 @@ struct FnCtx<'a, T> {
     func_names: &'a HashMap<FuncId, String>,
 }
 
-impl<T: RenderType> Display for HIR<T> {
+impl Display for THIR {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let mut func_names = HashMap::<FuncId, String>::new();
         for item in &self.items {
@@ -71,7 +41,7 @@ impl<T: RenderType> Display for HIR<T> {
             }
             match item {
                 Item::Function(fun) => {
-                    let s = format_function(fun, &func_names);
+                    let s = format_function(fun, &func_names, &self.type_arena);
                     f.write_str(&s)?;
                 }
             }
@@ -80,19 +50,21 @@ impl<T: RenderType> Display for HIR<T> {
     }
 }
 
-fn format_function<T: RenderType>(
-    func: &Function<T>,
+fn format_function(
+    func: &Function<Typed>,
     func_names: &HashMap<FuncId, String>,
+    type_arena: &TypeArena,
 ) -> String {
     match func {
-        Function::Internal(internal) => format_internal_function(internal, func_names),
-        Function::External(external) => format_external_function(external),
+        Function::Internal(internal) => format_internal_function(internal, func_names, type_arena),
+        Function::External(external) => format_external_function(external, type_arena),
     }
 }
 
-fn format_internal_function<T: RenderType>(
-    func: &InternalFunction<T>,
+fn format_internal_function(
+    func: &InternalFunction<Typed>,
     func_names: &HashMap<FuncId, String>,
+    type_arena: &TypeArena,
 ) -> String {
     // Build function context
     let mut local_names = HashMap::<LocalId, String>::new();
@@ -101,12 +73,14 @@ fn format_internal_function<T: RenderType>(
     for a in &func.signature.args {
         let arg = &a.node;
         local_names.insert(arg.local_id, arg.name.node.clone());
-        local_types.insert(arg.local_id, arg.ty.node.render_ty());
+        let ty = type_arena.get_by_id(arg.ty.node).unwrap();
+        local_types.insert(arg.local_id, ty.render_ty());
     }
 
-    for l in &func.body.locals {
-        local_names.insert(l.id, l.name.node.clone());
-        local_types.insert(l.id, l.ty.render_ty());
+    for local in &func.body.locals {
+        local_names.insert(local.id, local.name.node.clone());
+        let ty = type_arena.get_by_id(local.ty.node).unwrap();
+        local_types.insert(local.id, ty.render_ty());
     }
 
     let ctx = FnCtx {
@@ -116,10 +90,8 @@ fn format_internal_function<T: RenderType>(
         func_names,
     };
 
-    let mut out = String::new();
-
     // Function signature
-    format_function_signature(&mut out, &func.signature);
+    let mut out = format_function_signature(&func.signature, type_arena);
 
     if func.body.statements.is_empty() {
         out.push_str(" {}\n");
@@ -129,15 +101,14 @@ fn format_internal_function<T: RenderType>(
     out.push_str(" {\n");
 
     // Body
-    format_block_into(&mut out, &func.body, &ctx, 1);
+    out.push_str(&format_block(&func.body, &ctx, 1));
 
     out.push_str("}\n");
     out
 }
 
-fn format_external_function(func: &ExternalFunction) -> String {
-    let mut out = String::new();
-    format_function_signature(&mut out, &func.signature);
+fn format_external_function(func: &ExternalFunction, type_arena: &TypeArena) -> String {
+    let mut out = format_function_signature(&func.signature, type_arena);
     out.push('\n');
     out
 }
@@ -151,7 +122,8 @@ fn indent(n: usize) -> String {
     s
 }
 
-fn format_function_signature(out: &mut String, signature: &FunctionSignature) {
+fn format_function_signature(signature: &FunctionSignature, type_arena: &TypeArena) -> String {
+    let mut out = String::new();
     out.push_str("fn ");
     out.push_str(&signature.name.node);
     out.push('(');
@@ -162,21 +134,19 @@ fn format_function_signature(out: &mut String, signature: &FunctionSignature) {
         let arg = &a.node;
         out.push_str(&arg.name.node);
         out.push_str(": ");
-        out.push_str(&arg.ty.node.render_ty());
+        let ty = type_arena.get_by_id(arg.ty.node).unwrap();
+        out.push_str(&ty.render_ty());
     }
     out.push(')');
 
-    let ret = signature.ret_ty.render_ty();
+    let ret_ty = type_arena.get_by_id(signature.ret_ty.node).unwrap();
     out.push_str(" -> ");
-    out.push_str(&ret);
+    out.push_str(&ret_ty.render_ty());
+    out
 }
 
-fn format_block_into<T: RenderType>(
-    out: &mut String,
-    block: &Block<T>,
-    ctx: &FnCtx<T>,
-    lvl: usize,
-) {
+fn format_block(block: &Block<Typed>, ctx: &FnCtx<Typed>, lvl: usize) -> String {
+    let mut out = String::new();
     for stmt in &block.statements {
         out.push_str(&indent(lvl));
         match stmt {
@@ -197,63 +167,62 @@ fn format_block_into<T: RenderType>(
                 out.push_str(": ");
                 out.push_str(&ty);
                 out.push_str(" = ");
-                format_expr_id_into(out, &v.expr_id, ctx);
+                out.push_str(&format_expr_id(&v.expr_id, ctx));
                 out.push('\n');
             }
             Statement::Expr(eid) => {
-                format_expr_id_into(out, eid, ctx);
+                out.push_str(&format_expr_id(eid, ctx));
                 out.push('\n');
             }
             Statement::Return(eid) => {
                 out.push_str("return ");
-                format_expr_id_into(out, eid, ctx);
+                out.push_str(&format_expr_id(eid, ctx));
                 out.push('\n');
             }
         }
     }
+    out
 }
 
-fn format_expr_id_into<T: RenderType>(out: &mut String, id: &ExprId, ctx: &FnCtx<T>) {
+fn format_expr_id(id: &ExprId, ctx: &FnCtx<Typed>) -> String {
     if let Some(e) = ctx.arena.get(*id) {
-        format_expr_into(out, &e.node, ctx);
+        format_expr(&e.node, ctx)
     } else {
-        out.push_str("/*unknown_expr*/");
+        "/*unknown_expr*/".into()
     }
 }
 
-fn format_expr_into<T: RenderType>(out: &mut String, e: &Expr<T>, ctx: &FnCtx<T>) {
+fn format_expr(e: &Expr<Typed>, ctx: &FnCtx<Typed>) -> String {
     match &e.kind {
-        ExprKind::Literal(l) => out.push_str(&format!("{l}")),
-        ExprKind::Local(lid) => {
-            let name = ctx
-                .local_names
-                .get(lid)
-                .cloned()
-                .unwrap_or_else(|| "/*unknown_local*/".into());
-            out.push_str(&name);
-        }
-        ExprKind::FunctionCall(call) => format_call_into(out, call, ctx),
+        ExprKind::Literal(l) => format!("{l}"),
+        ExprKind::Local(lid) => ctx
+            .local_names
+            .get(lid)
+            .cloned()
+            .unwrap_or_else(|| "/*unknown_local*/".into()),
+        ExprKind::FunctionCall(call) => format_call(call, ctx),
         ExprKind::Block(b) => {
-            out.push_str("{\n");
-            format_block_into(out, b, ctx, 2);
+            let mut out = String::from("{\n");
+            out.push_str(&format_block(b, ctx, 2));
             out.push('}');
+            out
         }
     }
 }
 
-fn format_call_into<T: RenderType>(out: &mut String, call: &FunctionCall, ctx: &FnCtx<T>) {
-    let fname = ctx
+fn format_call(call: &FunctionCall, ctx: &FnCtx<Typed>) -> String {
+    let mut out = ctx
         .func_names
         .get(&call.func_id)
         .cloned()
         .unwrap_or_else(|| "/*unknown_fn*/".into());
-    out.push_str(&fname);
     out.push('(');
     for (i, arg) in call.args.iter().enumerate() {
         if i > 0 {
             out.push_str(", ");
         }
-        format_expr_id_into(out, arg, ctx);
+        out.push_str(&format_expr_id(arg, ctx));
     }
     out.push(')');
+    out
 }

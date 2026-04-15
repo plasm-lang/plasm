@@ -1,8 +1,8 @@
 use diagnostic::{MaybeSpanned, Spanned};
-use utils::ids::TypeVarId;
+use utils::ids::{HIRTypeId, TypeVarId};
 use utils::primitive_types::PrimitiveType;
 
-use crate::hir::HIRType;
+use crate::types::HIRType;
 
 // For brevity
 type S<T> = Spanned<T>;
@@ -10,7 +10,7 @@ type S<T> = Spanned<T>;
 /// Type variable (either known type or a variable to be inferred)
 #[derive(Clone, Debug)]
 pub enum TypeVar {
-    Known(MaybeSpanned<HIRType>),
+    Known(MaybeSpanned<HIRTypeId>),
     Var(TypeVarId),
 }
 

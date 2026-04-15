@@ -1,19 +1,19 @@
 use std::collections::HashMap;
 
 use diagnostic::{Span, Spanned};
-use utils::ids::{ExprId, FuncId, LocalId, TypeVarId};
+use utils::ids::{ExprId, FuncId, HIRTypeId, LocalId, TypeVarId};
 
 use crate::error::Error;
 use crate::hir::{
-    Block, Expr, ExprArena, ExprKind, FunctionSignature, HIRLocal, HIRType, InternalFunction,
-    Statement,
+    Block, Expr, ExprArena, ExprKind, FunctionSignature, HIRLocal, InternalFunction, Statement,
 };
+use crate::types::TypeArena;
 
 use super::solver::Solver;
 use super::type_var::{Constraint, TyClass, TypeVar};
 
 // For brevity
-type OT = Option<S<HIRType>>;
+type OT = Option<S<HIRTypeId>>;
 type S<T> = Spanned<T>;
 
 /// Temporary function context for generating type constraints
@@ -53,7 +53,7 @@ impl<'a> FunctionCtx<'a> {
         ctx
     }
 
-    pub fn into_solver(mut self) -> (Solver, Vec<S<Error>>) {
+    pub fn into_solver(mut self, type_arena: &mut TypeArena) -> (Solver<'_>, Vec<S<Error>>) {
         let (mut constraints, constraints_errors) =
             self.expr_arena_to_constraints(&self.func.expr_arena);
 
@@ -72,7 +72,8 @@ impl<'a> FunctionCtx<'a> {
         );
         constraints.extend(block_constraints);
 
-        let (solver, solver_errors) = Solver::new(constraints, self.expr_ty, self.local_ty);
+        let (solver, solver_errors) =
+            Solver::new(constraints, self.expr_ty, self.local_ty, type_arena);
 
         (
             solver,
@@ -256,6 +257,7 @@ impl<'a> FunctionCtx<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{HIRType, TypeArena};
     use ast::ast::Literal;
     use diagnostic::{Span, Spanned};
     use std::collections::HashMap;
@@ -274,19 +276,24 @@ mod tests {
         diagnostic::MaybeSpanned { node, span: None }
     }
 
-    fn i32_ty() -> HIRType {
-        HIRType::Primitive(PrimitiveType::I32)
+    fn make_type_ids() -> (HIRTypeId, HIRTypeId) {
+        let mut arena = TypeArena::new();
+        let i32_id = arena.get_or_insert(HIRType::Primitive(PrimitiveType::I32));
+        let void_id = arena.get_or_insert(HIRType::Primitive(PrimitiveType::Void));
+        (i32_id, void_id)
     }
 
-    fn void_ty() -> HIRType {
-        HIRType::Primitive(PrimitiveType::Void)
+    fn make_i32_id() -> HIRTypeId {
+        let mut arena = TypeArena::new();
+        arena.get_or_insert(HIRType::Primitive(PrimitiveType::I32))
     }
 
-    fn local(
-        id: LocalId,
-        name: &str,
-        ty: Option<Spanned<HIRType>>,
-    ) -> HIRLocal<Option<Spanned<HIRType>>> {
+    fn make_void_id() -> HIRTypeId {
+        let mut arena = TypeArena::new();
+        arena.get_or_insert(HIRType::Primitive(PrimitiveType::Void))
+    }
+
+    fn local(id: LocalId, name: &str, ty: Option<Spanned<HIRTypeId>>) -> HIRLocal<OT> {
         HIRLocal {
             id,
             ty,
@@ -318,8 +325,8 @@ mod tests {
     fn signature(
         id: FuncId,
         name: &str,
-        params: Vec<(&str, HIRType)>,
-        ret: HIRType,
+        params: Vec<(&str, HIRTypeId)>,
+        ret: HIRTypeId,
     ) -> FunctionSignature {
         let args = params
             .into_iter()
@@ -370,12 +377,12 @@ mod tests {
         n
     }
 
-    fn any_eq_known(constraints: &[Constraint], ty: &HIRType) -> bool {
+    fn any_eq_known(constraints: &[Constraint], ty_id: HIRTypeId) -> bool {
         for c in constraints {
             if let Constraint::Eq(a, b) = c {
                 match (&a.node, &b.node) {
-                    (TypeVar::Known(k), _) if &k.node == ty => return true,
-                    (_, TypeVar::Known(k)) if &k.node == ty => return true,
+                    (TypeVar::Known(k), _) if k.node == ty_id => return true,
+                    (_, TypeVar::Known(k)) if k.node == ty_id => return true,
                     _ => {}
                 }
             }
@@ -399,12 +406,14 @@ mod tests {
     #[test]
     fn literal_int_assigned_to_annotated_local_produces_inclass_and_eq_to_known() {
         // fn main() { let a: i32 = 5 }
+        let (i32_id, void_id) = make_type_ids();
+
         let fid = FuncId::one();
-        let sig = signature(fid, "main", vec![], void_ty());
+        let sig = signature(fid, "main", vec![], void_id);
         let lid_a = LocalId::one();
         let eid_lit = ExprId::one();
 
-        let locals = vec![local(lid_a, "a", Some(s(i32_ty())))];
+        let locals = vec![local(lid_a, "a", Some(s(i32_id)))];
         let exprs = HashMap::from([(eid_lit, expr_literal(Literal::Integer("5".to_string())))]);
         let stmts = vec![Statement::VariableDeclaration(
             crate::hir::VariableDeclaration {
@@ -427,7 +436,7 @@ mod tests {
             "exactly one InClass(Int) for the integer literal expected"
         );
         assert!(
-            any_eq_known(&constraints, &i32_ty()),
+            any_eq_known(&constraints, i32_id),
             "expected at least one Eq(_, Known(i32)) relating literal and annotated local"
         );
     }
@@ -435,17 +444,16 @@ mod tests {
     #[test]
     fn assignment_creates_eq_between_rhs_expr_var_and_lhs_local_var() {
         // fn main() { let a: i32 = 5; let b = a }
+        let (i32_id, void_id) = make_type_ids();
+
         let fid = FuncId::one();
-        let sig = signature(fid, "main", vec![], void_ty());
+        let sig = signature(fid, "main", vec![], void_id);
         let lid_a = LocalId::one();
         let lid_b = LocalId::new(std::num::NonZeroUsize::new(2).unwrap());
         let eid_lit = ExprId::one();
         let eid_use_a = ExprId::new(std::num::NonZeroUsize::new(2).unwrap());
 
-        let locals = vec![
-            local(lid_a, "a", Some(s(i32_ty()))),
-            local(lid_b, "b", None),
-        ];
+        let locals = vec![local(lid_a, "a", Some(s(i32_id))), local(lid_b, "b", None)];
         let exprs = HashMap::from([
             (eid_lit, expr_literal(Literal::Integer("5".to_string()))),
             (eid_use_a, expr_local(lid_a)),
@@ -474,14 +482,16 @@ mod tests {
             "expected at least one Eq(Var, Var) for `b = a`"
         );
         assert_eq!(count_inclass(&constraints, TyClass::Int), 1);
-        assert!(any_eq_known(&constraints, &i32_ty()));
+        assert!(any_eq_known(&constraints, i32_id));
     }
 
     #[test]
     fn return_equates_expr_with_function_return_type() {
         // fn main() -> i32 { let x = 1; return x }
+        let i32_id = make_i32_id();
+
         let fid = FuncId::one();
-        let sig = signature(fid, "main", vec![], i32_ty());
+        let sig = signature(fid, "main", vec![], i32_id);
         let lid_x = LocalId::one();
         let eid_lit = ExprId::one();
         let eid_use_x = ExprId::new(std::num::NonZeroUsize::new(2).unwrap());
@@ -508,7 +518,7 @@ mod tests {
 
         assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
         assert!(
-            any_eq_known(&constraints, &i32_ty()),
+            any_eq_known(&constraints, i32_id),
             "expected Eq(_, Known(i32)) from `return` to the function return type"
         );
         assert_eq!(count_inclass(&constraints, TyClass::Int), 1);
@@ -517,17 +527,19 @@ mod tests {
     #[test]
     fn function_call_yields_eq_to_ret_and_args_bound_to_param_types() {
         // print(x: i32) -> void; main { let a: i32 = 5; print(a) }
+        let (i32_id, void_id) = make_type_ids();
+
         let fid_print = FuncId::one();
-        let sig_print = signature(fid_print, "print", vec![("x", i32_ty())], void_ty());
+        let sig_print = signature(fid_print, "print", vec![("x", i32_id)], void_id);
         let fid_main = FuncId::new(std::num::NonZeroUsize::new(2).unwrap());
-        let sig_main = signature(fid_main, "main", vec![], void_ty());
+        let sig_main = signature(fid_main, "main", vec![], void_id);
 
         let lid_a = LocalId::one();
         let eid_lit = ExprId::one();
         let eid_use_a = ExprId::new(std::num::NonZeroUsize::new(2).unwrap());
         let eid_call = ExprId::new(std::num::NonZeroUsize::new(3).unwrap());
 
-        let locals = vec![local(lid_a, "a", Some(s(i32_ty())))];
+        let locals = vec![local(lid_a, "a", Some(s(i32_id)))];
         let exprs = HashMap::from([
             (eid_lit, expr_literal(Literal::Integer("5".to_string()))),
             (eid_use_a, expr_local(lid_a)),
@@ -551,11 +563,11 @@ mod tests {
 
         assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
         assert!(
-            any_eq_known(&constraints, &void_ty()),
+            any_eq_known(&constraints, void_id),
             "expected Eq(_, Known(void)) for call result"
         );
         assert!(
-            any_eq_known(&constraints, &i32_ty()),
+            any_eq_known(&constraints, i32_id),
             "expected Eq(_, Known(i32)) for the parameter binding"
         );
     }
@@ -563,10 +575,12 @@ mod tests {
     #[test]
     fn function_call_arity_mismatch_reports_error_only_from_ctx() {
         // print(x: i32) -> void; main { print(1, 2) }
+        let (i32_id, void_id) = make_type_ids();
+
         let fid_print = FuncId::one();
-        let sig_print = signature(fid_print, "print", vec![("x", i32_ty())], void_ty());
+        let sig_print = signature(fid_print, "print", vec![("x", i32_id)], void_id);
         let fid_main = FuncId::new(std::num::NonZeroUsize::new(2).unwrap());
-        let sig_main = signature(fid_main, "main", vec![], void_ty());
+        let sig_main = signature(fid_main, "main", vec![], void_id);
 
         let eid_lit1 = ExprId::one();
         let eid_lit2 = ExprId::new(std::num::NonZeroUsize::new(2).unwrap());
@@ -602,8 +616,10 @@ mod tests {
     #[test]
     fn float_literal_adds_inclass_float_not_int() {
         // let f = 1.0  => InClass(Float); no InClass(Int)
+        let void_id = make_void_id();
+
         let fid = FuncId::one();
-        let sig = signature(fid, "main", vec![], void_ty());
+        let sig = signature(fid, "main", vec![], void_id);
 
         let lid_f = LocalId::one();
         let eid_lit = ExprId::one();

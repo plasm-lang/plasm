@@ -57,6 +57,7 @@ pub struct MIRModuleTranslator<'ctx> {
 impl<'ctx> MIRModuleTranslator<'ctx> {
     pub fn new(context: &'ctx Context, mir_module: mir::Module) -> Self {
         let module = context.create_module("main");
+        // module.set_source_file_name("main.sm");
         let builder = context.create_builder();
         Self {
             context,

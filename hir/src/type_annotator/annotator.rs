@@ -1,18 +1,19 @@
 use std::collections::HashMap;
 
 use diagnostic::{MaybeSpanned, Spanned};
+use utils::ids::HIRTypeId;
 
 use crate::error::Error;
 use crate::hir::{
-    Block, Expr, ExprArena, ExprKind, Function, HIRLocal, HIRType, InternalFunction, Item, OptHIR,
-    THIR,
+    Block, Expr, ExprArena, ExprKind, Function, HIRLocal, InternalFunction, Item, OptHIR, THIR,
+    Typed,
 };
 
 use super::func_ctx::FunctionCtx;
 use super::solver::Solver;
 
 // For brevity
-type OT = Option<S<HIRType>>;
+type OT = Option<S<HIRTypeId>>;
 type S<T> = Spanned<T>;
 
 pub fn opt_hir_to_t_hir(opt_hir: OptHIR) -> (THIR, Vec<S<Error>>) {
@@ -28,6 +29,7 @@ impl TypeAnnotator {
     }
 
     pub fn annotate(&self, opt_hir: OptHIR) -> (THIR, Vec<S<Error>>) {
+        let mut type_arena = opt_hir.type_arena;
         let mut out_items = Vec::new();
         let mut errors = Vec::new();
 
@@ -47,7 +49,7 @@ impl TypeAnnotator {
             match item {
                 Item::Function(Function::Internal(func)) => {
                     let (solver, constraint_errors) =
-                        FunctionCtx::from_function(&func, &signatures).into_solver();
+                        FunctionCtx::from_function(&func, &signatures).into_solver(&mut type_arena);
                     errors.extend(constraint_errors);
 
                     let annotator = FunctionAnnotator::new(solver);
@@ -65,29 +67,27 @@ impl TypeAnnotator {
             THIR {
                 items: out_items,
                 funcs_map: opt_hir.funcs_map,
+                type_arena,
             },
             errors,
         )
     }
 }
 
-struct FunctionAnnotator {
-    solver: Solver,
+struct FunctionAnnotator<'a> {
+    solver: Solver<'a>,
     errors: Vec<S<Error>>,
 }
 
-impl FunctionAnnotator {
-    fn new(solver: Solver) -> Self {
+impl<'a> FunctionAnnotator<'a> {
+    fn new(solver: Solver<'a>) -> Self {
         Self {
             solver,
             errors: Vec::new(),
         }
     }
 
-    fn annotate(
-        mut self,
-        func: InternalFunction<OT>,
-    ) -> (InternalFunction<MaybeSpanned<HIRType>>, Vec<S<Error>>) {
+    fn annotate(mut self, func: InternalFunction<OT>) -> (InternalFunction<Typed>, Vec<S<Error>>) {
         let arena = self.annotate_expr_arena(func.expr_arena);
         let block = self.annotate_block(func.body);
 
@@ -101,7 +101,7 @@ impl FunctionAnnotator {
         )
     }
 
-    fn annotate_expr_arena(&mut self, arena: ExprArena<OT>) -> ExprArena<MaybeSpanned<HIRType>> {
+    fn annotate_expr_arena(&mut self, arena: ExprArena<OT>) -> ExprArena<Typed> {
         let mut out_exprs = HashMap::with_capacity(arena.0.len());
         for (expr_id, expr) in arena.0.into_iter() {
             let (expr, span) = expr.unwrap();
@@ -130,7 +130,7 @@ impl FunctionAnnotator {
         ExprArena(out_exprs)
     }
 
-    fn annotate_block(&mut self, block: Block<OT>) -> Block<MaybeSpanned<HIRType>> {
+    fn annotate_block(&mut self, block: Block<OT>) -> Block<Typed> {
         let locals = block
             .locals
             .into_iter()

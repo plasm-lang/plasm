@@ -5,18 +5,19 @@ use serde::Serialize;
 
 use ast::ast::Literal;
 use diagnostic::{MaybeSpanned, Spanned};
-use utils::ids::{ExprId, FuncId, LocalId};
-use utils::primitive_types::PrimitiveType;
+use utils::ids::{ExprId, FuncId, HIRTypeId, LocalId};
+
+use super::types::TypeArena;
 
 type S<T> = Spanned<T>;
-type MaybeS<T> = MaybeSpanned<T>;
+type MS<T> = MaybeSpanned<T>;
 
 /// Optionally typed HIR
-pub type OptTyped = Option<S<HIRType>>;
+pub type OptTyped = Option<S<HIRTypeId>>;
 pub type OptHIR = HIR<OptTyped>;
 
 /// Typed HIR
-pub type Typed = MaybeS<HIRType>;
+pub type Typed = MS<HIRTypeId>;
 pub type THIR = HIR<Typed>;
 
 /// High-level Intermediate Representation
@@ -26,6 +27,7 @@ pub type THIR = HIR<Typed>;
 pub struct HIR<T> {
     pub items: Vec<Item<T>>,
     pub funcs_map: BiHashMap<FuncId, S<String>>,
+    pub type_arena: TypeArena,
 }
 
 impl<T> HIR<T> {
@@ -33,13 +35,9 @@ impl<T> HIR<T> {
         Self {
             items: Vec::new(),
             funcs_map: BiHashMap::new(),
+            type_arena: TypeArena::new(),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub enum HIRType {
-    Primitive(PrimitiveType),
 }
 
 #[derive(Debug, Serialize)]
@@ -79,14 +77,14 @@ pub struct FunctionSignature {
     pub id: FuncId,
     pub name: S<String>,
     pub args: Vec<S<Argument>>,
-    pub ret_ty: MaybeS<HIRType>,
+    pub ret_ty: MS<HIRTypeId>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Argument {
     pub name: S<String>,
     pub local_id: LocalId,
-    pub ty: S<HIRType>,
+    pub ty: S<HIRTypeId>,
 }
 
 #[derive(Debug, Serialize)]

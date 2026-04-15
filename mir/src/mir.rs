@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use diagnostic::Spanned;
 use utils::binop::BinaryOp;
-use utils::ids::{FuncId, TypeId, ValueId};
+use utils::ids::{FuncId, MIRTypeId, ValueId};
 
 use super::types::TypeArena;
 
@@ -48,14 +48,14 @@ pub struct InternalFunction {
 pub struct FunctionSignature {
     pub id: FuncId,
     pub name: String,
-    pub args: Vec<(TypeId, ValueId)>,
-    pub ret_ty: TypeId,
+    pub args: Vec<(MIRTypeId, ValueId)>,
+    pub ret_ty: MIRTypeId,
 }
 
 #[derive(Debug, Serialize)]
 pub struct Global {
     pub name: String,
-    pub type_id: TypeId,
+    pub type_id: MIRTypeId,
     pub raw_data: Vec<u8>,
 }
 
@@ -103,10 +103,10 @@ pub enum Operand {
 #[derive(Debug, Serialize)]
 pub enum RValue {
     /// Allocate stack slot
-    Alloca(TypeId),
+    Alloca(MIRTypeId),
     /// *ptr
     /// load %ptr in llvm ir
-    Load(TypeId, ValueId),
+    Load(MIRTypeId, ValueId),
     /// get pointer ()
     GetElementPtr(ValueId),
     /// Function call
@@ -124,12 +124,12 @@ pub struct Call {
 
 #[derive(Debug, Serialize)]
 pub struct Constant {
-    pub type_id: TypeId,
+    pub type_id: MIRTypeId,
     pub value: ConstantValue,
 }
 
 impl Constant {
-    pub fn bool(type_id: TypeId, value: bool) -> Self {
+    pub fn bool(type_id: MIRTypeId, value: bool) -> Self {
         Constant {
             type_id,
             value: ConstantValue::Int(if value {
@@ -140,21 +140,21 @@ impl Constant {
         }
     }
 
-    pub fn int(type_id: TypeId, value: String) -> Self {
+    pub fn int(type_id: MIRTypeId, value: String) -> Self {
         Constant {
             type_id,
             value: ConstantValue::Int(value),
         }
     }
 
-    pub fn float(type_id: TypeId, value: String) -> Self {
+    pub fn float(type_id: MIRTypeId, value: String) -> Self {
         Constant {
             type_id,
             value: ConstantValue::Float(value),
         }
     }
 
-    pub fn void(type_id: TypeId) -> Self {
+    pub fn void(type_id: MIRTypeId) -> Self {
         Constant {
             type_id,
             value: ConstantValue::Void,

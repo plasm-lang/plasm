@@ -48,6 +48,13 @@ impl<T> core::hash::Hash for Id<T> {
     }
 }
 
+impl<T> Default for Id<T> {
+    #[inline]
+    fn default() -> Self {
+        Self::one()
+    }
+}
+
 impl<T> Id<T> {
     #[inline]
     pub fn new(nz: NonZeroUsize) -> Self {
@@ -108,7 +115,10 @@ pub struct LocalMarker;
 pub struct ExprMarker;
 
 #[derive(Default, Clone, Copy)]
-pub struct TypeMarker;
+pub struct HIRTypeMarker;
+
+#[derive(Default, Clone, Copy)]
+pub struct MIRTypeMarker;
 
 #[derive(Default, Clone, Copy)]
 pub struct TypeVarMarker;
@@ -121,7 +131,8 @@ pub struct ValueMarker;
 pub type FuncId = Id<FuncMarker>;
 pub type LocalId = Id<LocalMarker>;
 pub type ExprId = Id<ExprMarker>;
-pub type TypeId = Id<TypeMarker>;
+pub type HIRTypeId = Id<HIRTypeMarker>;
+pub type MIRTypeId = Id<MIRTypeMarker>;
 pub type TypeVarId = Id<TypeVarMarker>;
 pub type ValueId = Id<ValueMarker>;
 
@@ -145,9 +156,15 @@ impl Display for ExprMarker {
     }
 }
 
-impl Display for TypeMarker {
+impl Display for HIRTypeMarker {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "T")
+        write!(f, "HIRT")
+    }
+}
+
+impl Display for MIRTypeMarker {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MIRT")
     }
 }
 

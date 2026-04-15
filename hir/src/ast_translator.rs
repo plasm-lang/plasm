@@ -2,19 +2,20 @@ use std::collections::HashMap;
 
 use diagnostic::{MaybeSpanned, Spanned};
 use utils::binop::BinaryOp;
-use utils::ids::{ExprId, FuncId, LocalId};
+use utils::ids::{ExprId, FuncId, HIRTypeId, LocalId};
 use utils::primitive_types::PrimitiveType;
 
 use super::error::Error;
 use super::hir::{
     Argument, Block, Expr, ExprArena, ExprKind, ExternalFunction, Function, FunctionCall,
-    FunctionSignature, HIRLocal, HIRType, InternalFunction, Item, OptHIR, Statement, THIR,
+    FunctionSignature, HIRLocal, InternalFunction, Item, OptHIR, Statement, THIR,
     VariableDeclaration,
 };
 use super::type_annotator::opt_hir_to_t_hir;
+use super::types::HIRType;
 
 /// For brevity
-type OT = Option<S<HIRType>>;
+type OT = Option<S<HIRTypeId>>;
 type S<T> = Spanned<T>;
 type MaybeS<T> = MaybeSpanned<T>;
 
@@ -40,8 +41,7 @@ struct ASTTranslator {
     next_func_id: FuncId,
     next_local_id: LocalId,
     next_expr_id: ExprId,
-
-    binary_functions: HardcodedBinaryFunctions,
+    // binary_functions: HardcodedBinaryFunctions,
 }
 
 impl ASTTranslator {
@@ -52,7 +52,7 @@ impl ASTTranslator {
             next_func_id: FuncId::one(),
             next_local_id: LocalId::one(),
             next_expr_id: ExprId::one(),
-            binary_functions: HardcodedBinaryFunctions::new(),
+            // binary_functions: HardcodedBinaryFunctions::new(),
         }
     }
 
@@ -75,16 +75,17 @@ impl ASTTranslator {
     }
 
     fn get_binary_function(&mut self, op: BinaryOp, ty: PrimitiveType) -> FuncId {
-        if let Some(func_id) = self.binary_functions.get(op, ty) {
-            func_id
-        } else {
-            let func_id = self.get_next_func_id();
-            let external_func = self.binary_functions.create(op, ty, func_id);
-            self.hir
-                .items
-                .push(Item::Function(Function::External(external_func)));
-            func_id
-        }
+        todo!()
+        // if let Some(func_id) = self.binary_functions.get(op, ty) {
+        //     func_id
+        // } else {
+        //     let func_id = self.get_next_func_id();
+        //     let external_func = self.binary_functions.create(op, ty, func_id);
+        //     self.hir
+        //         .items
+        //         .push(Item::Function(Function::External(external_func)));
+        //     func_id
+        // }
     }
 
     pub fn translate(mut self, ast: ast::AST) -> (OptHIR, Vec<S<Error>>) {
@@ -141,16 +142,16 @@ impl ASTTranslator {
         &mut self,
         signature: ast::FunctionSignature,
     ) -> (FunctionSignature, Vec<HIRLocal<OT>>) {
-        let id = self
+        let func_id = self
             .hir
             .funcs_map
             .get_by_right(&signature.name)
             .cloned()
             .unwrap();
-        let ret_ty = signature
+        let ret_ty_id = signature
             .return_type
             .map(|ty| ty.map(|t| self.translate_type(t)).into_maybe())
-            .unwrap_or(MaybeS::new(HIRType::Primitive(PrimitiveType::Void)));
+            .unwrap_or(MaybeS::new(self.hir.type_arena.void_id()));
 
         let mut locals: Vec<HIRLocal<OT>> = Vec::new();
 
@@ -165,10 +166,10 @@ impl ASTTranslator {
         }
 
         let signature = FunctionSignature {
-            id,
+            id: func_id,
             name: signature.name,
             args,
-            ret_ty,
+            ret_ty: ret_ty_id,
         };
 
         (signature, locals)
@@ -176,30 +177,29 @@ impl ASTTranslator {
 
     fn translate_internal_function(&mut self, func: ast::InternalFunction) {
         let (signature, locals) = self.translate_signature(func.signature);
-        let ret_ty = &signature.ret_ty;
 
         // Translate body
 
+        let ret_ty_id = signature.ret_ty.node;
+        let is_void = self.hir.type_arena.get_by_id(ret_ty_id)
+            == Some(&HIRType::Primitive(PrimitiveType::Void));
+
         let (mut body, mut expr_arena) = self.translate_block(func.body, &locals);
 
-        if ret_ty.node == HIRType::Primitive(PrimitiveType::Void) {
-            // Check if there are return statements with expressions in void functions
-            let mut has_return = false;
-            for stmt in &body.statements {
-                if let Statement::Return(_) = stmt {
-                    has_return = true;
-                    break;
-                }
-            }
+        // If return type is void, ensure there is at least one return statement. If not, add `return void` at the end of the function.
+        if is_void {
+            let has_return = body
+                .statements
+                .iter()
+                .any(|s| matches!(s, Statement::Return(_)));
             if !has_return {
                 let expr_id = self.get_next_expr_id();
-                let return_stmt = Statement::Return(expr_id);
                 let return_expr = Expr::<OT> {
                     ty: None,
                     kind: ExprKind::Literal(ast::Literal::Void),
                 };
                 expr_arena.insert(expr_id, S::new(return_expr, signature.name.span));
-                body.statements.push(return_stmt);
+                body.statements.push(Statement::Return(expr_id));
             }
         }
 
@@ -237,11 +237,12 @@ impl ASTTranslator {
         (S::new(hir_arg, arg_span), local)
     }
 
-    fn translate_type(&self, ty: ast::Type) -> HIRType {
-        match ty {
+    fn translate_type(&mut self, ty: ast::Type) -> HIRTypeId {
+        let ty = match ty {
             ast::Type::Primitive(p) => HIRType::Primitive(p),
             ast::Type::Struct(s) => todo!(),
-        }
+        };
+        self.hir.type_arena.get_or_insert(ty)
     }
 
     fn translate_block(
@@ -397,53 +398,53 @@ impl ASTTranslator {
     }
 }
 
-struct HardcodedBinaryFunctions {
-    funcs: HashMap<(BinaryOp, PrimitiveType), FuncId>,
-}
+// struct HardcodedBinaryFunctions {
+//     funcs: HashMap<(BinaryOp, PrimitiveType), FuncId>,
+// }
 
-impl HardcodedBinaryFunctions {
-    fn new() -> Self {
-        Self {
-            funcs: HashMap::new(),
-        }
-    }
+// impl HardcodedBinaryFunctions {
+//     fn new() -> Self {
+//         Self {
+//             funcs: HashMap::new(),
+//         }
+//     }
 
-    fn get(&mut self, op: BinaryOp, ty: PrimitiveType) -> Option<FuncId> {
-        self.funcs.get(&(op, ty)).cloned()
-    }
+//     fn get(&mut self, op: BinaryOp, ty: PrimitiveType) -> Option<FuncId> {
+//         self.funcs.get(&(op, ty)).cloned()
+//     }
 
-    fn create(&mut self, op: BinaryOp, ty: PrimitiveType, func_id: FuncId) -> ExternalFunction {
-        let name = format!("{}_{}", op.name(), ty);
-        let ret_ty = HIRType::Primitive(ty);
+//     fn create(&mut self, op: BinaryOp, ty: PrimitiveType, func_id: FuncId) -> ExternalFunction {
+//         let name = format!("{}_{}", op.name(), ty);
+//         let ret_ty = HIRType::Primitive(ty);
 
-        // Left argument
-        let left_arg_local_id = LocalId::one();
-        let left_arg = Argument {
-            name: S::zero("left".to_string()),
-            local_id: left_arg_local_id,
-            ty: S::zero(HIRType::Primitive(ty)),
-        };
+//         // Left argument
+//         let left_arg_local_id = LocalId::one();
+//         let left_arg = Argument {
+//             name: S::zero("left".to_string()),
+//             local_id: left_arg_local_id,
+//             ty: S::zero(HIRType::Primitive(ty)),
+//         };
 
-        // Right argument
-        let right_arg_local_id = left_arg_local_id.increment();
-        let right_arg = Argument {
-            name: S::zero("right".to_string()),
-            local_id: right_arg_local_id,
-            ty: S::zero(HIRType::Primitive(ty)),
-        };
+//         // Right argument
+//         let right_arg_local_id = left_arg_local_id.increment();
+//         let right_arg = Argument {
+//             name: S::zero("right".to_string()),
+//             local_id: right_arg_local_id,
+//             ty: S::zero(HIRType::Primitive(ty)),
+//         };
 
-        let signature = FunctionSignature {
-            id: func_id,
-            name: S::zero(name),
-            args: vec![S::zero(left_arg), S::zero(right_arg)],
-            ret_ty: MaybeS::new(ret_ty),
-        };
+//         let signature = FunctionSignature {
+//             id: func_id,
+//             name: S::zero(name),
+//             args: vec![S::zero(left_arg), S::zero(right_arg)],
+//             ret_ty: MaybeS::new(ret_ty),
+//         };
 
-        self.funcs.insert((op, ty), func_id);
+//         self.funcs.insert((op, ty), func_id);
 
-        ExternalFunction { signature }
-    }
-}
+//         ExternalFunction { signature }
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
