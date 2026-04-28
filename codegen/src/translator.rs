@@ -108,12 +108,16 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
             mir::Function::Internal(int_func) => &int_func.metainfo,
         };
 
-        let ret_ty = self.mir_module.type_arena.get(signature.ret_ty).unwrap();
+        let ret_ty = self
+            .mir_module
+            .type_arena
+            .get_by_id(signature.ret_ty)
+            .unwrap();
         let arg_types: Vec<BasicMetadataTypeEnum> = signature
             .args
             .iter()
             .map(|(arg_ty_id, _)| {
-                let arg_ty = self.mir_module.type_arena.get(*arg_ty_id).unwrap();
+                let arg_ty = self.mir_module.type_arena.get_by_id(*arg_ty_id).unwrap();
                 self.get_llvm_type(arg_ty).unwrap().into()
             })
             .collect();
@@ -259,13 +263,13 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
     ) -> BasicValueEnum<'ctx> {
         match rvalue {
             mir::RValue::Alloca(type_id) => {
-                let mir_ty = self.mir_module.type_arena.get(*type_id).unwrap();
+                let mir_ty = self.mir_module.type_arena.get_by_id(*type_id).unwrap();
                 let llvm_ty = self.get_llvm_type(mir_ty).unwrap();
                 self.builder.build_alloca(llvm_ty, name).unwrap().into()
             }
             mir::RValue::Load(type_id, ptr_id) => {
                 let ptr_val = value_map.get(ptr_id).unwrap().into_pointer_value();
-                let mir_ty = self.mir_module.type_arena.get(*type_id).unwrap();
+                let mir_ty = self.mir_module.type_arena.get_by_id(*type_id).unwrap();
                 let llvm_ty = self.get_llvm_type(mir_ty).unwrap();
                 let load_res = self.builder.build_load(llvm_ty, ptr_val, name).unwrap();
                 load_res
@@ -308,7 +312,11 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
     }
 
     fn translate_constant(&self, constant: &mir::Constant) -> Option<BasicValueEnum<'ctx>> {
-        let mir_ty = self.mir_module.type_arena.get(constant.type_id).unwrap();
+        let mir_ty = self
+            .mir_module
+            .type_arena
+            .get_by_id(constant.type_id)
+            .unwrap();
         match &constant.value {
             mir::ConstantValue::Int(val_str) => {
                 let llvm_ty = self.get_llvm_type(mir_ty).unwrap().into_int_type();
@@ -347,6 +355,8 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
                 F512 => unimplemented!(),
                 F1024 => unimplemented!(),
             },
+            mir::MIRType::Tuple(_) => unimplemented!(),
+            mir::MIRType::Named(_) => unimplemented!(),
         }
     }
 }

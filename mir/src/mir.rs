@@ -7,7 +7,7 @@ use diagnostic::Spanned;
 use utils::binop::BinaryOp;
 use utils::ids::{FuncId, MIRTypeId, ValueId};
 
-use super::types::TypeArena;
+use super::types::MIRTypeArena;
 
 #[derive(Debug, Default, Serialize)]
 pub struct MIR {
@@ -19,7 +19,7 @@ pub struct Module {
     pub globals: Vec<Global>,
     pub functions: Vec<Function>,
     pub funcs_map: BiHashMap<FuncId, Spanned<String>>,
-    pub type_arena: TypeArena,
+    pub type_arena: MIRTypeArena,
 }
 
 #[derive(Debug, Serialize)]

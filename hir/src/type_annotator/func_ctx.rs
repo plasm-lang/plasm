@@ -7,10 +7,10 @@ use crate::error::Error;
 use crate::hir::{
     Block, Expr, ExprArena, ExprKind, FunctionSignature, HIRLocal, InternalFunction, Statement,
 };
-use crate::types::TypeArena;
+use crate::types::HIRTypeArena;
 
 use super::solver::Solver;
-use super::type_var::{Constraint, TyClass, TypeVar};
+use super::type_var::{Constraint, TyClass, TypeVar, Shape};
 
 // For brevity
 type OT = Option<S<HIRTypeId>>;
@@ -53,7 +53,7 @@ impl<'a> FunctionCtx<'a> {
         ctx
     }
 
-    pub fn into_solver(mut self, type_arena: &mut TypeArena) -> (Solver<'_>, Vec<S<Error>>) {
+    pub fn into_solver(mut self, type_arena: &mut HIRTypeArena) -> (Solver<'_>, Vec<S<Error>>) {
         let (mut constraints, constraints_errors) =
             self.expr_arena_to_constraints(&self.func.expr_arena);
 
@@ -172,6 +172,18 @@ impl<'a> FunctionCtx<'a> {
                     let block_constraints = self.block_to_constraints(block, expr_type_var);
                     constraints.extend(block_constraints);
                 }
+                ExprKind::StructLiteral(struct_lit) => {
+                    let fields = struct_lit
+                        .fields
+                        .iter()
+                        .map(|field| {
+                            let field_ty_var = self.ty_of_expr(&field.value).clone();
+                            (field.name.clone(), field_ty_var)
+                        })
+                        .collect::<Vec<_>>();
+                    let shape = Shape::Struct(fields);
+                    constraints.push(Constraint::HasShape(expr_type_var, shape));
+                }
             }
         }
         (constraints, errors)
@@ -257,7 +269,7 @@ impl<'a> FunctionCtx<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{HIRType, TypeArena};
+    use crate::types::{HIRType, HIRTypeArena};
     use ast::ast::Literal;
     use diagnostic::{Span, Spanned};
     use std::collections::HashMap;
@@ -277,19 +289,19 @@ mod tests {
     }
 
     fn make_type_ids() -> (HIRTypeId, HIRTypeId) {
-        let mut arena = TypeArena::new();
+        let mut arena = HIRTypeArena::new();
         let i32_id = arena.get_or_insert(HIRType::Primitive(PrimitiveType::I32));
         let void_id = arena.get_or_insert(HIRType::Primitive(PrimitiveType::Void));
         (i32_id, void_id)
     }
 
     fn make_i32_id() -> HIRTypeId {
-        let mut arena = TypeArena::new();
+        let mut arena = HIRTypeArena::new();
         arena.get_or_insert(HIRType::Primitive(PrimitiveType::I32))
     }
 
     fn make_void_id() -> HIRTypeId {
-        let mut arena = TypeArena::new();
+        let mut arena = HIRTypeArena::new();
         arena.get_or_insert(HIRType::Primitive(PrimitiveType::Void))
     }
 

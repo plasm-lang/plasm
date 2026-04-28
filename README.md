@@ -212,6 +212,15 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td><code>while cond {...}</code></td>
     </tr>
     <tr>
+      <th>Argument Defaults</th>
+      <td>✅</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>fn func(x: i32 = 0)</code></td>
+    </tr>
+    <tr>
       <th colspan="7" align="center">Typing System</th>
     </tr>
     <tr>
@@ -233,19 +242,28 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td><code>(i32, i32, i32)</code></td>
     </tr>
     <tr>
+      <th>Arrays</th>
+      <td>✅</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>let a = [1, 2, 3]</code></td>
+    </tr>
+    <tr>
       <th>Structs</th>
       <td>✅</td>
       <td>✅</td>
+      <td>✅</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td>⬜</td>
-      <td><code>type MyType = struct {}</code></td>
+      <td><code>type MyType = struct {...}</code></td>
     </tr>
     <tr>
       <th>Struct Fields</th>
       <td>✅</td>
       <td>✅</td>
-      <td>⬜</td>
+      <td>✅</td>
       <td>⬜</td>
       <td>⬜</td>
       <td><code>type MyType = struct { filed: i32 }</code></td>
@@ -278,19 +296,10 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td><code>let a = "Hello world"</code></td>
     </tr>
     <tr>
-      <th>Struct Field Defaults</th>
-      <td>✅</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td><code>type MyType = struct { filed: i32 = 1 }</code></td>
-    </tr>
-    <tr>
       <th>Zero-Size Structs</th>
       <td>✅</td>
       <td>✅</td>
-      <td>⬜</td>
+      <td>✅</td>
       <td>⬜</td>
       <td>⬜</td>
       <td><code>type Void = struct {}</code></td>
@@ -323,10 +332,10 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td><code>type Never = enum {}</code></td>
     </tr>
     <tr>
-      <th>Structs & Enums Composition</th>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
+      <th>Structs/Enums Composition</th>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>See Examples Folder</td>

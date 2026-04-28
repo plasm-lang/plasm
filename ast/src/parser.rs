@@ -7,8 +7,8 @@ use utils::binop::BinaryOp;
 
 use super::ast::{
     AST, Argument, BinaryExpr, Block, CallArgument, Expr, ExternalFunction, Function, FunctionCall,
-    FunctionSignature, InternalFunction, Literal, Statement, StructField, StructType, Type,
-    TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
+    FunctionSignature, InternalFunction, Literal, Statement, StructField, StructLiteralExpr,
+    StructLiteralField, StructType, Type, TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
 };
 use super::error::ParseError;
 
@@ -468,6 +468,7 @@ where
                 | Token::SpecialSymbol(SpecialSymbol::Minus)
                 | Token::SpecialSymbol(SpecialSymbol::Exclamation)
                 | Token::SpecialSymbol(SpecialSymbol::Tilde)
+                | Token::Keyword(Keyword::Struct)
         )
     }
 
@@ -689,6 +690,10 @@ where
                         span,
                     ))
                 }
+                Token::Keyword(Keyword::Struct) => {
+                    let struct_lit = self.parse_struct_literal()?;
+                    Some(struct_lit.map(Expr::StructLiteral))
+                }
                 _ => {
                     let (token, span) = self.take_next()?;
                     self.push_unexpected_token(token, span, "expression");
@@ -700,6 +705,36 @@ where
                 None
             }
         }
+    }
+
+    fn parse_struct_literal(&mut self) -> Option<Spanned<StructLiteralExpr>> {
+        let start_span = self.expect(Token::Keyword(Keyword::Struct))?;
+        self.expect(Token::Bracket(Bracket::CurlyOpen))?;
+
+        let fields = self.parse_comma_separated(
+            &Token::Bracket(Bracket::CurlyClose),
+            "struct literal field or `}`",
+            "`,` or `}`",
+            Self::parse_struct_literal_field,
+        );
+
+        let struct_lit = StructLiteralExpr { fields };
+        let span = start_span.join(self.last_span);
+        Some(Spanned::new(struct_lit, span))
+    }
+
+    fn parse_struct_literal_field(&mut self) -> Option<Spanned<StructLiteralField>> {
+        let (field_name, field_name_span) = self.expect_ident()?;
+        self.expect(Token::SpecialSymbol(SpecialSymbol::Colon))?;
+        let value = self.parse_expression(0)?;
+        let value_span = value.span.clone();
+        Some(Spanned::new(
+            StructLiteralField {
+                name: Spanned::new(field_name, field_name_span),
+                value,
+            },
+            field_name_span.join(value_span),
+        ))
     }
 
     fn parse_number(&mut self) -> Option<Spanned<Literal>> {
@@ -1098,6 +1133,87 @@ mod tests {
                 }
             "},
             "function argument or `)`",
+        );
+    }
+
+    #[test]
+    fn test_struct_literal_display() {
+        parse_and_check_by_display(
+            indoc! {"
+                fn get_pos() -> struct { x: i32, y: i32 } {
+                    return struct { x: 10, y: 20 }
+                }
+            "},
+            indoc! {"
+                fn get_pos() -> struct {
+                    x: i32,
+                    y: i32,
+                } {
+                    return struct {
+                        x: 10,
+                        y: 20,
+                    }
+                }
+            "},
+        );
+    }
+
+    #[test]
+    fn test_struct_literal_with_variable_display() {
+        parse_and_check_by_display(
+            indoc! {"
+                fn make_pos(a: i32, b: i32) -> struct { x: i32, y: i32 } {
+                    return struct { x: a, y: b }
+                }
+            "},
+            indoc! {"
+                fn make_pos(a: i32, b: i32) -> struct {
+                    x: i32,
+                    y: i32,
+                } {
+                    return struct {
+                        x: a,
+                        y: b,
+                    }
+                }
+            "},
+        );
+    }
+
+    #[test]
+    fn test_nested_struct_type_in_type_definition_display() {
+        parse_and_check_by_display(
+            indoc! {"
+                type Transform = struct {
+                    pos: struct {
+                        x: i32,
+                        y: i32,
+                    },
+                }
+            "},
+            indoc! {"
+                type Transform = struct {
+                    pos: struct {
+                        x: i32,
+                        y: i32,
+                    },
+                }
+            "},
+        );
+    }
+
+    #[test]
+    fn test_struct_type_in_function_arg_display() {
+        parse_and_check_by_display(
+            indoc! {"
+                fn print_pos(pos: struct { x: i32, y: i32 }) {}
+            "},
+            indoc! {"
+                fn print_pos(pos: struct {
+                    x: i32,
+                    y: i32,
+                }) {}
+            "},
         );
     }
 }

@@ -60,6 +60,9 @@ impl TypeAnnotator {
                 Item::Function(Function::External(func)) => {
                     out_items.push(Item::Function(Function::External(func)));
                 }
+                Item::TypeDefinition(def) => {
+                    out_items.push(Item::TypeDefinition(def));
+                }
             }
         }
 
@@ -124,6 +127,7 @@ impl<'a> FunctionAnnotator<'a> {
                 ExprKind::Literal(lit) => ExprKind::Literal(lit),
                 ExprKind::Local(lid) => ExprKind::Local(lid),
                 ExprKind::FunctionCall(func_call) => ExprKind::FunctionCall(func_call),
+                ExprKind::StructLiteral(struct_lit) => ExprKind::StructLiteral(struct_lit),
             };
             out_exprs.insert(expr_id, S::new(Expr { kind, ty }, span));
         }

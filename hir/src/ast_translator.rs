@@ -8,11 +8,11 @@ use utils::primitive_types::PrimitiveType;
 use super::error::Error;
 use super::hir::{
     Argument, Block, Expr, ExprArena, ExprKind, ExternalFunction, Function, FunctionCall,
-    FunctionSignature, HIRLocal, InternalFunction, Item, OptHIR, Statement, THIR,
-    VariableDeclaration,
+    FunctionSignature, HIRLocal, InternalFunction, Item, OptHIR, Statement, StructLiteral,
+    StructLiteralField, THIR, TypeDefinition, VariableDeclaration,
 };
 use super::type_annotator::opt_hir_to_t_hir;
-use super::types::HIRType;
+use super::types::{HIRType, StructField, StructType};
 
 /// For brevity
 type OT = Option<S<HIRTypeId>>;
@@ -114,7 +114,10 @@ impl ASTTranslator {
 
                     self.hir.funcs_map.insert(id, func.signature().name.clone());
                 }
-                ast::Item::TypeDefinition(ty_def) => todo!(),
+                ast::Item::TypeDefinition(ty_def) => {
+                    // let ty = HIRType::Named();
+                    // self.hir.type_arena.insert(ty);
+                }
             }
         }
 
@@ -124,11 +127,23 @@ impl ASTTranslator {
                 ast::Item::Function(func) => {
                     self.translate_function(func);
                 }
-                ast::Item::TypeDefinition(ty_def) => todo!(),
+                ast::Item::TypeDefinition(ty_def) => {
+                    self.translate_type_definition(ty_def);
+                }
             }
         }
 
         (self.hir, self.errors)
+    }
+
+    fn translate_type_definition(&mut self, ty_def: ast::TypeDefinition) {
+        let (ast_type, ast_type_span) = ty_def.ty.unwrap();
+        let (ty_id, _ty) = self.translate_type(ast_type);
+        let hir_ty_def = TypeDefinition {
+            name: ty_def.name,
+            ty: S::new(ty_id, ast_type_span),
+        };
+        self.hir.items.push(Item::TypeDefinition(hir_ty_def));
     }
 
     fn translate_function(&mut self, func: ast::Function) {
@@ -150,7 +165,7 @@ impl ASTTranslator {
             .unwrap();
         let ret_ty_id = signature
             .return_type
-            .map(|ty| ty.map(|t| self.translate_type(t)).into_maybe())
+            .map(|ty| ty.map(|t| self.translate_type(t).0).into_maybe())
             .unwrap_or(MaybeS::new(self.hir.type_arena.void_id()));
 
         let mut locals: Vec<HIRLocal<OT>> = Vec::new();
@@ -220,7 +235,7 @@ impl ASTTranslator {
     fn translate_arg(&mut self, ast_arg: S<ast::Argument>) -> (S<Argument>, HIRLocal<OT>) {
         let local_id = self.get_next_local_id();
         let (ast_arg, arg_span) = ast_arg.unwrap();
-        let hir_ty = ast_arg.ty.map(|t| self.translate_type(t));
+        let hir_ty = ast_arg.ty.map(|t| self.translate_type(t).0);
 
         let hir_arg = Argument {
             name: ast_arg.name.clone(),
@@ -237,12 +252,26 @@ impl ASTTranslator {
         (S::new(hir_arg, arg_span), local)
     }
 
-    fn translate_type(&mut self, ty: ast::Type) -> HIRTypeId {
+    fn translate_type(&mut self, ty: ast::Type) -> (HIRTypeId, HIRType) {
         let ty = match ty {
             ast::Type::Primitive(p) => HIRType::Primitive(p),
-            ast::Type::Struct(s) => todo!(),
+            ast::Type::Struct(s) => {
+                let mut fields = Vec::new();
+                for ast_field in s.fields.into_iter() {
+                    let (ast_field, field_span) = ast_field.unwrap();
+                    let (ast_field_ty, field_ty_span) = ast_field.ty.unwrap();
+                    let (_field_ty_id, field_ty) = self.translate_type(ast_field_ty);
+                    let field = StructField {
+                        name: ast_field.name,
+                        ty: S::new(field_ty, field_ty_span),
+                    };
+                    fields.push(S::new(field, field_span));
+                }
+                HIRType::Struct(StructType { fields })
+            }
         };
-        self.hir.type_arena.get_or_insert(ty)
+        let id = self.hir.type_arena.get_or_insert(ty.clone());
+        (id, ty)
     }
 
     fn translate_block(
@@ -262,7 +291,7 @@ impl ASTTranslator {
                     let name = variable_declaration.name.clone();
                     let opt_ty = variable_declaration
                         .ty
-                        .map(|t| t.map(|t| self.translate_type(t)));
+                        .map(|t| t.map(|t| self.translate_type(t).0));
                     let local = HIRLocal {
                         id: local_id,
                         ty: opt_ty,
@@ -392,6 +421,26 @@ impl ASTTranslator {
             }
             ast::Expr::Unary(expr) => {
                 todo!()
+            }
+            ast::Expr::StructLiteral(struct_lit) => {
+                let mut fields = Vec::new();
+                for ast_field in struct_lit.fields.into_iter() {
+                    let (ast_field, field_span) = ast_field.unwrap();
+                    let (ast_field_expr_id, local_expr_arena) =
+                        self.translate_expr(ast_field.value, locals);
+                    expr_arena = expr_arena.join(local_expr_arena);
+                    let field = StructLiteralField {
+                        name: ast_field.name,
+                        value: ast_field_expr_id,
+                    };
+                    fields.push(S::new(field, field_span));
+                }
+                let struct_lit = StructLiteral { fields };
+                let hir_expr = Expr::<OT> {
+                    ty: None,
+                    kind: ExprKind::StructLiteral(struct_lit),
+                };
+                expr_arena.insert(expr_id, S::new(hir_expr, expr.span));
             }
         }
         (expr_id, expr_arena)
@@ -550,6 +599,93 @@ mod tests {
 
             fn main() -> void {
                 print(5)
+                return void
+            }
+        "};
+        check_by_display(code, expected_hir_display);
+    }
+
+    #[test]
+    fn struct_type_definition_test() {
+        let code = indoc! {"
+            type Pos = struct {
+                x: i32,
+                y: i32,
+            }
+        "};
+        let expected_hir_display = indoc! {"
+            type Pos = struct {
+                x: i32,
+                y: i32,
+            }
+        "};
+        check_by_display(code, expected_hir_display);
+    }
+
+    #[test]
+    fn nested_struct_type_definition_test() {
+        let code = indoc! {"
+            type Transform = struct {
+                pos: struct {
+                    x: i32,
+                    y: i32,
+                },
+            }
+        "};
+        let expected_hir_display = indoc! {"
+            type Transform = struct {
+                pos: struct {
+                    x: i32,
+                    y: i32,
+                },
+            }
+        "};
+        check_by_display(code, expected_hir_display);
+    }
+
+    #[test]
+    fn struct_type_definition_with_function_test() {
+        let code = indoc! {"
+            fn func(arg: struct { x: i32, y: i32 }) {}
+        "};
+        let expected_hir_display = indoc! {"
+            fn func(arg: struct {
+                x: i32,
+                y: i32,
+            }) -> void {
+                return void
+            }
+        "};
+        check_by_display(code, expected_hir_display);
+    }
+
+    #[test]
+    fn inline_struct_type_inference_test() {
+        let code = indoc! {"
+            fn main() {
+                let a = struct { pos: struct { x: 1, y: 2 } }
+                let b = a
+            }
+        "};
+        let expected_hir_display = indoc! {"
+            fn main() -> void {
+                let a: struct {
+                    pos: struct {
+                        x: i32,
+                        y: i32,
+                    },
+                } = struct {
+                    pos: struct {
+                        x: 1,
+                        y: 2,
+                    },
+                }
+                let b: struct {
+                    pos: struct {
+                        x: i32,
+                        y: i32,
+                    },
+                } = a
                 return void
             }
         "};

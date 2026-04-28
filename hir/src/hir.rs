@@ -7,7 +7,7 @@ use ast::ast::Literal;
 use diagnostic::{MaybeSpanned, Spanned};
 use utils::ids::{ExprId, FuncId, HIRTypeId, LocalId};
 
-use super::types::TypeArena;
+use super::types::HIRTypeArena;
 
 type S<T> = Spanned<T>;
 type MS<T> = MaybeSpanned<T>;
@@ -27,7 +27,7 @@ pub type THIR = HIR<Typed>;
 pub struct HIR<T> {
     pub items: Vec<Item<T>>,
     pub funcs_map: BiHashMap<FuncId, S<String>>,
-    pub type_arena: TypeArena,
+    pub type_arena: HIRTypeArena,
 }
 
 impl<T> HIR<T> {
@@ -35,7 +35,7 @@ impl<T> HIR<T> {
         Self {
             items: Vec::new(),
             funcs_map: BiHashMap::new(),
-            type_arena: TypeArena::new(),
+            type_arena: HIRTypeArena::new(),
         }
     }
 }
@@ -43,6 +43,7 @@ impl<T> HIR<T> {
 #[derive(Debug, Serialize)]
 pub enum Item<T> {
     Function(Function<T>),
+    TypeDefinition(TypeDefinition),
 }
 
 #[derive(Debug, Serialize)]
@@ -58,6 +59,12 @@ impl<T> Function<T> {
             Function::External(func) => &func.signature,
         }
     }
+}
+
+#[derive(Debug, Serialize)]
+pub struct TypeDefinition {
+    pub name: S<String>,
+    pub ty: S<HIRTypeId>,
 }
 
 #[derive(Debug, Serialize)]
@@ -147,6 +154,7 @@ pub enum ExprKind<T> {
     FunctionCall(FunctionCall),
     Block(Block<T>),
     // Binary(Binary<T>),
+    StructLiteral(StructLiteral),
 }
 
 #[derive(Debug, Serialize)]
@@ -159,3 +167,14 @@ pub struct FunctionCall {
 // pub struct Binary<T> {
 
 // }
+
+#[derive(Debug, Serialize)]
+pub struct StructLiteral {
+    pub fields: Vec<S<StructLiteralField>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StructLiteralField {
+    pub name: S<String>,
+    pub value: ExprId,
+}

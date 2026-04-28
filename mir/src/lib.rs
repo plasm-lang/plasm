@@ -21,4 +21,4 @@ pub use mir::{
     BasicBlock, Call, Constant, ConstantValue, ExternalFunction, Function, FunctionSignature,
     Instruction, InternalFunction, MIR, MetaInfo, Module, Operand, RValue, Terminator,
 };
-pub use types::{MIRType, TypeArena};
+pub use types::{MIRType, MIRTypeArena};

@@ -5,7 +5,7 @@ use super::mir::{
     Module, Operand, RValue, Terminator,
 };
 use super::types::MIRType;
-use super::types::TypeArena;
+use super::types::MIRTypeArena;
 
 impl Display for MIR {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
@@ -18,6 +18,10 @@ impl Display for MIR {
 
 fn format_module(module: &Module) -> String {
     let mut result = String::new();
+
+    for (name, ty) in module.type_arena.iter_named_types() {
+        result.push_str(&format!("type {} = {}\n\n", name, ty));
+    }
     for global in &module.globals {
         if let Some(global_string) = format_global(global, &module.type_arena) {
             result.push_str(global_string.as_str());
@@ -33,8 +37,8 @@ fn format_module(module: &Module) -> String {
     result
 }
 
-fn format_global(global: &Global, type_arena: &TypeArena) -> Option<String> {
-    let ty = type_arena.get(global.type_id)?;
+fn format_global(global: &Global, type_arena: &MIRTypeArena) -> Option<String> {
+    let ty = type_arena.get_by_id(global.type_id)?;
     Some(format!(
         "let {}: {} = {:?}",
         global.name, ty, global.raw_data
@@ -45,6 +49,15 @@ impl Display for MIRType {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             MIRType::Primitive(p) => write!(f, "{p}"),
+            MIRType::Tuple(fields) => {
+                let fields_str = fields
+                    .iter()
+                    .map(|field| format!("{}", field))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "({fields_str})")
+            }
+            MIRType::Named(name) => todo!(),
         }
     }
 }
@@ -84,14 +97,14 @@ fn format_function(func: &Function, module: &Module) -> String {
 }
 
 fn format_signature(signature: &FunctionSignature, module: &Module, metainfo: &MetaInfo) -> String {
-    let ret_ty = module.type_arena.get(signature.ret_ty).unwrap();
+    let ret_ty = module.type_arena.get_by_id(signature.ret_ty).unwrap();
 
     let args = signature
         .args
         .iter()
         .map(|(arg_ty_id, value_id)| {
             let arg_name = metainfo.get_variable_name(*value_id);
-            let arg_type = module.type_arena.get(*arg_ty_id).unwrap();
+            let arg_type = module.type_arena.get_by_id(*arg_ty_id).unwrap();
             format!("%{}: {}", arg_name, arg_type)
         })
         .collect::<Vec<_>>()
@@ -135,11 +148,11 @@ fn format_instruction(instruction: &Instruction, module: &Module, metainfo: &Met
 fn format_rvalue(rvalue: &RValue, module: &Module, metainfo: &MetaInfo) -> String {
     match rvalue {
         RValue::Alloca(ty_id) => {
-            let ty = module.type_arena.get(*ty_id).unwrap();
+            let ty = module.type_arena.get_by_id(*ty_id).unwrap();
             format!("alloca {}", ty)
         }
         RValue::Load(type_id, ptr) => {
-            let ty = module.type_arena.get(*type_id).unwrap();
+            let ty = module.type_arena.get_by_id(*type_id).unwrap();
             let ptr_str = format!("%{}", metainfo.get_variable_name(*ptr));
             format!("load {}, ptr {}", ty, ptr_str)
         }
@@ -176,7 +189,7 @@ fn format_operand(operand: &Operand, module: &Module, metainfo: &MetaInfo) -> St
     match operand {
         Operand::Use(val_id) => format!("%{}", metainfo.get_variable_name(*val_id)),
         Operand::Constant(constant) => {
-            let ty = module.type_arena.get(constant.type_id).unwrap();
+            let ty = module.type_arena.get_by_id(constant.type_id).unwrap();
             format!("{} {}", ty, constant)
         }
     }

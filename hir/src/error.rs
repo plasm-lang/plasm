@@ -30,6 +30,12 @@ pub enum Error {
         possible_classes: Vec<TyClass>,
     },
     CantResolveType,
+    UnknownStructField {
+        name: String,
+    },
+    MissingStructField {
+        name: String,
+    },
     UnregisteredLocalId {
         id: LocalId,
     },
@@ -66,8 +72,7 @@ impl Display for Error {
                 write!(
                     f,
                     "Types conflict between `{}` and `{}`",
-                    first.node.render_ty(),
-                    second.node.render_ty(),
+                    first.node, second.node,
                 )
             }
             Error::AmbiguousClass { possible_classes } => {
@@ -83,6 +88,12 @@ impl Display for Error {
             }
             Error::CantResolveType => {
                 write!(f, "Cannot resolve type")
+            }
+            Error::UnknownStructField { name } => {
+                write!(f, "Unknown struct field `{name}`")
+            }
+            Error::MissingStructField { name } => {
+                write!(f, "Missing struct field `{name}`")
             }
             Error::UnregisteredLocalId { id } => {
                 write!(
@@ -120,6 +131,8 @@ impl ErrorType for Error {
             Error::TypesConflict { .. } => TYPE_ERROR,
             Error::AmbiguousClass { .. } => TYPE_ERROR,
             Error::CantResolveType => TYPE_ERROR,
+            Error::UnknownStructField { .. } => TYPE_ERROR,
+            Error::MissingStructField { .. } => TYPE_ERROR,
 
             Error::UnregisteredLocalId { .. } => INTERNAL_ERROR,
             Error::UnregisteredExprId { .. } => INTERNAL_ERROR,
@@ -136,6 +149,8 @@ impl ErrorType for Error {
             Error::TypesConflict { .. } => "TypesConflict",
             Error::AmbiguousClass { .. } => "AmbiguousClass",
             Error::CantResolveType => "CantResolveType",
+            Error::UnknownStructField { .. } => "UnknownStructField",
+            Error::MissingStructField { .. } => "MissingStructField",
 
             Error::UnregisteredLocalId { .. } => "UnregisteredLocalId",
             Error::UnregisteredExprId { .. } => "UnregisteredExprId",

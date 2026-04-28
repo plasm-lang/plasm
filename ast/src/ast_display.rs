@@ -2,8 +2,8 @@ use std::fmt::{Display, Formatter, Result};
 
 use super::ast::{
     AST, Argument, BinaryExpr, CallArgument, Expr, ExternalFunction, Function, FunctionCall,
-    FunctionSignature, InternalFunction, Item, Literal, Statement, StructField, StructType, Type,
-    TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
+    FunctionSignature, InternalFunction, Item, Literal, Statement, StructField, StructLiteralExpr,
+    StructLiteralField, StructType, Type, TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
 };
 
 impl Display for AST {
@@ -30,7 +30,7 @@ impl Display for Item {
 
 impl Display for TypeDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "type {} = {}", self.name, self.ty)
+        writeln!(f, "type {} = {}", self.name, self.ty)
     }
 }
 
@@ -92,7 +92,7 @@ impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Type::Primitive(primitive_type) => write!(f, "{primitive_type}"),
-            Type::Struct(struct_type) => write!(f, "{struct_type}"),
+            Type::Struct(struct_type) => write!(f, "{}", Indent::new(struct_type).with_indent(0)),
         }
     }
 }
@@ -105,26 +105,6 @@ impl Display for Literal {
             Literal::Integer(value) => write!(f, "{value}"),
             Literal::Float(spanned) => write!(f, "{spanned}"),
         }
-    }
-}
-
-impl Display for StructType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if self.fields.is_empty() {
-            return writeln!(f, "struct {{}}");
-        }
-
-        writeln!(f, "struct {{")?;
-        for field in &self.fields {
-            writeln!(f, "    {field}")?;
-        }
-        writeln!(f, "}}")
-    }
-}
-
-impl Display for StructField {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}: {},", self.name, self.ty)
     }
 }
 
@@ -152,6 +132,46 @@ fn write_indent(f: &mut Formatter<'_>, depth: usize) -> Result {
 }
 
 // Nodes with indentation (always have indent)
+
+impl<'a> Display for Indent<'a, StructType> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        if self.node.fields.is_empty() {
+            return write!(f, "struct {{}}");
+        }
+
+        writeln!(f, "struct {{")?;
+        for field in &self.node.fields {
+            writeln!(
+                f,
+                "{}",
+                Indent::new(&field.node).with_indent(self.indent + 1)
+            )?;
+        }
+        write_indent(f, self.indent)?;
+        write!(f, "}}")
+    }
+}
+
+impl<'a> Display for Indent<'a, Type> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self.node {
+            Type::Primitive(p) => write!(f, "{p}"),
+            Type::Struct(s) => write!(f, "{}", Indent::new(s).with_indent(self.indent)),
+        }
+    }
+}
+
+impl<'a> Display for Indent<'a, StructField> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write_indent(f, self.indent)?;
+        write!(
+            f,
+            "{}: {},",
+            self.node.name,
+            Indent::new(&self.node.ty.node).with_indent(self.indent)
+        )
+    }
+}
 
 impl<'a> Display for Indent<'a, Statement> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -255,7 +275,38 @@ impl<'a> Display for Indent<'a, Expr> {
                 write_indent(f, self.indent)?;
                 write!(f, "}}")
             }
+            StructLiteral(lit) => write!(f, "{}", Indent::new(lit).with_indent(self.indent)),
         }
+    }
+}
+impl<'a> Display for Indent<'a, StructLiteralExpr> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        if self.node.fields.is_empty() {
+            return write!(f, "struct {{}}");
+        }
+
+        writeln!(f, "struct {{")?;
+        for field in &self.node.fields {
+            writeln!(
+                f,
+                "{}",
+                Indent::new(&field.node).with_indent(self.indent + 1)
+            )?;
+        }
+        write_indent(f, self.indent)?;
+        write!(f, "}}")
+    }
+}
+
+impl<'a> Display for Indent<'a, StructLiteralField> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write_indent(f, self.indent)?;
+        write!(
+            f,
+            "{}: {},",
+            &self.node.name,
+            Indent::new(&self.node.value.node).with_indent(self.indent)
+        )
     }
 }
 

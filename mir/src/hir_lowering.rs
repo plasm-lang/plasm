@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use bimap::BiHashMap;
 
-use hir::{THIR, TypeArena as HIRTypeArena};
+use hir::{HIRTypeArena, THIR};
 use utils::ids::{ExprId, HIRTypeId, LocalId, MIRTypeId, ValueId};
 use utils::primitive_types::PrimitiveType;
 
@@ -10,7 +10,7 @@ use super::mir::{
     BasicBlock, BlockLabel, Call, Constant, ExternalFunction, Function, FunctionSignature,
     Instruction, InternalFunction, MIR, MetaInfo, Module, Operand, RValue, Terminator,
 };
-use super::types::{MIRType, TypeArena};
+use super::types::{MIRType, MIRTypeArena};
 
 pub fn hir_to_mir(hir: THIR) -> MIR {
     let translator = HIRTranslator::new();
@@ -29,7 +29,7 @@ impl HIRTranslator {
                     globals: vec![],
                     functions: vec![],
                     funcs_map: BiHashMap::new(),
-                    type_arena: TypeArena::new(),
+                    type_arena: MIRTypeArena::new(),
                 }],
             },
         }
@@ -38,15 +38,31 @@ impl HIRTranslator {
     fn translate(mut self, hir: THIR) -> MIR {
         self.mir.modules[0].funcs_map = hir.funcs_map;
         let hir_type_arena = hir.type_arena;
+        self.register_types(&hir_type_arena);
         for item in hir.items {
             match item {
                 hir::Item::Function(func) => {
                     let func = self.translate_function(func, &hir_type_arena);
                     self.mir.modules[0].functions.push(func);
                 }
+                hir::Item::TypeDefinition(def) => {
+                    let name = def.name;
+                    let hir_ty = hir_type_arena.get_by_id(def.ty.node).unwrap().clone();
+                    let mir_ty = MIRType::from_hir(hir_ty);
+                    self.mir.modules[0]
+                        .type_arena
+                        .insert_named(name.node, mir_ty);
+                }
             }
         }
         self.mir
+    }
+
+    fn register_types(&mut self, hir_type_arena: &HIRTypeArena) {
+        for ty in hir_type_arena.types.right_values() {
+            let mir_ty = MIRType::from_hir(ty.clone());
+            self.mir.modules[0].type_arena.insert(mir_ty);
+        }
     }
 
     fn translate_function(
@@ -116,7 +132,7 @@ impl<'a> HIRFunctionTranslator<'a> {
 
     fn is_void_type(&self, type_id: MIRTypeId) -> bool {
         matches!(
-            self.module.type_arena.get(type_id),
+            self.module.type_arena.get_by_id(type_id),
             Some(MIRType::Primitive(PrimitiveType::Void))
         )
     }

@@ -12,7 +12,7 @@ use utils::ids::HIRTypeId;
 pub use ast_translator::ast_to_hir;
 pub use hir::{Expr, ExternalFunction, FunctionSignature, Item, Statement, THIR};
 use hir::{ExprArena, ExprKind, Function, InternalFunction, Typed};
-pub use types::{HIRType, TypeArena};
+pub use types::{HIRType, HIRTypeArena};
 
 pub type TypedFunction = Function<Typed>;
 pub type TypedInternalFunction = InternalFunction<Typed>;

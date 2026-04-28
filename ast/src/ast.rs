@@ -103,6 +103,18 @@ pub enum Expr {
     Block(Block),
     Unary(UnaryExpr),
     Binary(BinaryExpr),
+    StructLiteral(StructLiteralExpr),
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct StructLiteralExpr {
+    pub fields: Vec<S<StructLiteralField>>,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct StructLiteralField {
+    pub name: S<String>,
+    pub value: S<Expr>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
