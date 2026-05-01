@@ -104,6 +104,16 @@ impl<T> Spanned<T> {
     }
 }
 
+impl<T> Spanned<Option<T>> {
+    #[inline]
+    pub fn transpose(self) -> Option<Spanned<T>> {
+        self.node.map(|node| Spanned {
+            node,
+            span: self.span,
+        })
+    }
+}
+
 impl<T> Deref for Spanned<T> {
     type Target = T;
 

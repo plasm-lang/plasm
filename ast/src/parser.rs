@@ -631,6 +631,9 @@ where
                             Token::Bracket(Bracket::RoundOpen) => self
                                 .parse_function_call(id, span)
                                 .map(|spanned_call| spanned_call.map(Expr::FunctionCall)),
+                            Token::Bracket(Bracket::CurlyOpen) => self
+                                .parse_struct_literal(Some(Spanned::new(id, span)))
+                                .map(|lit| lit.map(Expr::StructLiteral)),
                             _ => Some(Spanned::new(Expr::Variable(id), span)),
                         },
                         None => {
@@ -691,7 +694,7 @@ where
                     ))
                 }
                 Token::Keyword(Keyword::Struct) => {
-                    let struct_lit = self.parse_struct_literal()?;
+                    let struct_lit = self.parse_struct_literal(None)?;
                     Some(struct_lit.map(Expr::StructLiteral))
                 }
                 _ => {
@@ -707,8 +710,15 @@ where
         }
     }
 
-    fn parse_struct_literal(&mut self) -> Option<Spanned<StructLiteralExpr>> {
-        let start_span = self.expect(Token::Keyword(Keyword::Struct))?;
+    fn parse_struct_literal(
+        &mut self,
+        name_opt: Option<Spanned<String>>,
+    ) -> Option<Spanned<StructLiteralExpr>> {
+        let start_span = if let Some(name) = &name_opt {
+            name.span.clone()
+        } else {
+            self.expect(Token::Keyword(Keyword::Struct))?
+        };
         self.expect(Token::Bracket(Bracket::CurlyOpen))?;
 
         let fields = self.parse_comma_separated(
@@ -718,7 +728,10 @@ where
             Self::parse_struct_literal_field,
         );
 
-        let struct_lit = StructLiteralExpr { fields };
+        let struct_lit = StructLiteralExpr {
+            name: name_opt,
+            fields,
+        };
         let span = start_span.join(self.last_span);
         Some(Spanned::new(struct_lit, span))
     }

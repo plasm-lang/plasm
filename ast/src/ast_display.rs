@@ -93,6 +93,7 @@ impl Display for Type {
         match self {
             Type::Primitive(primitive_type) => write!(f, "{primitive_type}"),
             Type::Struct(struct_type) => write!(f, "{}", Indent::new(struct_type).with_indent(0)),
+            Type::Named(name) => write!(f, "{name}"),
         }
     }
 }
@@ -157,6 +158,7 @@ impl<'a> Display for Indent<'a, Type> {
         match self.node {
             Type::Primitive(p) => write!(f, "{p}"),
             Type::Struct(s) => write!(f, "{}", Indent::new(s).with_indent(self.indent)),
+            Type::Named(name) => write!(f, "{name}"),
         }
     }
 }
@@ -285,7 +287,11 @@ impl<'a> Display for Indent<'a, StructLiteralExpr> {
             return write!(f, "struct {{}}");
         }
 
-        writeln!(f, "struct {{")?;
+        if let Some(name) = &self.node.name {
+            writeln!(f, "{} {{", name)?;
+        } else {
+            writeln!(f, "struct {{")?;
+        }
         for field in &self.node.fields {
             writeln!(
                 f,

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use diagnostic::{MaybeSpanned, Spanned};
+use diagnostic::{MaybeSpanned, Span, Spanned};
 use utils::binop::BinaryOp;
 use utils::ids::{ExprId, FuncId, HIRTypeId, LocalId};
 use utils::primitive_types::PrimitiveType;
@@ -41,6 +41,11 @@ struct ASTTranslator {
     next_func_id: FuncId,
     next_local_id: LocalId,
     next_expr_id: ExprId,
+    /// Raw AST types collected in the first pass, keyed by type name.
+    type_defs_registry: HashMap<String, ast::Type>,
+    /// Cache of Named type resolution results.
+    /// Some(id) = successfully resolved, None = failed (circular or unknown).
+    resolved_cache: HashMap<String, Option<HIRTypeId>>,
     // binary_functions: HardcodedBinaryFunctions,
 }
 
@@ -52,6 +57,8 @@ impl ASTTranslator {
             next_func_id: FuncId::one(),
             next_local_id: LocalId::one(),
             next_expr_id: ExprId::one(),
+            type_defs_registry: HashMap::new(),
+            resolved_cache: HashMap::new(),
             // binary_functions: HardcodedBinaryFunctions::new(),
         }
     }
@@ -115,8 +122,8 @@ impl ASTTranslator {
                     self.hir.funcs_map.insert(id, func.signature().name.clone());
                 }
                 ast::Item::TypeDefinition(ty_def) => {
-                    // let ty = HIRType::Named();
-                    // self.hir.type_arena.insert(ty);
+                    self.type_defs_registry
+                        .insert(ty_def.name.node.clone(), ty_def.ty.node.clone());
                 }
             }
         }
@@ -137,8 +144,17 @@ impl ASTTranslator {
     }
 
     fn translate_type_definition(&mut self, ty_def: ast::TypeDefinition) {
+        let name = ty_def.name.node.clone();
+        // If already in cache (processed as a dependency of another type), skip to avoid duplicate errors.
+        if self.resolved_cache.contains_key(&name) {
+            return;
+        }
         let (ast_type, ast_type_span) = ty_def.ty.unwrap();
-        let (ty_id, _ty) = self.translate_type(ast_type);
+        let mut resolving = Vec::new();
+        let Some((ty_id, _ty)) = self.translate_type(ast_type, ast_type_span, &mut resolving)
+        else {
+            return;
+        };
         let hir_ty_def = TypeDefinition {
             name: ty_def.name,
             ty: S::new(ty_id, ast_type_span),
@@ -163,10 +179,21 @@ impl ASTTranslator {
             .get_by_right(&signature.name)
             .cloned()
             .unwrap();
-        let ret_ty_id = signature
-            .return_type
-            .map(|ty| ty.map(|t| self.translate_type(t).0).into_maybe())
-            .unwrap_or(MaybeS::new(self.hir.type_arena.void_id()));
+        let ret_ty_id = match signature.return_type {
+            None => MaybeS::new(self.hir.type_arena.void_id()),
+            Some(ty_spanned) => {
+                let span = ty_spanned.span;
+                let ty = ty_spanned.node;
+                let mut resolving = Vec::new();
+                match self.translate_type(ty, span, &mut resolving) {
+                    Some((id, _)) => MaybeS {
+                        node: id,
+                        span: Some(span),
+                    },
+                    None => MaybeS::new(self.hir.type_arena.void_id()),
+                }
+            }
+        };
 
         let mut locals: Vec<HIRLocal<OT>> = Vec::new();
 
@@ -235,32 +262,46 @@ impl ASTTranslator {
     fn translate_arg(&mut self, ast_arg: S<ast::Argument>) -> (S<Argument>, HIRLocal<OT>) {
         let local_id = self.get_next_local_id();
         let (ast_arg, arg_span) = ast_arg.unwrap();
-        let hir_ty = ast_arg.ty.map(|t| self.translate_type(t).0);
+        let ty_span = ast_arg.ty.span;
+        let hir_ty: Option<S<HIRTypeId>> = {
+            let mut resolving = Vec::new();
+            self.translate_type(ast_arg.ty.node, ty_span, &mut resolving)
+                .map(|(id, _)| S::new(id, ty_span))
+        };
+        let hir_ty_for_arg = hir_ty
+            .clone()
+            .unwrap_or_else(|| S::new(self.hir.type_arena.void_id(), ty_span));
 
         let hir_arg = Argument {
             name: ast_arg.name.clone(),
             local_id,
-            ty: hir_ty.clone(),
+            ty: hir_ty_for_arg,
         };
 
         let local = HIRLocal {
             id: local_id,
-            ty: Some(hir_ty),
+            ty: hir_ty,
             name: ast_arg.name,
         };
 
         (S::new(hir_arg, arg_span), local)
     }
 
-    fn translate_type(&mut self, ty: ast::Type) -> (HIRTypeId, HIRType) {
-        let ty = match ty {
+    fn translate_type(
+        &mut self,
+        ty: ast::Type,
+        span: Span,
+        resolving: &mut Vec<String>,
+    ) -> Option<(HIRTypeId, HIRType)> {
+        let hir_ty = match ty {
             ast::Type::Primitive(p) => HIRType::Primitive(p),
             ast::Type::Struct(s) => {
                 let mut fields = Vec::new();
                 for ast_field in s.fields.into_iter() {
                     let (ast_field, field_span) = ast_field.unwrap();
                     let (ast_field_ty, field_ty_span) = ast_field.ty.unwrap();
-                    let (_field_ty_id, field_ty) = self.translate_type(ast_field_ty);
+                    let (_, field_ty) =
+                        self.translate_type(ast_field_ty, field_ty_span, resolving)?;
                     let field = StructField {
                         name: ast_field.name,
                         ty: S::new(field_ty, field_ty_span),
@@ -269,9 +310,63 @@ impl ASTTranslator {
                 }
                 HIRType::Struct(StructType { fields })
             }
+            ast::Type::Named(name) => {
+                // Check resolution cache first
+                if let Some(cached) = self.resolved_cache.get(&name).copied() {
+                    return match cached {
+                        Some(type_id) => {
+                            let hir_ty = self.hir.type_arena.get_by_id(type_id).unwrap().clone();
+                            Some((type_id, hir_ty))
+                        }
+                        None => {
+                            // Previously failed - report as unknown
+                            self.errors
+                                .push(S::new(Error::UnknownTypeName { name }, span));
+                            None
+                        }
+                    };
+                }
+
+                // Not defined at all
+                if !self.type_defs_registry.contains_key(&name) {
+                    self.resolved_cache.insert(name.clone(), None);
+                    self.errors
+                        .push(S::new(Error::UnknownTypeName { name }, span));
+                    return None;
+                }
+
+                // Cycle detection
+                if resolving.contains(&name) {
+                    let start = resolving.iter().position(|n| n == &name).unwrap();
+                    let cycle = resolving[start..].to_vec();
+                    self.resolved_cache.insert(name, None);
+                    self.errors
+                        .push(S::new(Error::CircularTypeDefinition { cycle }, span));
+                    return None;
+                }
+
+                // Resolve recursively
+                let ast_ty = self.type_defs_registry.get(&name).unwrap().clone();
+                resolving.push(name.clone());
+                let result = self.translate_type(ast_ty, span, resolving);
+                resolving.pop();
+
+                match result {
+                    Some((_, underlying_hir)) => {
+                        let hir_ty = HIRType::Named(name.clone(), Box::new(underlying_hir));
+                        let type_id = self.hir.type_arena.get_or_insert(hir_ty.clone());
+                        self.resolved_cache.insert(name, Some(type_id));
+                        hir_ty
+                    }
+                    None => {
+                        self.resolved_cache.insert(name, None);
+                        return None;
+                    }
+                }
+            }
         };
-        let id = self.hir.type_arena.get_or_insert(ty.clone());
-        (id, ty)
+        let id = self.hir.type_arena.get_or_insert(hir_ty.clone());
+        Some((id, hir_ty))
     }
 
     fn translate_block(
@@ -289,9 +384,13 @@ impl ASTTranslator {
                     // TODO: Handle duplicate variable names
                     let local_id = self.get_next_local_id();
                     let name = variable_declaration.name.clone();
-                    let opt_ty = variable_declaration
-                        .ty
-                        .map(|t| t.map(|t| self.translate_type(t).0));
+                    let opt_ty = variable_declaration.ty.and_then(|ty_spanned| {
+                        let span = ty_spanned.span;
+                        let ty = ty_spanned.node;
+                        let mut resolving = Vec::new();
+                        self.translate_type(ty, span, &mut resolving)
+                            .map(|(id, _)| S::new(id, span))
+                    });
                     let local = HIRLocal {
                         id: local_id,
                         ty: opt_ty,
@@ -435,7 +534,14 @@ impl ASTTranslator {
                     };
                     fields.push(S::new(field, field_span));
                 }
-                let struct_lit = StructLiteral { fields };
+                let type_name = struct_lit.name.and_then(|name_spanned| {
+                    let span = name_spanned.span;
+                    let n = name_spanned.node;
+                    let mut resolving = Vec::new();
+                    self.translate_type(ast::Type::Named(n), span, &mut resolving)
+                        .map(|(id, _)| S::new(id, span))
+                });
+                let struct_lit = StructLiteral { type_name, fields };
                 let hir_expr = Expr::<OT> {
                     ty: None,
                     kind: ExprKind::StructLiteral(struct_lit),
@@ -690,5 +796,101 @@ mod tests {
             }
         "};
         check_by_display(code, expected_hir_display);
+    }
+
+    /// Parses `code`, runs ast_to_hir, and asserts that the error sub-types match
+    /// `expected_subtypes` exactly (order-insensitive, duplicates counted).
+    fn check_errors(code: &str, expected_subtypes: &[&str]) {
+        use diagnostic::ErrorType;
+        let (ast, parse_errors) = parse(&mut tokenize(code.char_indices()));
+        assert!(parse_errors.is_empty(), "parse errors: {:?}", parse_errors);
+        let (_hir, errors) = ast_to_hir(ast);
+        let mut got: Vec<&str> = errors.iter().map(|e| e.node.error_sub_type()).collect();
+        let mut expected: Vec<&str> = expected_subtypes.to_vec();
+        got.sort_unstable();
+        expected.sort_unstable();
+        assert_eq!(
+            got, expected,
+            "error sub-types mismatch\ngot:      {:?}\nexpected: {:?}\nfull errors: {:?}",
+            got, expected, errors
+        );
+    }
+
+    #[test]
+    fn named_struct_literal_infers_named_type() {
+        // Reproduces test.sm scenario: Pos { x: 5, y: 15 } inside fn returning Pos.
+        let code = indoc! {"
+            type Pos = struct {
+                x: i32,
+                y: i32,
+            }
+            fn get_pos() -> Pos {
+                let pos = Pos { x: 5, y: 15 }
+                return pos
+            }
+        "};
+        check_errors(code, &[]);
+    }
+
+    #[test]
+    fn chained_named_alias_resolves() {
+        let code = indoc! {"
+            type Id = u32
+            type MyId = Id
+            fn identity(x: MyId) -> MyId {
+                return x
+            }
+        "};
+        check_errors(code, &[]);
+    }
+
+    #[test]
+    fn forward_reference_type_resolves() {
+        // A is defined before B, but A = B. B must still be resolved correctly.
+        let code = indoc! {"
+            type A = B
+            type B = u32
+            fn identity(x: A) -> A {
+                return x
+            }
+        "};
+        check_errors(code, &[]);
+    }
+
+    #[test]
+    fn unknown_type_name_is_error() {
+        let code = indoc! {"
+            fn f(x: Nonexistent) {}
+        "};
+        check_errors(code, &["UnknownTypeName"]);
+    }
+
+    #[test]
+    fn circular_type_direct_is_error() {
+        let code = indoc! {"
+            type A = A
+        "};
+        check_errors(code, &["CircularTypeDefinition"]);
+    }
+
+    #[test]
+    fn circular_type_indirect_is_error() {
+        let code = indoc! {"
+            type A = B
+            type B = A
+        "};
+        check_errors(code, &["CircularTypeDefinition"]);
+    }
+
+    #[test]
+    fn circular_type_does_not_register() {
+        // A circular type must not be registered in HIR (no silent void binding).
+        // A function referencing the circular type should get UnknownTypeName, not wrong type.
+        let code = indoc! {"
+            type A = A
+            fn f(x: A) {}
+        "};
+        // CircularTypeDefinition for the type def, UnknownTypeName for the usage in f
+        check_errors(code, &["CircularTypeDefinition", "UnknownTypeName"]);
     }
 }

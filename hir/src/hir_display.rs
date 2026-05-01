@@ -17,6 +17,7 @@ fn format_hir_type_at(ty: &HIRType, lvl: usize) -> String {
     match ty {
         HIRType::Primitive(p) => format!("{p}"),
         HIRType::Struct(s) => format_struct(s, lvl + 1),
+        HIRType::Named(name, _sub_ty) => format!("{name}"),
     }
 }
 
@@ -26,6 +27,7 @@ struct FnCtx<'a, T> {
     local_names: HashMap<LocalId, String>,
     local_types: HashMap<LocalId, HIRType>,
     func_names: &'a HashMap<FuncId, String>,
+    type_arena: &'a HIRTypeArena,
 }
 
 impl Display for THIR {
@@ -113,6 +115,7 @@ fn format_internal_function(
         local_names,
         local_types,
         func_names,
+        type_arena,
     };
 
     // Function signature
@@ -233,7 +236,12 @@ fn format_expr(e: &Expr<Typed>, ctx: &FnCtx<Typed>, lvl: usize) -> String {
             out
         }
         ExprKind::StructLiteral(lit) => {
-            let mut out = String::from("struct {\n");
+            let type_label = lit
+                .type_name
+                .and_then(|tn| ctx.type_arena.get_by_id(tn.node))
+                .map(|ty| format_hir_type(ty))
+                .unwrap_or_else(|| "struct".into());
+            let mut out = format!("{type_label} {{\n");
             for field in &lit.fields {
                 let name = &field.name.node;
                 let value = format_expr_id(&field.value, ctx, lvl + 1);

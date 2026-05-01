@@ -11,7 +11,17 @@ type S<T> = Spanned<T>;
 pub enum HIRType {
     Primitive(PrimitiveType),
     Struct(StructType),
-    // Named(),
+    Named(String, Box<HIRType>),
+}
+
+impl HIRType {
+    /// Follows `Named(_, inner)` chains until a non-Named type is reached.
+    pub fn peel_named(&self) -> &HIRType {
+        match self {
+            HIRType::Named(_, inner) => inner.peel_named(),
+            other => other,
+        }
+    }
 }
 
 impl std::fmt::Display for HIRType {
@@ -19,6 +29,7 @@ impl std::fmt::Display for HIRType {
         match self {
             HIRType::Primitive(p) => write!(f, "{}", p),
             HIRType::Struct(s) => write!(f, "{}", s),
+            HIRType::Named(name, _sub_ty) => write!(f, "{}", name),
         }
     }
 }

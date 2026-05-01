@@ -170,6 +170,7 @@ pub struct FunctionCall {
 
 #[derive(Debug, Serialize)]
 pub struct StructLiteral {
+    pub type_name: Option<S<HIRTypeId>>,
     pub fields: Vec<S<StructLiteralField>>,
 }
 

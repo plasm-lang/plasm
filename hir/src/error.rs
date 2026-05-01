@@ -42,6 +42,12 @@ pub enum Error {
     UnregisteredExprId {
         id: ExprId,
     },
+    UnknownTypeName {
+        name: String,
+    },
+    CircularTypeDefinition {
+        cycle: Vec<String>,
+    },
 }
 
 impl Display for Error {
@@ -107,6 +113,17 @@ impl Display for Error {
                     "Unregistered expression id {id}. It's a compiler issue, please report it"
                 )
             }
+            Error::UnknownTypeName { name } => {
+                write!(f, "Unknown type name `{name}`")
+            }
+            Error::CircularTypeDefinition { cycle } => {
+                let names = cycle
+                    .iter()
+                    .map(|n| format!("`{n}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "Circular type definition involving types {names}")
+            }
         }
     }
 }
@@ -133,6 +150,8 @@ impl ErrorType for Error {
             Error::CantResolveType => TYPE_ERROR,
             Error::UnknownStructField { .. } => TYPE_ERROR,
             Error::MissingStructField { .. } => TYPE_ERROR,
+            Error::UnknownTypeName { .. } => TYPE_ERROR,
+            Error::CircularTypeDefinition { .. } => TYPE_ERROR,
 
             Error::UnregisteredLocalId { .. } => INTERNAL_ERROR,
             Error::UnregisteredExprId { .. } => INTERNAL_ERROR,
@@ -151,6 +170,8 @@ impl ErrorType for Error {
             Error::CantResolveType => "CantResolveType",
             Error::UnknownStructField { .. } => "UnknownStructField",
             Error::MissingStructField { .. } => "MissingStructField",
+            Error::UnknownTypeName { .. } => "UnknownTypeName",
+            Error::CircularTypeDefinition { .. } => "CircularTypeDefinition",
 
             Error::UnregisteredLocalId { .. } => "UnregisteredLocalId",
             Error::UnregisteredExprId { .. } => "UnregisteredExprId",

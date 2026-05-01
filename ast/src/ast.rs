@@ -108,6 +108,7 @@ pub enum Expr {
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct StructLiteralExpr {
+    pub name: Option<S<String>>,
     pub fields: Vec<S<StructLiteralField>>,
 }
 
@@ -176,6 +177,7 @@ pub struct TypeDefinition {
 pub enum Type {
     Primitive(PrimitiveType),
     Struct(StructType),
+    Named(String),
     // String, // TODO
     // Path,   // TODO
 }
@@ -186,7 +188,7 @@ impl Type {
             return Self::Primitive(ty);
         }
 
-        todo!()
+        Self::Named(identifier.to_string())
     }
 }
 

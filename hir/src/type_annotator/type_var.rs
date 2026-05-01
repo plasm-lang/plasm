@@ -38,7 +38,7 @@ impl TyClass {
 
     pub fn from_type(ty: &HIRType) -> Option<Self> {
         use PrimitiveType::*;
-        match ty {
+        match ty.peel_named() {
             HIRType::Primitive(Void) => Some(TyClass::Void),
             HIRType::Primitive(Bool) => Some(TyClass::Bool),
             HIRType::Primitive(

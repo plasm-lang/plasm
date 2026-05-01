@@ -257,7 +257,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>type MyType = struct {...}</code></td>
+      <td><code>struct {...}</code></td>
     </tr>
     <tr>
       <th>Struct Fields</th>
@@ -266,7 +266,16 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>type MyType = struct { filed: i32 }</code></td>
+      <td><code>struct { filed: i32 }</code></td>
+    </tr>
+    <tr>
+      <th>Named Typing</th>
+      <td>✅</td>
+      <td>✅</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>type MyType = struct {...}</code></td>
     </tr>
     <tr>
       <th>Reference Type</th>
@@ -314,15 +323,6 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td><code>type MyEnum = enum { A, B, C }</code></td>
     </tr>
     <tr>
-      <th>Enum Defaults</th>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>WIP</td>
-    </tr>
-    <tr>
       <th>Zero-Size Enums</th>
       <td>⬜</td>
       <td>⬜</td>
@@ -350,16 +350,34 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td><code>A | B | C</code></td>
     </tr>
     <tr>
+      <th>Type Aliasing</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>alias Pos = (i32, i32, i32)</code></td>
+    </tr>
+    <tr>
       <th colspan="7" align="center">Polymorphism</th>
     </tr>
     <tr>
-      <th>Interfaces|Traits</th>
+      <th>Interfaces/Traits</th>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td>WIP</td>
+      <td><code>trait Default { fn default() -> self }</code></td>
+    </tr>
+    <tr>
+      <th>Interface/Trait Generics</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>trait Add[R, O] { fn add(self, r: R) -> O }</code></td>
     </tr>
     <tr>
       <th>Implementations</th>
@@ -377,16 +395,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td>WIP</td>
-    </tr>
-    <tr>
-      <th>Dynamic Dispatch</th>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>WIP</td>
+      <td><code>fn func(arg: T)</code></td>
     </tr>
     <tr>
       <th><code>where</code> Bounds</th>
@@ -396,6 +405,15 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td><code>fn func(arg: T) where T: Default & Add {...}</code></td>
+    </tr>
+    <tr>
+      <th>Dynamic Dispatch</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>fn sum_len(arg: List[T]) where T: vtable Len[usize] -> usize {...}</code></td>
     </tr>
     <tr>
       <th>For</th>
@@ -410,16 +428,152 @@ This is the roadmap for implementing a minimal working framework that will serve
       <th colspan="7" align="center">Metaprogramming & Compile-time</th>
     </tr>
     <tr>
+      <th>Compile-Time Reflection / AST Representation Access</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>SomeStruct.ast.fields[0].name</code></td>
+    </tr>
+    <tr>
+      <th>Meta Functions</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>meta fn add_defaults(func: ast.Function) -> ast.Function {...}</code></td>
+    </tr>
+    <tr>
+      <th>Compile-Time Evaluation</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>let value = comptime retrive_value_from_db(...)</code></td>
+    </tr>
+    <tr>
       <th colspan="7" align="center">Compiler Extensions</th>
     </tr>
     <tr>
       <th colspan="7" align="center">Algebraic Effects</th>
     </tr>
     <tr>
+      <th>Effect Definition</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>effect async { fn await() {...} }</code></td>
+    </tr>
+    <tr>
+      <th>Effect Usage</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>async fn async_fn() { return await async_fn_2() }</code></td>
+    </tr>
+    <tr>
+      <th>Effect Generics</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>WIP</td>
+    </tr>
+    <tr>
+      <th>Effect Polymorphism</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>E fn map(seq: Iter[T], func: E fn(T) -> U) -> Iter[U] {}</code></td>
+    </tr>
+    </tr>
+    <tr>
+      <th>Effect Sets</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>effect syscall { read, write, open, close, ... }</code></td>
+    </tr>
+    <tr>
       <th colspan="7" align="center">Memory Regions</th>
     </tr>
     <tr>
       <th colspan="7" align="center">Standard Library</th>
+    </tr>
+    <tr>
+      <th>Binary & Unary Operation Traits</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>Add, Mul, Neg, And</code></td>
+    </tr>
+    <tr>
+      <th>Strings</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>CString, UTF8String, UTF32String</code></td>
+    </tr>
+    <tr>
+      <th>Vector/List</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>List[T]</code></td>
+    </tr>
+    <tr>
+      <th>HashMap</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>HashMap[K, V]</code></td>
+    </tr>
+    <tr>
+      <th>Int (bit unlimited)</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>let v: Int = 9999999999999</code></td>
+    </tr>
+    <tr>
+      <th>Float (bit unlimited)</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>let v: Float = 0.9999999999999</code></td>
+    </tr>
+    <tr>
+      <th>Iter traits</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>trait Iter[T] {...}</code></td>
     </tr>
   </tbody>
 </table>

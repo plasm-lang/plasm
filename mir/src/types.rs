@@ -24,6 +24,7 @@ impl MIRType {
                     .collect();
                 MIRType::Tuple(fields)
             }
+            hir::HIRType::Named(name, _sub_ty) => MIRType::Named(name),
         }
     }
 }

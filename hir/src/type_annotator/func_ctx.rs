@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use diagnostic::{Span, Spanned};
+use diagnostic::{MaybeSpanned, Span, Spanned};
 use utils::ids::{ExprId, FuncId, HIRTypeId, LocalId, TypeVarId};
 
 use crate::error::Error;
@@ -10,7 +10,7 @@ use crate::hir::{
 use crate::types::HIRTypeArena;
 
 use super::solver::Solver;
-use super::type_var::{Constraint, TyClass, TypeVar, Shape};
+use super::type_var::{Constraint, Shape, TyClass, TypeVar};
 
 // For brevity
 type OT = Option<S<HIRTypeId>>;
@@ -113,11 +113,11 @@ impl<'a> FunctionCtx<'a> {
 
     fn expr_arena_to_constraints(
         &mut self,
-        arena: &ExprArena<OT>,
+        expr_arena: &ExprArena<OT>,
     ) -> (Vec<Constraint>, Vec<S<Error>>) {
         let mut constraints = Vec::<Constraint>::new();
         let mut errors = Vec::<S<Error>>::new();
-        for (expr_id, expr) in arena.0.iter() {
+        for (expr_id, expr) in expr_arena.0.iter() {
             let expr_type_var = self.ty_of_expr(expr_id).clone();
             match &expr.kind {
                 ExprKind::Literal(lit) => match lit {
@@ -182,6 +182,12 @@ impl<'a> FunctionCtx<'a> {
                         })
                         .collect::<Vec<_>>();
                     let shape = Shape::Struct(fields);
+                    if let Some(ty_id) = &struct_lit.type_name {
+                        let (ty_id, span) = ty_id.clone().unwrap();
+                        let ty_var = TypeVar::Known(MaybeSpanned::new(ty_id).with_span(span));
+                        constraints
+                            .push(Constraint::Eq(expr_type_var.clone(), S::new(ty_var, span)));
+                    }
                     constraints.push(Constraint::HasShape(expr_type_var, shape));
                 }
             }
