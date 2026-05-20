@@ -20,19 +20,18 @@ fn func_alias_arg(x: 3DPosAlias)
 
 
 fn main() {
-    let x = 1, 2, 3 // Type: (i32, i32, i32)
+    let x: (i32, i32, i32) = (1, 2, 3)
     func_type_arg(x) // Error: Expected 3DPosType, but got (i32, i32, i32).
     func_raw_arg(x) // It's ok
     func_alias_arg(x) // It's ok
 
-    // The same as above, but explicitly
-    let x: 3DPosAlias = 1, 2, 3
+    // The same as above
+    let x: 3DPosAlias = (1, 2, 3) // Type: (i32, i32, i32)
     func_type_arg(x) // Error: Expected 3DPosType, but got (i32, i32, i32).
     func_raw_arg(x) // It's ok
     func_alias_arg(x) // It's ok
 
-    let x = 3DPosType(1, 2, 3)
-    // or `let pos: 3DPosType = 1, 2, 3`
+    let x: 3DPosType = (1, 2, 3)
     func_type_arg(x) // It's right
     func_raw_arg(x) // Error: Expected (i32, i32, i32), but got 3DPosType.
     func_alias_arg(x) // Error: Expected (i32, i32, i32), but got 3DPosType.

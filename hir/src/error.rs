@@ -1,12 +1,14 @@
 use std::fmt::{Display, Formatter};
 
+use strum_macros::IntoStaticStr;
+
 use diagnostic::{ErrorType, MaybeSpanned, Spanned};
 use utils::ids::{ExprId, LocalId};
 
 use super::type_annotator::TyClass;
 use super::types::HIRType;
 
-#[derive(Debug)]
+#[derive(Debug, IntoStaticStr)]
 pub enum Error {
     FunctionMultipleDefinitions {
         first: Spanned<String>,
@@ -139,42 +141,26 @@ impl ErrorType for Error {
         const SEMANTIC_ERROR: &str = "SemanticError";
         const TYPE_ERROR: &str = "TypeError";
         const INTERNAL_ERROR: &str = "InternalError";
+
         match self {
-            Error::FunctionMultipleDefinitions { .. } => SEMANTIC_ERROR,
-            Error::UnknownVariable { .. } => SEMANTIC_ERROR,
-            Error::UnknownFunction { .. } => SEMANTIC_ERROR,
-            Error::ArgumentCountMismatch { .. } => SEMANTIC_ERROR,
+            Error::FunctionMultipleDefinitions { .. }
+            | Error::UnknownVariable { .. }
+            | Error::UnknownFunction { .. }
+            | Error::ArgumentCountMismatch { .. } => SEMANTIC_ERROR,
 
-            Error::TypesConflict { .. } => TYPE_ERROR,
-            Error::AmbiguousClass { .. } => TYPE_ERROR,
-            Error::CantResolveType => TYPE_ERROR,
-            Error::UnknownStructField { .. } => TYPE_ERROR,
-            Error::MissingStructField { .. } => TYPE_ERROR,
-            Error::UnknownTypeName { .. } => TYPE_ERROR,
-            Error::CircularTypeDefinition { .. } => TYPE_ERROR,
+            Error::TypesConflict { .. }
+            | Error::AmbiguousClass { .. }
+            | Error::CantResolveType
+            | Error::UnknownStructField { .. }
+            | Error::MissingStructField { .. }
+            | Error::UnknownTypeName { .. }
+            | Error::CircularTypeDefinition { .. } => TYPE_ERROR,
 
-            Error::UnregisteredLocalId { .. } => INTERNAL_ERROR,
-            Error::UnregisteredExprId { .. } => INTERNAL_ERROR,
+            Error::UnregisteredLocalId { .. } | Error::UnregisteredExprId { .. } => INTERNAL_ERROR,
         }
     }
 
     fn error_sub_type(&self) -> &'static str {
-        match self {
-            Error::FunctionMultipleDefinitions { .. } => "FunctionMultipleDefinitions",
-            Error::UnknownVariable { .. } => "UnknownVariable",
-            Error::UnknownFunction { .. } => "UnknownFunction",
-            Error::ArgumentCountMismatch { .. } => "ArgumentCountMismatch",
-
-            Error::TypesConflict { .. } => "TypesConflict",
-            Error::AmbiguousClass { .. } => "AmbiguousClass",
-            Error::CantResolveType => "CantResolveType",
-            Error::UnknownStructField { .. } => "UnknownStructField",
-            Error::MissingStructField { .. } => "MissingStructField",
-            Error::UnknownTypeName { .. } => "UnknownTypeName",
-            Error::CircularTypeDefinition { .. } => "CircularTypeDefinition",
-
-            Error::UnregisteredLocalId { .. } => "UnregisteredLocalId",
-            Error::UnregisteredExprId { .. } => "UnregisteredExprId",
-        }
+        self.into()
     }
 }

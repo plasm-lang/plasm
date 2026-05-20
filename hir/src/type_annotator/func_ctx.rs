@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use diagnostic::{MaybeSpanned, Span, Spanned};
+use diagnostic::{Span, Spanned};
 use utils::ids::{ExprId, FuncId, HIRTypeId, LocalId, TypeVarId};
 
 use crate::error::Error;
@@ -65,10 +65,7 @@ impl<'a> FunctionCtx<'a> {
             .unwrap_or(self.func.signature.name.span);
         let block_constraints = self.block_to_constraints(
             &self.func.body,
-            S::new(
-                TypeVar::Known(self.func.signature.ret_ty.clone()),
-                return_span,
-            ),
+            S::new(TypeVar::Known(self.func.signature.ret_ty), return_span),
         );
         constraints.extend(block_constraints);
 
@@ -144,7 +141,7 @@ impl<'a> FunctionCtx<'a> {
                         .get(&func_call.func_id)
                         .unwrap()
                         .clone();
-                    let return_type_var = TypeVar::Known(signature.ret_ty.clone());
+                    let return_type_var = TypeVar::Known(signature.ret_ty);
                     let return_type_var_spanned = S::new(return_type_var, expr.span);
                     constraints.push(Constraint::Eq(expr_type_var, return_type_var_spanned));
 
@@ -159,8 +156,8 @@ impl<'a> FunctionCtx<'a> {
 
                     for (i, arg_expr_id) in func_call.args.iter().enumerate() {
                         let arg_expr_ty_var_spanned = self.ty_of_expr(arg_expr_id).clone();
-                        let param_ty = signature.args[i].ty.clone();
-                        let param_ty_var = TypeVar::Known(param_ty.clone().into_maybe());
+                        let param_ty = signature.args[i].ty;
+                        let param_ty_var = TypeVar::Known(param_ty.into_maybe());
                         let param_ty_var_spanned = S::new(param_ty_var, param_ty.span);
                         constraints.push(Constraint::Eq(
                             arg_expr_ty_var_spanned,
@@ -182,12 +179,6 @@ impl<'a> FunctionCtx<'a> {
                         })
                         .collect::<Vec<_>>();
                     let shape = Shape::Struct(fields);
-                    if let Some(ty_id) = &struct_lit.type_name {
-                        let (ty_id, span) = ty_id.clone().unwrap();
-                        let ty_var = TypeVar::Known(MaybeSpanned::new(ty_id).with_span(span));
-                        constraints
-                            .push(Constraint::Eq(expr_type_var.clone(), S::new(ty_var, span)));
-                    }
                     constraints.push(Constraint::HasShape(expr_type_var, shape));
                 }
             }
@@ -212,7 +203,6 @@ impl<'a> FunctionCtx<'a> {
             let span = local.name.span;
             let ty = local
                 .ty
-                .clone()
                 .map(|t| t.into_maybe())
                 .map(TypeVar::Known)
                 .map(|t| S::new(t, span))
@@ -233,7 +223,6 @@ impl<'a> FunctionCtx<'a> {
             let span = expr.span;
             let ty = expr
                 .ty
-                .clone()
                 .map(|t| t.into_maybe())
                 .map(TypeVar::Known)
                 .map(|t| S::new(t, span))
@@ -256,14 +245,11 @@ impl<'a> FunctionCtx<'a> {
             .signature
             .ret_ty
             .span
-            .unwrap_or_else(|| self.func.signature.name.span);
+            .unwrap_or(self.func.signature.name.span);
 
         let block_constraints = self.block_to_constraints(
             &self.func.body,
-            Spanned::new(
-                TypeVar::Known(self.func.signature.ret_ty.clone()),
-                return_span,
-            ),
+            Spanned::new(TypeVar::Known(self.func.signature.ret_ty), return_span),
         );
         constraints.extend(block_constraints);
         (constraints, errors)
@@ -447,7 +433,7 @@ mod tests {
         let mut ctx = FunctionCtx::from_function(&fun, &sigs);
         let (constraints, errors) = ctx.collect_constraints_for_tests();
 
-        assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
         assert_eq!(
             count_inclass(&constraints, TyClass::Int),
             1,
@@ -494,7 +480,7 @@ mod tests {
         let mut ctx = FunctionCtx::from_function(&fun, &sigs);
         let (constraints, errors) = ctx.collect_constraints_for_tests();
 
-        assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
         assert!(
             any_eq_var_var(&constraints),
             "expected at least one Eq(Var, Var) for `b = a`"
@@ -534,7 +520,7 @@ mod tests {
         let mut ctx = FunctionCtx::from_function(&fun, &sigs);
         let (constraints, errors) = ctx.collect_constraints_for_tests();
 
-        assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
         assert!(
             any_eq_known(&constraints, i32_id),
             "expected Eq(_, Known(i32)) from `return` to the function return type"
@@ -579,7 +565,7 @@ mod tests {
         let mut ctx = FunctionCtx::from_function(&fun, &sigs);
         let (constraints, errors) = ctx.collect_constraints_for_tests();
 
-        assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
         assert!(
             any_eq_known(&constraints, void_id),
             "expected Eq(_, Known(void)) for call result"
@@ -626,8 +612,7 @@ mod tests {
             .any(|e| matches!(e.node, Error::ArgumentCountMismatch { .. }));
         assert!(
             has_mismatch,
-            "expected Error::ArgumentCountMismatch, got: {:?}",
-            errors
+            "expected Error::ArgumentCountMismatch, got: {errors:?}"
         );
     }
 
@@ -658,7 +643,7 @@ mod tests {
         let mut ctx = FunctionCtx::from_function(&fun, &sigs);
         let (constraints, errors) = ctx.collect_constraints_for_tests();
 
-        assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
         assert_eq!(
             count_inclass(&constraints, TyClass::Float),
             1,

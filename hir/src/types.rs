@@ -27,9 +27,9 @@ impl HIRType {
 impl std::fmt::Display for HIRType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            HIRType::Primitive(p) => write!(f, "{}", p),
-            HIRType::Struct(s) => write!(f, "{}", s),
-            HIRType::Named(name, _sub_ty) => write!(f, "{}", name),
+            HIRType::Primitive(p) => write!(f, "{p}"),
+            HIRType::Struct(s) => write!(f, "{s}"),
+            HIRType::Named(name, _sub_ty) => write!(f, "{name}"),
         }
     }
 }
@@ -47,7 +47,7 @@ impl std::fmt::Display for StructType {
             .map(|field| field.to_string())
             .collect::<Vec<_>>()
             .join(", ");
-        write!(f, "struct {{ {} }}", fields_str)
+        write!(f, "struct {{ {fields_str} }}")
     }
 }
 

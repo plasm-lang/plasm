@@ -284,14 +284,10 @@ impl<'a> Display for Indent<'a, Expr> {
 impl<'a> Display for Indent<'a, StructLiteralExpr> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if self.node.fields.is_empty() {
-            return write!(f, "struct {{}}");
+            return write!(f, "{{}}");
         }
 
-        if let Some(name) = &self.node.name {
-            writeln!(f, "{} {{", name)?;
-        } else {
-            writeln!(f, "struct {{")?;
-        }
+        writeln!(f, "{{")?;
         for field in &self.node.fields {
             writeln!(
                 f,
@@ -309,7 +305,7 @@ impl<'a> Display for Indent<'a, StructLiteralField> {
         write_indent(f, self.indent)?;
         write!(
             f,
-            "{}: {},",
+            "{} = {},",
             &self.node.name,
             Indent::new(&self.node.value.node).with_indent(self.indent)
         )

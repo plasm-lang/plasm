@@ -108,7 +108,6 @@ pub enum Expr {
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct StructLiteralExpr {
-    pub name: Option<S<String>>,
     pub fields: Vec<S<StructLiteralField>>,
 }
 

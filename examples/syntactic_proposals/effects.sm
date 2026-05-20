@@ -1,0 +1,48 @@
+// Warning: This example can't be compiled yet.
+// It's written for syntax demonstration.
+
+effect clean {}
+
+effect alloc {
+    fn alloc(size: usize) -> &usize
+    fn free(ptr: &usize)
+}
+
+effect log {
+    fn log(msg: str)
+}
+
+// Effects can also be composed:
+
+effect read {
+    fn read() -> array[u8]
+}
+
+effect write {
+    fn write(data: array[u8])
+}
+
+effect syscall { read, write, open, close, ... }
+
+// Effects usage
+
+clean fn add_42(x: i32) -> i32 {
+    return x + 42
+}
+
+alloc fn create_i32_list(n: usize) -> &array[i32] {
+    let mut list = List[i32].with_capacity(n)
+    for i in range(n.as(i32)) {
+        list.push(i)
+    }
+    return list
+}
+
+// `syscall` and `log` effects will be inferred by the compiler
+fn open_my_file(path: Path) -> File {
+    let file = File.open(path)
+    log.log("File opened")
+    return file
+}
+
+// Effects handlers:

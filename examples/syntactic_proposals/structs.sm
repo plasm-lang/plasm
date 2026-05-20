@@ -26,6 +26,6 @@ fn print_position_3d(pos: Position3D) {
 }
 
 fn main() {
-    print_position_2d(Position2D { x: 5, y: -5 })
-    print_position_3d(Position3D ( 1, 2, 3 ))
+    print_position_2d({ x = 5, y = -5 })
+    print_position_3d((1, 2, 3))
 }

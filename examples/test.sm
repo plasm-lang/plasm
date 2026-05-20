@@ -1,24 +1,37 @@
 // Actually, this is not a example - It's a code for internal
 // development testing of new functionality.
 
-type Transform = struct {
-    pos: struct {
-        x: i32,
-        y: i32,
-    },
+// type Transform = struct {
+//     pos: struct {
+//         x: i32,
+//         y: i32,
+//     },
+// }
+
+type Pos = struct {
+    x: i32,
+    y: i32,
 }
+
+type A = i32
+// type A = void
+
+// fn func() -> A {
+//     let a: A = 5
+//     return a
+// }
 
 // fn print_32(x: i32)
 
-fn print_pos(pos: struct { x: i32, y: i32 }) {
-    // print_32(pos.x);
-    // print_32(pos.y);
+// fn print_pos(pos: Pos) {
+//     // print_32(pos.x)
+//     // print_32(pos.y)
+// }
+
+fn get_pos() -> Pos {
+    return struct { x: 5, y: 15 }
 }
 
-fn get_pos() -> struct { x: i32, y: i32 } {
-    return struct { x: 10, y: 20 }
-}
-
-fn main() {
-    print_pos(get_pos())
-}
+// fn main() {
+//     print_pos(get_pos())
+// }

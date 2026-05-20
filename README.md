@@ -266,7 +266,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>struct { filed: i32 }</code></td>
+      <td><code>struct { field: i32 }</code></td>
     </tr>
     <tr>
       <th>Named Typing</th>
@@ -377,7 +377,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>trait Add[R, O] { fn add(self, r: R) -> O }</code></td>
+      <td><code>trait Add[R, O] { fn add(self, right: R) -> O }</code></td>
     </tr>
     <tr>
       <th>Implementations</th>
@@ -386,7 +386,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>impl Add for MyType {...}</code></td>
+      <td><code>impl Add[MyType, MyType] for MyType {...}</code></td>
     </tr>
     <tr>
       <th>Static Dispatch</th>
@@ -404,7 +404,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>fn func(arg: T) where T: Default & Add {...}</code></td>
+      <td><code>fn sum3(a: T, b: T, c: T) -> T where T: Add[T, T] {...}</code></td>
     </tr>
     <tr>
       <th>Dynamic Dispatch</th>
@@ -416,7 +416,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td><code>fn sum_len(arg: List[T]) where T: vtable Len[usize] -> usize {...}</code></td>
     </tr>
     <tr>
-      <th>For</th>
+      <th>For (needs `Iter` trait)</th>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
@@ -452,10 +452,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>let value = comptime retrive_value_from_db(...)</code></td>
-    </tr>
-    <tr>
-      <th colspan="7" align="center">Compiler Extensions</th>
+      <td><code>let value = comptime retrieve_value_from_db(...)</code></td>
     </tr>
     <tr>
       <th colspan="7" align="center">Algebraic Effects</th>

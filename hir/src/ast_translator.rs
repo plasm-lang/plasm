@@ -534,14 +534,7 @@ impl ASTTranslator {
                     };
                     fields.push(S::new(field, field_span));
                 }
-                let type_name = struct_lit.name.and_then(|name_spanned| {
-                    let span = name_spanned.span;
-                    let n = name_spanned.node;
-                    let mut resolving = Vec::new();
-                    self.translate_type(ast::Type::Named(n), span, &mut resolving)
-                        .map(|(id, _)| S::new(id, span))
-                });
-                let struct_lit = StructLiteral { type_name, fields };
+                let struct_lit = StructLiteral { ty: None, fields };
                 let hir_expr = Expr::<OT> {
                     ty: None,
                     kind: ExprKind::StructLiteral(struct_lit),
@@ -769,7 +762,7 @@ mod tests {
     fn inline_struct_type_inference_test() {
         let code = indoc! {"
             fn main() {
-                let a = struct { pos: struct { x: 1, y: 2 } }
+                let a = { pos = { x = 1, y = 2 } }
                 let b = a
             }
         "};
@@ -780,10 +773,10 @@ mod tests {
                         x: i32,
                         y: i32,
                     },
-                } = struct {
-                    pos: struct {
-                        x: 1,
-                        y: 2,
+                } = {
+                    pos = {
+                        x = 1,
+                        y = 2,
                     },
                 }
                 let b: struct {
@@ -803,7 +796,7 @@ mod tests {
     fn check_errors(code: &str, expected_subtypes: &[&str]) {
         use diagnostic::ErrorType;
         let (ast, parse_errors) = parse(&mut tokenize(code.char_indices()));
-        assert!(parse_errors.is_empty(), "parse errors: {:?}", parse_errors);
+        assert!(parse_errors.is_empty(), "parse errors: {parse_errors:?}");
         let (_hir, errors) = ast_to_hir(ast);
         let mut got: Vec<&str> = errors.iter().map(|e| e.node.error_sub_type()).collect();
         let mut expected: Vec<&str> = expected_subtypes.to_vec();
@@ -811,21 +804,19 @@ mod tests {
         expected.sort_unstable();
         assert_eq!(
             got, expected,
-            "error sub-types mismatch\ngot:      {:?}\nexpected: {:?}\nfull errors: {:?}",
-            got, expected, errors
+            "error sub-types mismatch\ngot:      {got:?}\nexpected: {expected:?}\nfull errors: {errors:?}"
         );
     }
 
     #[test]
     fn named_struct_literal_infers_named_type() {
-        // Reproduces test.sm scenario: Pos { x: 5, y: 15 } inside fn returning Pos.
         let code = indoc! {"
             type Pos = struct {
                 x: i32,
                 y: i32,
             }
             fn get_pos() -> Pos {
-                let pos = Pos { x: 5, y: 15 }
+                let pos = { x = 5, y = 15 }
                 return pos
             }
         "};
