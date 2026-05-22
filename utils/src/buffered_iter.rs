@@ -1,3 +1,6 @@
+//! Deprecated: a more general `Lookahead` struct is implemented in `lookahead.rs`
+//! (ast crate) and should be used instead. This module is kept for "just in case".
+
 use std::collections::VecDeque;
 
 /// An iterator wrapper that supports rewinding over already-consumed items.
@@ -14,7 +17,7 @@ use std::collections::VecDeque;
 /// consuming the recorded items.
 /// Call [`release`](BufferedIter::release) to exit recording
 /// mode and discard the recording when replay is not needed.
-pub(super) struct BufferedIter<I>
+pub struct BufferedIter<I>
 where
     I: Iterator,
     I::Item: Clone,

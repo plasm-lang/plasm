@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use diagnostic::{MaybeSpanned, Spanned};
+use diagnostic::Spanned;
 use utils::ids::HIRTypeId;
 
 use crate::error::Error;
@@ -124,10 +124,10 @@ impl<'a> FunctionAnnotator<'a> {
                     let annotated_block = self.annotate_block(block);
                     ExprKind::Block(annotated_block)
                 }
+                ExprKind::StructLiteral(lit) => ExprKind::StructLiteral(lit),
                 ExprKind::Literal(lit) => ExprKind::Literal(lit),
                 ExprKind::Local(lid) => ExprKind::Local(lid),
                 ExprKind::FunctionCall(func_call) => ExprKind::FunctionCall(func_call),
-                ExprKind::StructLiteral(struct_lit) => ExprKind::StructLiteral(struct_lit),
             };
             out_exprs.insert(expr_id, S::new(Expr { kind, ty }, span));
         }

@@ -8,7 +8,7 @@ type Position2D = struct {
     y: i32,
 }
 
-// And there is a way for unnamed params:
+// And there is a way for unnamed params (tuple):
 
 type Position3D = (i32, i32, i32)
 
@@ -26,6 +26,6 @@ fn print_position_3d(pos: Position3D) {
 }
 
 fn main() {
-    print_position_2d({ x = 5, y = -5 })
+    print_position_2d({ x: 5, y: -5 })
     print_position_3d((1, 2, 3))
 }

@@ -21,13 +21,12 @@ fn format_hir_type_at(ty: &HIRType, lvl: usize) -> String {
     }
 }
 
-/// Context for printing a function
+/// Context for only printing a function
 struct FnCtx<'a, T> {
     arena: &'a ExprArena<T>,
     local_names: HashMap<LocalId, String>,
     local_types: HashMap<LocalId, HIRType>,
     func_names: &'a HashMap<FuncId, String>,
-    type_arena: &'a HIRTypeArena,
 }
 
 impl Display for THIR {
@@ -115,7 +114,6 @@ fn format_internal_function(
         local_names,
         local_types,
         func_names,
-        type_arena,
     };
 
     // Function signature

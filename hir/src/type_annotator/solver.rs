@@ -107,44 +107,6 @@ impl<'a> Solver<'a> {
             }
         }
 
-        // Mop-up pass: reconcile deferred non-struct + shape conflicts.
-        // These were deferred when HasShape fired before field-type constraints were recorded
-        // (e.g. InClass came after HasShape due to HashMap iteration order in ExprArena).
-        let deferred_roots: Vec<TypeVarId> = solver.shapes.keys().copied().collect();
-        let deferred_roots: Vec<TypeVarId> = deferred_roots
-            .into_iter()
-            .filter(|&root| {
-                solver.binding.get(&root).map_or(false, |&known| {
-                    let known_hir = solver.type_arena.get_by_id(known.node).unwrap();
-                    !matches!(known_hir.peel_named(), HIRType::Struct(_))
-                })
-            })
-            .collect();
-        for root in deferred_roots {
-            let known = *solver.binding.get(&root).unwrap();
-            let known_hir = solver.type_arena.get_by_id(known.node).unwrap().clone();
-            if let Some(s_shape) = solver.shapes.remove(&root) {
-                let shape_span = s_shape.span;
-                let Shape::Struct(fields) = s_shape.node;
-                let second_hir = solver
-                    .resolve_shape_fields_to_struct(fields)
-                    .unwrap_or_else(|_| HIRType::Struct(StructType { fields: vec![] }));
-                errors.push(S::new(
-                    Error::TypesConflict {
-                        first: MS {
-                            node: known_hir,
-                            span: known.span,
-                        },
-                        second: MS {
-                            node: second_hir,
-                            span: Some(shape_span),
-                        },
-                    },
-                    shape_span,
-                ));
-            }
-        }
-
         (solver, errors)
     }
 
@@ -198,13 +160,9 @@ impl<'a> Solver<'a> {
         match (shape_a, shape_b) {
             (Some(sa), Some(sb)) => {
                 // Both groups have a shape — merge them, keep span of target_a's literal.
-                let span = sa.span;
-                let Shape::Struct(fields_a) = sa.node;
-                let Shape::Struct(fields_b) = sb.node;
-                let (merged_fields, merge_errors) = self.merge_shapes(fields_a, fields_b);
+                let (merged, merge_errors) = self.merge_shapes(sa, sb);
                 errors.extend(merge_errors);
-                self.shapes
-                    .insert(target_b, S::new(Shape::Struct(merged_fields), span));
+                self.shapes.insert(target_b, merged);
                 if let Some(known) = self.binding.get(&target_b).copied() {
                     errors.extend(self.reconcile_shape_with_known(target_b, known));
                 }
@@ -226,36 +184,31 @@ impl<'a> Solver<'a> {
     /// Field names must form the same set in both shapes; if a name is present
     /// in one but not the other, an error is emitted. TypeVars of fields with
     /// matching names are unified. The order of `existing` is preserved.
-    fn merge_shapes(
-        &mut self,
-        existing: Vec<(S<String>, S<TypeVar>)>,
-        incoming: Vec<(S<String>, S<TypeVar>)>,
-    ) -> (Vec<(S<String>, S<TypeVar>)>, Vec<Error>) {
-        // Build a map from field name to TypeVar from incoming for O(1) lookup
-        let mut incoming_map: HashMap<String, S<TypeVar>> = incoming
-            .into_iter()
-            .map(|(name_s, tv)| (name_s.node, tv))
-            .collect();
+    fn merge_shapes(&mut self, existing: S<Shape>, incoming: S<Shape>) -> (S<Shape>, Vec<Error>) {
+        let span = existing.span;
+        let Shape::Struct(fields_existing) = existing.node;
+        let Shape::Struct(fields_incoming) = incoming.node;
+
+        let mut fields_incoming_map: HashMap<_, _> = fields_incoming.into_iter().collect();
 
         let mut errors = Vec::new();
 
-        // Unify matching fields; error on fields present in existing but not in incoming
-        for (name_s, tv_existing) in &existing {
-            if let Some(tv_incoming) = incoming_map.remove(&name_s.node) {
+        for (name, tv_existing) in &fields_existing {
+            if let Some(tv_incoming) = fields_incoming_map.remove(name) {
                 errors.extend(self.unify(tv_existing.node.clone(), tv_incoming.node));
             } else {
                 errors.push(Error::MissingStructField {
-                    name: name_s.node.clone(),
+                    name: name.node.clone(),
                 });
             }
         }
 
         // Remaining keys in incoming_map are fields not present in existing
-        for (name, _) in incoming_map {
-            errors.push(Error::UnknownStructField { name });
+        for (name, _) in fields_incoming_map {
+            errors.push(Error::UnknownStructField { name: name.node });
         }
 
-        (existing, errors)
+        (S::new(Shape::Struct(fields_existing), span), errors)
     }
 
     /// Assigns the concrete type `ty` to the union-find group of `type_var_id`.
@@ -314,14 +267,9 @@ impl<'a> Solver<'a> {
         let mut errors = Vec::new();
 
         if let Some(existing) = self.shapes.remove(&root) {
-            // Two HasShape constraints on the same group — merge them, keep the first span.
-            let span = existing.span;
-            let Shape::Struct(fields_existing) = existing.node;
-            let Shape::Struct(fields_incoming) = shape.node;
-            let (merged, merge_errors) = self.merge_shapes(fields_existing, fields_incoming);
+            let (merged, merge_errors) = self.merge_shapes(existing, shape);
             errors.extend(merge_errors);
-            self.shapes
-                .insert(root, S::new(Shape::Struct(merged), span));
+            self.shapes.insert(root, merged);
         } else {
             self.shapes.insert(root, shape);
         }
@@ -381,7 +329,7 @@ impl<'a> Solver<'a> {
         known_id: MS<HIRTypeId>,
     ) -> Vec<Error> {
         // Clone shape fields to release the borrow on self.shapes
-        let (shape_fields, shape_span) = match self.shapes.get(&root) {
+        let (shape_fields, _shape_span) = match self.shapes.get(&root) {
             Some(s_shape) => {
                 let Shape::Struct(fields) = &s_shape.node;
                 (fields.clone(), s_shape.span)
@@ -394,29 +342,13 @@ impl<'a> Solver<'a> {
         let struct_type = match known_hir.peel_named() {
             HIRType::Struct(st) => st.clone(),
             _non_struct => {
-                // The known type is not a struct — only report when field types are resolvable.
-                // If fields can't be resolved yet (HasShape fired before InClass), defer:
-                // leave the shape so the mop-up pass in Solver::new can report it correctly.
-                match self.resolve_shape_fields_to_struct(shape_fields) {
-                    Ok(second_hir) => {
-                        // Remove shape to prevent duplicate errors from later reconciliations.
-                        self.shapes.remove(&root);
-                        return vec![Error::TypesConflict {
-                            first: MS {
-                                node: known_hir,
-                                span: known_id.span,
-                            },
-                            second: MS {
-                                node: second_hir,
-                                span: Some(shape_span),
-                            },
-                        }];
-                    }
-                    Err(_) => {
-                        // Field types not yet known — defer to mop-up pass.
-                        return vec![];
-                    }
-                }
+                self.shapes.remove(&root);
+                return vec![Error::ShapeOnNonStructType {
+                    known: MS {
+                        node: known_hir,
+                        span: known_id.span,
+                    },
+                }];
             }
         };
 
@@ -657,7 +589,7 @@ mod tests {
         )];
 
         let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
-        assert!(errs.is_empty(), "unexpected constraint errors: {:?}", errs);
+        assert!(errs.is_empty(), "unexpected constraint errors: {errs:?}");
 
         let ty = solver.resolve_expr(e1).expect("resolve_expr failed");
         assert_eq!(ty.node, i32_id);
@@ -735,7 +667,7 @@ mod tests {
         let has_conflict = errs
             .iter()
             .any(|e| matches!(e.node, Error::TypesConflict { .. }));
-        assert!(has_conflict, "expected TypesConflict, got: {:?}", errs);
+        assert!(has_conflict, "expected TypesConflict, got: {errs:?}");
     }
 
     #[test]
@@ -941,7 +873,7 @@ mod tests {
         ];
 
         let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
-        assert!(errs.is_empty(), "unexpected errors: {:?}", errs);
+        assert!(errs.is_empty(), "unexpected errors: {errs:?}");
 
         let ty = solver.resolve_expr(e_v).expect("resolve failed");
         assert_eq!(ty.node, struct_id);
@@ -977,7 +909,7 @@ mod tests {
         ];
 
         let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
-        assert!(errs.is_empty(), "unexpected errors: {:?}", errs);
+        assert!(errs.is_empty(), "unexpected errors: {errs:?}");
 
         assert_eq!(
             solver.resolve_expr(e_x).expect("resolve e_x failed").node,
@@ -1016,14 +948,14 @@ mod tests {
         ];
 
         let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
-        assert!(errs.is_empty(), "unexpected errors: {:?}", errs);
+        assert!(errs.is_empty(), "unexpected errors: {errs:?}");
 
         let ty_id = solver.resolve_expr(e_v).expect("resolve failed").node;
         drop(solver);
 
         let resolved = arena.get_by_id(ty_id).unwrap();
         let HIRType::Struct(st) = resolved else {
-            panic!("expected Struct, got {:?}", resolved);
+            panic!("expected Struct, got {resolved:?}");
         };
         assert_eq!(st.fields.len(), 2, "expected 2 fields");
 
@@ -1074,8 +1006,7 @@ mod tests {
         assert!(
             errs.iter()
                 .any(|e| matches!(e.node, Error::TypesConflict { .. })),
-            "expected TypesConflict for mismatched field orders, got: {:?}",
-            errs
+            "expected TypesConflict for mismatched field orders, got: {errs:?}"
         );
     }
 
@@ -1115,7 +1046,7 @@ mod tests {
         ];
 
         let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
-        assert!(errs.is_empty(), "unexpected errors: {:?}", errs);
+        assert!(errs.is_empty(), "unexpected errors: {errs:?}");
 
         assert_eq!(solver.resolve_expr(e_v).unwrap().node, struct_id);
         assert_eq!(
@@ -1157,7 +1088,7 @@ mod tests {
         ];
 
         let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
-        assert!(errs.is_empty(), "unexpected errors: {:?}", errs);
+        assert!(errs.is_empty(), "unexpected errors: {errs:?}");
 
         assert_eq!(
             solver.resolve_expr(e_field).unwrap().node,
@@ -1204,7 +1135,7 @@ mod tests {
         ];
 
         let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
-        assert!(errs.is_empty(), "unexpected errors: {:?}", errs);
+        assert!(errs.is_empty(), "unexpected errors: {errs:?}");
 
         assert_eq!(solver.resolve_expr(e_a).unwrap().node, struct_id);
         assert_eq!(solver.resolve_expr(e_b).unwrap().node, struct_id);
@@ -1242,7 +1173,7 @@ mod tests {
         ];
 
         let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
-        assert!(errs.is_empty(), "unexpected errors: {:?}", errs);
+        assert!(errs.is_empty(), "unexpected errors: {errs:?}");
 
         assert_eq!(
             solver.resolve_expr(e_x2).unwrap().node,
@@ -1286,8 +1217,7 @@ mod tests {
             all_errors
                 .iter()
                 .any(|e| matches!(&e.node, Error::UnknownStructField { name } if name == "x")),
-            "expected UnknownStructField{{name:\"x\"}}, got: {:?}",
-            all_errors
+            "expected UnknownStructField{{name:\"x\"}}, got: {all_errors:?}"
         );
     }
 
@@ -1322,8 +1252,7 @@ mod tests {
             all_errors
                 .iter()
                 .any(|e| matches!(&e.node, Error::MissingStructField { name } if name == "y")),
-            "expected MissingStructField{{name:\"y\"}}, got: {:?}",
-            all_errors
+            "expected MissingStructField{{name:\"y\"}}, got: {all_errors:?}"
         );
     }
 
@@ -1362,16 +1291,15 @@ mod tests {
             all_errors
                 .iter()
                 .any(|e| matches!(e.node, Error::TypesConflict { .. })),
-            "expected TypesConflict on field x, got: {:?}",
-            all_errors
+            "expected TypesConflict on field x, got: {all_errors:?}"
         );
     }
 
     #[test]
     fn shape_mismatch_struct_vs_primitive_is_error() {
-        // HasShape(tv_v, {x: tv_x}) + InClass(tv_x, Int) + Eq(tv_v, Known(i32))
-        // A variable with a struct shape cannot unify with a primitive -> TypesConflict.
-        // tv_x must have a class constraint so it is resolvable when building the error struct.
+        // HasShape(tv_v, {x: tv_x}) + Eq(tv_v, Known(i32))
+        // A variable with a struct shape cannot unify with a primitive -> ShapeOnNonStructType.
+        // No InClass needed: the error is emitted immediately upon seeing the non-struct binding.
         let mut arena = HIRTypeArena::new();
         let i32_id = arena.get_or_insert(i32_hir());
 
@@ -1388,20 +1316,14 @@ mod tests {
                 s(TypeVar::Var(v_v)),
                 struct_shape(&[("x", TypeVar::Var(v_x))]),
             ),
-            Constraint::InClass(s(TypeVar::Var(v_x)), TyClass::Int),
             Constraint::Eq(s(TypeVar::Var(v_v)), s(TypeVar::Known(ms(i32_id)))),
         ];
 
-        let (mut solver, mut all_errors) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
-        if let Err(e) = solver.resolve_expr(e_v) {
-            all_errors.push(e);
-        }
+        let (_solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
         assert!(
-            all_errors
-                .iter()
-                .any(|e| matches!(e.node, Error::TypesConflict { .. })),
-            "expected TypesConflict for struct shape vs primitive, got: {:?}",
-            all_errors
+            errs.iter()
+                .any(|e| matches!(e.node, Error::ShapeOnNonStructType { .. })),
+            "expected ShapeOnNonStructType for struct shape vs primitive, got: {errs:?}"
         );
     }
 
@@ -1459,7 +1381,7 @@ mod tests {
         ];
 
         let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
-        assert!(errs.is_empty(), "unexpected errors: {:?}", errs);
+        assert!(errs.is_empty(), "unexpected errors: {errs:?}");
 
         assert_eq!(solver.resolve_expr(e_v).unwrap().node, outer_struct_id);
         assert_eq!(
@@ -1510,7 +1432,7 @@ mod tests {
         ];
 
         let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
-        assert!(errs.is_empty(), "unexpected errors: {:?}", errs);
+        assert!(errs.is_empty(), "unexpected errors: {errs:?}");
 
         assert_eq!(solver.resolve_expr(e_v).unwrap().node, struct_id);
         assert_eq!(
@@ -1559,7 +1481,7 @@ mod tests {
         ];
 
         let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
-        assert!(errs.is_empty(), "unexpected errors: {:?}", errs);
+        assert!(errs.is_empty(), "unexpected errors: {errs:?}");
 
         assert_eq!(
             solver.resolve_expr(e_x).unwrap().node,
@@ -1610,8 +1532,7 @@ mod tests {
             .count();
         assert_eq!(
             unknown_z_count, 1,
-            "UnknownStructField{{z}} should appear exactly once, got {} times: {:?}",
-            unknown_z_count, errs
+            "UnknownStructField{{z}} should appear exactly once, got {unknown_z_count} times: {errs:?}"
         );
     }
 
@@ -1637,13 +1558,12 @@ mod tests {
         )];
 
         let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
-        assert!(errs.is_empty(), "unexpected constraint errors: {:?}", errs);
+        assert!(errs.is_empty(), "unexpected constraint errors: {errs:?}");
 
         let result = solver.resolve_expr(e_v);
         assert!(
             result.is_err(),
-            "expected error resolving struct with unknown field type, got: {:?}",
-            result
+            "expected error resolving struct with unknown field type, got: {result:?}"
         );
     }
 
@@ -1677,7 +1597,7 @@ mod tests {
         ];
 
         let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
-        assert!(errs.is_empty(), "unexpected constraint errors: {:?}", errs);
+        assert!(errs.is_empty(), "unexpected constraint errors: {errs:?}");
 
         // Use a fresh local mapped to v_x/v_y to test resolution
         solver.local_ty.insert(local_id(10), s(TypeVar::Var(v_x)));
@@ -1726,7 +1646,7 @@ mod tests {
         ];
 
         let (mut solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
-        assert!(errs.is_empty(), "unexpected constraint errors: {:?}", errs);
+        assert!(errs.is_empty(), "unexpected constraint errors: {errs:?}");
 
         solver.local_ty.insert(local_id(10), s(TypeVar::Var(v_x)));
         let x_result = solver
@@ -1742,7 +1662,8 @@ mod tests {
     fn named_non_struct_with_shape_is_conflict() {
         // type MyId = u32
         // HasShape(tv_expr, {x: tv_x}) + Eq(tv_expr, Known(Named("MyId", Primitive(u32))))
-        // Must report TypesConflict — MyId is not a struct.
+        // Must report ShapeOnNonStructType — MyId is not a struct.
+        // No InClass or ordering workaround needed: the error is emitted immediately.
         let mut arena = HIRTypeArena::new();
         let my_id_id = arena.get_or_insert(HIRType::Named(
             "MyId".to_string(),
@@ -1770,9 +1691,8 @@ mod tests {
         let (_solver, errs) = Solver::new(constraints, expr_ty, local_ty, &mut arena);
         assert!(
             errs.iter()
-                .any(|e| matches!(&e.node, Error::TypesConflict { .. })),
-            "expected TypesConflict for Named(primitive) + HasShape, got: {:?}",
-            errs
+                .any(|e| matches!(&e.node, Error::ShapeOnNonStructType { .. })),
+            "expected ShapeOnNonStructType for Named(primitive) + HasShape, got: {errs:?}"
         );
     }
 }

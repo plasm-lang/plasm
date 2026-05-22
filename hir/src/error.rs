@@ -50,6 +50,9 @@ pub enum Error {
     CircularTypeDefinition {
         cycle: Vec<String>,
     },
+    ShapeOnNonStructType {
+        known: MaybeSpanned<HIRType>,
+    },
 }
 
 impl Display for Error {
@@ -126,6 +129,13 @@ impl Display for Error {
                     .join(", ");
                 write!(f, "Circular type definition involving types {names}")
             }
+            Error::ShapeOnNonStructType { known } => {
+                write!(
+                    f,
+                    "Expected a struct type for struct literal, but found `{}`",
+                    known.node
+                )
+            }
         }
     }
 }
@@ -154,7 +164,8 @@ impl ErrorType for Error {
             | Error::UnknownStructField { .. }
             | Error::MissingStructField { .. }
             | Error::UnknownTypeName { .. }
-            | Error::CircularTypeDefinition { .. } => TYPE_ERROR,
+            | Error::CircularTypeDefinition { .. }
+            | Error::ShapeOnNonStructType { .. } => TYPE_ERROR,
 
             Error::UnregisteredLocalId { .. } | Error::UnregisteredExprId { .. } => INTERNAL_ERROR,
         }

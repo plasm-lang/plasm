@@ -154,7 +154,7 @@ pub enum ExprKind<T> {
     FunctionCall(FunctionCall),
     Block(Block<T>),
     // Binary(Binary<T>),
-    StructLiteral(StructLiteral<T>),
+    StructLiteral(StructLiteral),
 }
 
 #[derive(Debug, Serialize)]
@@ -169,8 +169,7 @@ pub struct FunctionCall {
 // }
 
 #[derive(Debug, Serialize)]
-pub struct StructLiteral<T> {
-    pub ty: T,
+pub struct StructLiteral {
     pub fields: Vec<S<StructLiteralField>>,
 }
 

@@ -13,25 +13,17 @@ type Pos = struct {
     y: i32,
 }
 
-type A = i32
-// type A = void
+fn print_32(x: i32)
 
-// fn func() -> A {
-//     let a: A = 5
-//     return a
-// }
-
-// fn print_32(x: i32)
-
-// fn print_pos(pos: Pos) {
-//     // print_32(pos.x)
-//     // print_32(pos.y)
-// }
-
-fn get_pos() -> Pos {
-    return struct { x: 5, y: 15 }
+fn print_pos(pos: Pos) {
+    print_32(pos.x)
+    print_32(pos.y)
 }
 
-// fn main() {
-//     print_pos(get_pos())
-// }
+fn get_pos() -> Pos {
+    return { x: 5, y: 15 }
+}
+
+fn main() {
+    print_pos(get_pos())
+}

@@ -10,8 +10,8 @@ use super::ast::{
     FunctionSignature, InternalFunction, Literal, Statement, StructField, StructLiteralExpr,
     StructLiteralField, StructType, Type, TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
 };
-use super::buffered_iter::BufferedIter;
 use super::error::ParseError;
+use super::lookahead::Lookahead;
 
 // Const messages for expected tokens in error reporting
 const IDENTIFIER: &str = "identifier";
@@ -41,7 +41,7 @@ where
 type FilterFn = fn(&(Token, Span)) -> bool;
 
 pub struct ASTParser<'a, I: Iterator<Item = (Token, Span)>> {
-    iter: BufferedIter<Filter<&'a mut I, FilterFn>>,
+    iter: Lookahead<Filter<&'a mut I, FilterFn>, 3>,
     // errors: Vec<Spanned<ParseError>>,
     last_span: Span,
 }
@@ -52,7 +52,7 @@ where
 {
     pub fn new(token_iter: &'a mut I) -> Self {
         ASTParser {
-            iter: BufferedIter::new(token_iter.by_ref().filter(Self::token_filter)),
+            iter: Lookahead::new(token_iter.by_ref().filter(Self::token_filter)),
             // errors: Vec::new(),
             last_span: Span::zero(),
         }
@@ -629,17 +629,27 @@ where
                 }
 
                 Token::Bracket(Bracket::CurlyOpen) => {
-                    self.iter.start_recording();
-
-                    // Try to parse as struct literal first
-                    if let Ok(struct_lit) = self.parse_struct_literal() {
-                        self.iter.release();
-                        return Ok(struct_lit.map(Expr::StructLiteral));
-                    };
-
-                    // If struct literal parsing fails, rewind and parse as block
-                    self.iter.rewind();
-                    self.parse_block().map(|block| block.map(Expr::Block))
+                    // Lookahead to distinguish between struct literal and block
+                    match (self.iter.peek_nth(1), self.iter.peek_nth(2)) {
+                        // If we see an identifier with `:` after `{`, it's a struct literal
+                        (
+                            Some((Token::Identifier(_), _)),
+                            Some((Token::SpecialSymbol(SpecialSymbol::Colon), _)),
+                        ) => self
+                            .parse_struct_literal()
+                            .map(|spanned_struct| spanned_struct.map(Expr::StructLiteral)),
+                        // Empty `{}` should be parsed as struct literal
+                        (Some((Token::Bracket(Bracket::CurlyClose), _)), _) => {
+                            let start_span = self.take_next().unwrap().1; // consume '{'
+                            let end_span = self.take_next().unwrap().1; // consume '}'
+                            Ok(Spanned::new(
+                                Expr::StructLiteral(StructLiteralExpr { fields: Vec::new() }),
+                                start_span.join(end_span),
+                            ))
+                        }
+                        // Otherwise, it's a block
+                        _ => self.parse_block().map(|block| block.map(Expr::Block)),
+                    }
                 }
 
                 // Unary expressions
@@ -710,7 +720,7 @@ where
         &mut self,
     ) -> Result<Spanned<StructLiteralField>, Spanned<ParseError>> {
         let (field_name, field_name_span) = self.expect_ident()?;
-        self.expect(Token::SpecialSymbol(SpecialSymbol::Equals))?;
+        self.expect(Token::SpecialSymbol(SpecialSymbol::Colon))?;
         let value = self.parse_expression(0)?;
         let value_span = value.span;
         Ok(Spanned::new(
@@ -737,7 +747,10 @@ mod tests {
     fn parse_and_check_by_display(code: &str, expected_display: &str) {
         let mut token_iter = tokenize(code.char_indices());
         let (ast, errors) = ASTParser::new(&mut token_iter).parse();
-        assert!(errors.is_empty());
+        assert!(
+            errors.is_empty(),
+            "Expected no parsing errors, but got: {errors:#?}"
+        );
         assert_eq!(format!("{ast}"), expected_display);
     }
 
@@ -1124,7 +1137,7 @@ mod tests {
         parse_and_check_by_display(
             indoc! {"
                 fn get_pos() -> struct { x: i32, y: i32 } {
-                    return { x=10, y=20 }
+                    return { x: 10, y: 20 }
                 }
             "},
             indoc! {"
@@ -1133,8 +1146,8 @@ mod tests {
                     y: i32,
                 } {
                     return {
-                        x = 10,
-                        y = 20,
+                        x: 10,
+                        y: 20,
                     }
                 }
             "},
@@ -1146,7 +1159,7 @@ mod tests {
         parse_and_check_by_display(
             indoc! {"
                 fn make_pos(a: i32, b: i32) -> struct { x: i32, y: i32 } {
-                    return { x = a, y = b }
+                    return { x: a, y: b }
                 }
             "},
             indoc! {"
@@ -1155,8 +1168,8 @@ mod tests {
                     y: i32,
                 } {
                     return {
-                        x = a,
-                        y = b,
+                        x: a,
+                        y: b,
                     }
                 }
             "},
@@ -1168,7 +1181,7 @@ mod tests {
         parse_and_check_by_display(
             indoc! {"
                 fn get_transform() -> struct { pos: struct { x: i32, y: i32 } } {
-                    return { pos = { x=10, y=20 } }
+                    return { pos: { x: 10, y: 20 } }
                 }
             "},
             indoc! {"
@@ -1179,9 +1192,48 @@ mod tests {
                     },
                 } {
                     return {
-                        pos = {
-                            x = 10,
-                            y = 20,
+                        pos: {
+                            x: 10,
+                            y: 20,
+                        },
+                    }
+                }
+            "},
+        );
+
+        parse_and_check_by_display(
+            indoc! {"
+                fn main() {
+                    let x = {
+                        nested: {
+                            block: {
+                                return {
+                                    x: 10,
+                                    block: {
+                                        return {
+                                            y: 20,
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            "},
+            indoc! {"
+                fn main() {
+                    let x = {
+                        nested: {
+                            block: {
+                                return {
+                                    x: 10,
+                                    block: {
+                                        return {
+                                            y: 20,
+                                        }
+                                    },
+                                }
+                            },
                         },
                     }
                 }

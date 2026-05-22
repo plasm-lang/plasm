@@ -243,7 +243,7 @@ impl<'a> Display for Indent<'a, CallArgument> {
         if let Some(name) = &self.node.name {
             write!(
                 f,
-                "{}={}",
+                "{}: {}",
                 name,
                 Indent::new(&self.node.value.node).with_indent(self.indent)
             )
@@ -305,7 +305,7 @@ impl<'a> Display for Indent<'a, StructLiteralField> {
         write_indent(f, self.indent)?;
         write!(
             f,
-            "{} = {},",
+            "{}: {},",
             &self.node.name,
             Indent::new(&self.node.value.node).with_indent(self.indent)
         )

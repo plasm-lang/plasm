@@ -534,7 +534,7 @@ impl ASTTranslator {
                     };
                     fields.push(S::new(field, field_span));
                 }
-                let struct_lit = StructLiteral { ty: None, fields };
+                let struct_lit = StructLiteral { fields };
                 let hir_expr = Expr::<OT> {
                     ty: None,
                     kind: ExprKind::StructLiteral(struct_lit),
@@ -762,7 +762,7 @@ mod tests {
     fn inline_struct_type_inference_test() {
         let code = indoc! {"
             fn main() {
-                let a = { pos = { x = 1, y = 2 } }
+                let a = { pos: { x: 1, y: 2 } }
                 let b = a
             }
         "};
@@ -774,9 +774,9 @@ mod tests {
                         y: i32,
                     },
                 } = {
-                    pos = {
-                        x = 1,
-                        y = 2,
+                    pos: {
+                        x: 1,
+                        y: 2,
                     },
                 }
                 let b: struct {
@@ -816,7 +816,7 @@ mod tests {
                 y: i32,
             }
             fn get_pos() -> Pos {
-                let pos = { x = 5, y = 15 }
+                let pos = { x: 5, y: 15 }
                 return pos
             }
         "};
