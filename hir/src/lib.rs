@@ -2,7 +2,7 @@ mod ast_translator;
 mod error;
 mod hir;
 mod hir_display;
-mod type_annotator;
+mod type_inference;
 mod types;
 
 pub use ast::Literal;

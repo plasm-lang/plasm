@@ -5,7 +5,7 @@ use strum_macros::IntoStaticStr;
 use diagnostic::{ErrorType, MaybeSpanned, Spanned};
 use utils::ids::{ExprId, LocalId};
 
-use super::type_annotator::TyClass;
+use super::type_inference::TypeClass;
 use super::types::HIRType;
 
 #[derive(Debug, IntoStaticStr)]
@@ -29,14 +29,16 @@ pub enum Error {
         second: MaybeSpanned<HIRType>,
     },
     AmbiguousClass {
-        possible_classes: Vec<TyClass>,
+        possible_classes: Vec<TypeClass>,
     },
     CantResolveType,
     UnknownStructField {
-        name: String,
+        struct_name: String,
+        field_name: String,
     },
     MissingStructField {
-        name: String,
+        struct_name: String,
+        field_name: String,
     },
     UnregisteredLocalId {
         id: LocalId,
@@ -100,11 +102,20 @@ impl Display for Error {
             Error::CantResolveType => {
                 write!(f, "Cannot resolve type")
             }
-            Error::UnknownStructField { name } => {
-                write!(f, "Unknown struct field `{name}`")
+            Error::UnknownStructField {
+                struct_name,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "Struct `{struct_name}` doesn't have field `{field_name}`"
+                )
             }
-            Error::MissingStructField { name } => {
-                write!(f, "Missing struct field `{name}`")
+            Error::MissingStructField {
+                struct_name,
+                field_name,
+            } => {
+                write!(f, "Missing struct field `{field_name}` for `{struct_name}`")
             }
             Error::UnregisteredLocalId { id } => {
                 write!(
@@ -167,7 +178,9 @@ impl ErrorType for Error {
             | Error::CircularTypeDefinition { .. }
             | Error::ShapeOnNonStructType { .. } => TYPE_ERROR,
 
-            Error::UnregisteredLocalId { .. } | Error::UnregisteredExprId { .. } => INTERNAL_ERROR,
+            Error::UnregisteredLocalId { .. } | Error::UnregisteredExprId { .. } => {
+                INTERNAL_ERROR
+            }
         }
     }
 

@@ -76,9 +76,9 @@ impl MIRTypeArena {
     }
 
     pub fn iter_named_types(&self) -> impl Iterator<Item = (&str, &MIRType)> {
-        self.named_type_defs
-            .iter()
-            .map(|(name, type_id)| (name.as_str(), self.types.get_by_left(type_id).unwrap()))
+        self.named_type_defs.iter().map(|(name, type_id)| {
+            (name.as_str(), self.types.get_by_left(type_id).unwrap())
+        })
     }
 }
 

@@ -82,7 +82,7 @@ pub type Block = Vec<S<Statement>>;
 pub enum Statement {
     VariableDeclaration(VariableDeclaration),
     Expr(Expr),
-    // Assignment,
+    // Assignment(Place, Expr),
     Return(Option<S<Expr>>),
 }
 
@@ -104,6 +104,7 @@ pub enum Expr {
     Unary(UnaryExpr),
     Binary(BinaryExpr),
     StructLiteral(StructLiteralExpr),
+    FieldAccess(FieldAccess),
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -182,7 +183,7 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn from_str(identifier: &str) -> Self {
+    pub fn from_ident(identifier: &str) -> Self {
         if let Ok(ty) = PrimitiveType::from_str(identifier) {
             return Self::Primitive(ty);
         }
@@ -201,3 +202,17 @@ pub struct StructField {
     pub name: S<String>,
     pub ty: S<Type>,
 }
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct FieldAccess {
+    pub base: Box<S<Expr>>,
+    pub field_name: S<String>,
+}
+
+// `Place` and `FieldAccess` are similar, but `Place` is for assignment target,
+// `FieldAccess` is for expression. It's not unified to avoid expression assignment
+// like `some_Func() = 5` or `"string1" = "string2"`.
+// pub enum Place {
+//     Variable(S<String>),
+//     Field(Box<Place>, S<String>),
+// }

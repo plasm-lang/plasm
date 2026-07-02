@@ -31,7 +31,11 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
         &self.lines_table
     }
 
-    fn lex_whitespace_from(&mut self, start_i: usize, first_ch: char) -> Option<(Token, Span)> {
+    fn lex_whitespace_from(
+        &mut self,
+        start_i: usize,
+        first_ch: char,
+    ) -> Option<(Token, Span)> {
         self.accumulated.clear();
         self.accumulated.push(first_ch);
         let mut end_i = start_i + first_ch.len_utf8();
@@ -52,7 +56,11 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
         Some((Token::Whitespace(whitespace_len), span))
     }
 
-    fn lex_number_from(&mut self, start_i: usize, first_ch: char) -> Option<(Token, Span)> {
+    fn lex_number_from(
+        &mut self,
+        start_i: usize,
+        first_ch: char,
+    ) -> Option<(Token, Span)> {
         self.accumulated.clear();
         self.accumulated.push(first_ch);
         let mut end_i = start_i + first_ch.len_utf8();
@@ -76,7 +84,11 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
         Some((Token::Number(number), span))
     }
 
-    fn lex_alphanumeric_from(&mut self, start_i: usize, first_ch: char) -> Option<(Token, Span)> {
+    fn lex_alphanumeric_from(
+        &mut self,
+        start_i: usize,
+        first_ch: char,
+    ) -> Option<(Token, Span)> {
         self.accumulated.clear();
         self.accumulated.push(first_ch);
         let mut end_i = start_i + first_ch.len_utf8();
@@ -139,7 +151,10 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
                 let span = Span::new(start_i, i);
                 let comment_text = take(&mut self.accumulated);
                 self.state = State::Default;
-                return Some((Token::Comment(Comment::MultiLine(comment_text)), span));
+                return Some((
+                    Token::Comment(Comment::MultiLine(comment_text)),
+                    span,
+                ));
             } else {
                 if ch == '\n' {
                     self.lines_table.add_line(i + ch.len_utf8());
@@ -327,8 +342,14 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
                 Token::SpecialSymbol(SpecialSymbol::Tilde),
                 Span::new(i, i + ch.len_utf8()),
             )),
+            '.' => Some((
+                Token::SpecialSymbol(SpecialSymbol::Dot),
+                Span::new(i, i + ch.len_utf8()),
+            )),
 
-            ch if ch.is_alphanumeric() || ch == '_' => self.lex_alphanumeric_from(i, ch),
+            ch if ch.is_alphanumeric() || ch == '_' => {
+                self.lex_alphanumeric_from(i, ch)
+            }
             ch => Some((
                 Token::Impossible(ch.to_string()),
                 Span::new(i, i + ch.len_utf8()),
@@ -374,10 +395,14 @@ mod tests {
             .collect::<Vec<_>>();
 
         let expected = [
-            Token::Comment(Comment::SingleLine(" Basic inline comment 1".to_string())),
+            Token::Comment(Comment::SingleLine(
+                " Basic inline comment 1".to_string(),
+            )),
             Token::NewLine,
             Token::NewLine,
-            Token::Comment(Comment::MultiLine(" Multiline\ncomment 0123\n".to_string())),
+            Token::Comment(Comment::MultiLine(
+                " Multiline\ncomment 0123\n".to_string(),
+            )),
             Token::NewLine,
             Token::Keyword(Keyword::Fn),
             Token::Whitespace(1),
@@ -426,7 +451,9 @@ mod tests {
                     Keyword::Struct => assert_eq!(str_by_span, "struct"),
                 },
                 Token::Identifier(id) => assert_eq!(id, str_by_span),
-                Token::Number(number) => assert_eq!(number.raw_value(), str_by_span),
+                Token::Number(number) => {
+                    assert_eq!(number.raw_value(), str_by_span)
+                }
                 Token::SpecialSymbol(special_symbol) => match special_symbol {
                     SpecialSymbol::Colon => assert_eq!(str_by_span, ":"),
                     SpecialSymbol::Equals => assert_eq!(str_by_span, "="),
@@ -443,16 +470,33 @@ mod tests {
                     SpecialSymbol::Ampersand => assert_eq!(str_by_span, "&"),
                     SpecialSymbol::Pipe => assert_eq!(str_by_span, "|"),
                     SpecialSymbol::Caret => assert_eq!(str_by_span, "^"),
-                    SpecialSymbol::DoubleAsterisk => assert_eq!(str_by_span, "**"),
-                    SpecialSymbol::DoubleAmpersand => assert_eq!(str_by_span, "&&"),
+                    SpecialSymbol::DoubleAsterisk => {
+                        assert_eq!(str_by_span, "**")
+                    }
+                    SpecialSymbol::DoubleAmpersand => {
+                        assert_eq!(str_by_span, "&&")
+                    }
                     SpecialSymbol::DoublePipe => assert_eq!(str_by_span, "||"),
-                    SpecialSymbol::DoubleEquals => assert_eq!(str_by_span, "=="),
-                    SpecialSymbol::ExclamationEquals => assert_eq!(str_by_span, "!="),
-                    SpecialSymbol::GreaterThanEquals => assert_eq!(str_by_span, ">="),
-                    SpecialSymbol::LessThanEquals => assert_eq!(str_by_span, "<="),
-                    SpecialSymbol::DoubleLessThan => assert_eq!(str_by_span, "<<"),
-                    SpecialSymbol::DoubleGreaterThan => assert_eq!(str_by_span, ">>"),
+                    SpecialSymbol::DoubleEquals => {
+                        assert_eq!(str_by_span, "==")
+                    }
+                    SpecialSymbol::ExclamationEquals => {
+                        assert_eq!(str_by_span, "!=")
+                    }
+                    SpecialSymbol::GreaterThanEquals => {
+                        assert_eq!(str_by_span, ">=")
+                    }
+                    SpecialSymbol::LessThanEquals => {
+                        assert_eq!(str_by_span, "<=")
+                    }
+                    SpecialSymbol::DoubleLessThan => {
+                        assert_eq!(str_by_span, "<<")
+                    }
+                    SpecialSymbol::DoubleGreaterThan => {
+                        assert_eq!(str_by_span, ">>")
+                    }
                     SpecialSymbol::Tilde => assert_eq!(str_by_span, "~"),
+                    SpecialSymbol::Dot => assert_eq!(str_by_span, "."),
                 },
                 Token::Bracket(bracket) => match bracket {
                     Bracket::RoundOpen => assert_eq!(str_by_span, "("),
@@ -462,11 +506,17 @@ mod tests {
                     Bracket::CurlyOpen => assert_eq!(str_by_span, "{"),
                     Bracket::CurlyClose => assert_eq!(str_by_span, "}"),
                 },
-                Token::Whitespace(amount) => assert_eq!(str_by_span.len(), amount),
-                Token::Comment(comment) => assert_eq!(comment.raw_value(), str_by_span),
+                Token::Whitespace(amount) => {
+                    assert_eq!(str_by_span.len(), amount)
+                }
+                Token::Comment(comment) => {
+                    assert_eq!(comment.raw_value(), str_by_span)
+                }
                 Token::NewLine => assert_eq!(str_by_span, "\n"),
                 Token::Impossible(value) => {
-                    unreachable!("Impossible token ({value:?}) during test is impossible!")
+                    unreachable!(
+                        "Impossible token ({value:?}) during test is impossible!"
+                    )
                 }
             }
         }

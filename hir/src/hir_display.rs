@@ -4,8 +4,9 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use utils::ids::{ExprId, FuncId, LocalId};
 
 use super::hir::{
-    Block, Expr, ExprArena, ExprKind, ExternalFunction, Function, FunctionCall, FunctionSignature,
-    InternalFunction, Item, Statement, THIR, TypeDefinition, Typed,
+    Block, Expr, ExprArena, ExprKind, ExternalFunction, Function, FunctionCall,
+    FunctionSignature, InternalFunction, Item, Statement, THIR, TypeDefinition,
+    Typed,
 };
 use super::types::{HIRType, HIRTypeArena, StructType};
 
@@ -58,7 +59,10 @@ impl Display for THIR {
     }
 }
 
-fn format_type_definition(def: &TypeDefinition, type_arena: &HIRTypeArena) -> String {
+fn format_type_definition(
+    def: &TypeDefinition,
+    type_arena: &HIRTypeArena,
+) -> String {
     let ty = type_arena.get_by_id(def.ty.node).unwrap();
     format!("type {} = {}\n", def.name.node, format_hir_type(ty))
 }
@@ -82,8 +86,12 @@ fn format_function(
     type_arena: &HIRTypeArena,
 ) -> String {
     match func {
-        Function::Internal(internal) => format_internal_function(internal, func_names, type_arena),
-        Function::External(external) => format_external_function(external, type_arena),
+        Function::Internal(internal) => {
+            format_internal_function(internal, func_names, type_arena)
+        }
+        Function::External(external) => {
+            format_external_function(external, type_arena)
+        }
     }
 }
 
@@ -133,7 +141,10 @@ fn format_internal_function(
     out
 }
 
-fn format_external_function(func: &ExternalFunction, type_arena: &HIRTypeArena) -> String {
+fn format_external_function(
+    func: &ExternalFunction,
+    type_arena: &HIRTypeArena,
+) -> String {
     let mut out = format_function_signature(&func.signature, type_arena);
     out.push('\n');
     out
@@ -148,7 +159,10 @@ fn indent(n: usize) -> String {
     s
 }
 
-fn format_function_signature(signature: &FunctionSignature, type_arena: &HIRTypeArena) -> String {
+fn format_function_signature(
+    signature: &FunctionSignature,
+    type_arena: &HIRTypeArena,
+) -> String {
     let mut out = String::new();
     out.push_str("fn ");
     out.push_str(&signature.name.node);
@@ -244,6 +258,11 @@ fn format_expr(e: &Expr<Typed>, ctx: &FnCtx<Typed>, lvl: usize) -> String {
             out.push_str(&indent(lvl));
             out.push('}');
             out
+        }
+        ExprKind::FieldAccess(access) => {
+            let struct_expr = format_expr_id(&access.base, ctx, lvl);
+            let field_name = &access.field_name.node;
+            format!("{struct_expr}.{field_name}")
         }
     }
 }

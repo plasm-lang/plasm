@@ -128,6 +128,7 @@ impl<'a> FunctionAnnotator<'a> {
                 ExprKind::Literal(lit) => ExprKind::Literal(lit),
                 ExprKind::Local(lid) => ExprKind::Local(lid),
                 ExprKind::FunctionCall(func_call) => ExprKind::FunctionCall(func_call),
+                ExprKind::FieldAccess(field_access) => ExprKind::FieldAccess(field_access),
             };
             out_exprs.insert(expr_id, S::new(Expr { kind, ty }, span));
         }

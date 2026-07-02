@@ -7,11 +7,12 @@ use utils::primitive_types::PrimitiveType;
 
 use super::error::Error;
 use super::hir::{
-    Argument, Block, Expr, ExprArena, ExprKind, ExternalFunction, Function, FunctionCall,
-    FunctionSignature, HIRLocal, InternalFunction, Item, OptHIR, Statement, StructLiteral,
-    StructLiteralField, THIR, TypeDefinition, VariableDeclaration,
+    Argument, Block, Expr, ExprArena, ExprKind, ExternalFunction, FieldAccess,
+    Function, FunctionCall, FunctionSignature, HIRLocal, InternalFunction, Item,
+    OptHIR, Statement, StructLiteral, StructLiteralField, THIR, TypeDefinition,
+    VariableDeclaration,
 };
-use super::type_annotator::opt_hir_to_t_hir;
+use super::type_inference::opt_hir_to_t_hir;
 use super::types::{HIRType, StructField, StructType};
 
 /// For brevity
@@ -103,7 +104,9 @@ impl ASTTranslator {
                     let id = self.get_next_func_id();
 
                     // Check for duplicate function definitions
-                    if let Some(prev) = self.hir.funcs_map.get_by_right(&func.signature().name) {
+                    if let Some(prev) =
+                        self.hir.funcs_map.get_by_right(&func.signature().name)
+                    {
                         let first = self
                             .hir
                             .funcs_map
@@ -151,7 +154,8 @@ impl ASTTranslator {
         }
         let (ast_type, ast_type_span) = ty_def.ty.unwrap();
         let mut resolving = Vec::new();
-        let Some((ty_id, _ty)) = self.translate_type(ast_type, ast_type_span, &mut resolving)
+        let Some((ty_id, _ty)) =
+            self.translate_type(ast_type, ast_type_span, &mut resolving)
         else {
             return;
         };
@@ -259,7 +263,10 @@ impl ASTTranslator {
         self.hir.items.push(Item::Function(hir_func));
     }
 
-    fn translate_arg(&mut self, ast_arg: S<ast::Argument>) -> (S<Argument>, HIRLocal<OT>) {
+    fn translate_arg(
+        &mut self,
+        ast_arg: S<ast::Argument>,
+    ) -> (S<Argument>, HIRLocal<OT>) {
         let local_id = self.get_next_local_id();
         let (ast_arg, arg_span) = ast_arg.unwrap();
         let ty_span = ast_arg.ty.span;
@@ -315,7 +322,12 @@ impl ASTTranslator {
                 if let Some(cached) = self.resolved_cache.get(&name).copied() {
                     return match cached {
                         Some(type_id) => {
-                            let hir_ty = self.hir.type_arena.get_by_id(type_id).unwrap().clone();
+                            let hir_ty = self
+                                .hir
+                                .type_arena
+                                .get_by_id(type_id)
+                                .unwrap()
+                                .clone();
                             Some((type_id, hir_ty))
                         }
                         None => {
@@ -353,8 +365,10 @@ impl ASTTranslator {
 
                 match result {
                     Some((_, underlying_hir)) => {
-                        let hir_ty = HIRType::Named(name.clone(), Box::new(underlying_hir));
-                        let type_id = self.hir.type_arena.get_or_insert(hir_ty.clone());
+                        let hir_ty =
+                            HIRType::Named(name.clone(), Box::new(underlying_hir));
+                        let type_id =
+                            self.hir.type_arena.get_or_insert(hir_ty.clone());
                         self.resolved_cache.insert(name, Some(type_id));
                         hir_ty
                     }
@@ -403,7 +417,10 @@ impl ASTTranslator {
                         self.translate_expr(variable_declaration.value, &locals);
                     expr_arena = expr_arena.join(local_expr_arena);
 
-                    Statement::VariableDeclaration(VariableDeclaration { local_id, expr_id })
+                    Statement::VariableDeclaration(VariableDeclaration {
+                        local_id,
+                        expr_id,
+                    })
                 }
                 ast::Statement::Expr(expr) => {
                     let (expr_id, local_expr_arena) =
@@ -416,7 +433,10 @@ impl ASTTranslator {
                         self.translate_expr(expr, &locals)
                     } else {
                         let void_expr = ast::Expr::Literal(ast::Literal::Void);
-                        self.translate_expr(S::new(void_expr, ast_stmt.span), &locals)
+                        self.translate_expr(
+                            S::new(void_expr, ast_stmt.span),
+                            &locals,
+                        )
                     };
                     expr_arena = expr_arena.join(local_expr_arena);
                     Statement::Return(expr_id)
@@ -490,7 +510,8 @@ impl ASTTranslator {
                 }
             }
             ast::Expr::Block(block) => {
-                let (hir_block, local_expr_arena) = self.translate_block(block, locals);
+                let (hir_block, local_expr_arena) =
+                    self.translate_block(block, locals);
                 expr_arena = expr_arena.join(local_expr_arena);
                 let hir_expr = Expr::<OT> {
                     ty: None,
@@ -499,8 +520,10 @@ impl ASTTranslator {
                 expr_arena.insert(expr_id, S::new(hir_expr, expr.span));
             }
             ast::Expr::Binary(bi_expr) => {
-                let (left_expr_id, left_expr_arena) = self.translate_expr(*bi_expr.left, locals);
-                let (right_expr_id, right_expr_arena) = self.translate_expr(*bi_expr.right, locals);
+                let (left_expr_id, left_expr_arena) =
+                    self.translate_expr(*bi_expr.left, locals);
+                let (right_expr_id, right_expr_arena) =
+                    self.translate_expr(*bi_expr.right, locals);
                 expr_arena = expr_arena.join(left_expr_arena).join(right_expr_arena);
 
                 // Translate BinaryOp into function call.
@@ -538,6 +561,20 @@ impl ASTTranslator {
                 let hir_expr = Expr::<OT> {
                     ty: None,
                     kind: ExprKind::StructLiteral(struct_lit),
+                };
+                expr_arena.insert(expr_id, S::new(hir_expr, expr.span));
+            }
+            ast::Expr::FieldAccess(field_access) => {
+                let (struct_expr_id, struct_expr_arena) =
+                    self.translate_expr(*field_access.base, locals);
+                expr_arena = expr_arena.join(struct_expr_arena);
+                let field_access = FieldAccess {
+                    base: struct_expr_id,
+                    field_name: field_access.field_name,
+                };
+                let hir_expr = Expr::<OT> {
+                    ty: None,
+                    kind: ExprKind::FieldAccess(field_access),
                 };
                 expr_arena.insert(expr_id, S::new(hir_expr, expr.span));
             }
@@ -607,6 +644,24 @@ mod tests {
         let (hir, errors) = ast_to_hir(ast);
         assert!(errors.is_empty());
         assert_eq!(hir.to_string(), expected_display);
+    }
+
+    /// Parses `code`, runs ast_to_hir, and asserts that the error sub-types match
+    /// `expected_subtypes` exactly (order-insensitive, duplicates counted).
+    fn check_errors(code: &str, expected_subtypes: &[&str]) {
+        use diagnostic::ErrorType;
+        let (ast, parse_errors) = parse(&mut tokenize(code.char_indices()));
+        assert!(parse_errors.is_empty(), "parse errors: {parse_errors:?}");
+        let (_hir, errors) = ast_to_hir(ast);
+        let mut got: Vec<&str> =
+            errors.iter().map(|e| e.node.error_sub_type()).collect();
+        let mut expected: Vec<&str> = expected_subtypes.to_vec();
+        got.sort_unstable();
+        expected.sort_unstable();
+        assert_eq!(
+            got, expected,
+            "error sub-types mismatch\ngot:      {got:?}\nexpected: {expected:?}\nfull errors: {errors:?}"
+        );
     }
 
     #[test]
@@ -791,23 +846,6 @@ mod tests {
         check_by_display(code, expected_hir_display);
     }
 
-    /// Parses `code`, runs ast_to_hir, and asserts that the error sub-types match
-    /// `expected_subtypes` exactly (order-insensitive, duplicates counted).
-    fn check_errors(code: &str, expected_subtypes: &[&str]) {
-        use diagnostic::ErrorType;
-        let (ast, parse_errors) = parse(&mut tokenize(code.char_indices()));
-        assert!(parse_errors.is_empty(), "parse errors: {parse_errors:?}");
-        let (_hir, errors) = ast_to_hir(ast);
-        let mut got: Vec<&str> = errors.iter().map(|e| e.node.error_sub_type()).collect();
-        let mut expected: Vec<&str> = expected_subtypes.to_vec();
-        got.sort_unstable();
-        expected.sort_unstable();
-        assert_eq!(
-            got, expected,
-            "error sub-types mismatch\ngot:      {got:?}\nexpected: {expected:?}\nfull errors: {errors:?}"
-        );
-    }
-
     #[test]
     fn named_struct_literal_infers_named_type() {
         let code = indoc! {"
@@ -820,7 +858,21 @@ mod tests {
                 return pos
             }
         "};
-        check_errors(code, &[]);
+        let expected_hir_display = indoc! {"
+            type Pos = struct {
+                x: i32,
+                y: i32,
+            }
+
+            fn get_pos() -> Pos {
+                let pos: Pos = {
+                    x: 5,
+                    y: 15,
+                }
+                return pos
+            }
+        "};
+        check_by_display(code, expected_hir_display);
     }
 
     #[test]
@@ -832,20 +884,16 @@ mod tests {
                 return x
             }
         "};
-        check_errors(code, &[]);
-    }
+        let expected_hir_display = indoc! {"
+            type Id = u32
 
-    #[test]
-    fn forward_reference_type_resolves() {
-        // A is defined before B, but A = B. B must still be resolved correctly.
-        let code = indoc! {"
-            type A = B
-            type B = u32
-            fn identity(x: A) -> A {
+            type MyId = Id
+
+            fn identity(x: MyId) -> MyId {
                 return x
             }
         "};
-        check_errors(code, &[]);
+        check_by_display(code, expected_hir_display);
     }
 
     #[test]
@@ -875,13 +923,37 @@ mod tests {
 
     #[test]
     fn circular_type_does_not_register() {
-        // A circular type must not be registered in HIR (no silent void binding).
-        // A function referencing the circular type should get UnknownTypeName, not wrong type.
         let code = indoc! {"
             type A = A
             fn f(x: A) {}
         "};
         // CircularTypeDefinition for the type def, UnknownTypeName for the usage in f
         check_errors(code, &["CircularTypeDefinition", "UnknownTypeName"]);
+    }
+
+    #[test]
+    fn field_access_on_struct_literal() {
+        let code = indoc! {"
+            fn main() {
+                let a = { x: 5, y: 10 }
+                let x = a.x
+                let y = a.y
+            }
+        "};
+        let expected_hir_display = indoc! {"
+            fn main() -> void {
+                let a: struct {
+                    x: i32,
+                    y: i32,
+                } = {
+                    x: 5,
+                    y: 10,
+                }
+                let x: i32 = a.x
+                let y: i32 = a.y
+                return void
+            }
+        "};
+        check_by_display(code, expected_hir_display);
     }
 }

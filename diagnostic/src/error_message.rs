@@ -12,7 +12,11 @@ pub struct ErrorMessage<E: std::error::Error + Display> {
 }
 
 impl<E: std::error::Error + Display + ErrorType> ErrorMessage<E> {
-    pub fn new(error: Spanned<E>, lines_table: LinesTable, file_path: PathBuf) -> Self {
+    pub fn new(
+        error: Spanned<E>,
+        lines_table: LinesTable,
+        file_path: PathBuf,
+    ) -> Self {
         Self {
             error,
             lines_table,
@@ -20,7 +24,10 @@ impl<E: std::error::Error + Display + ErrorType> ErrorMessage<E> {
         }
     }
 
-    pub fn extract_code_snippet(&self, lines_before: usize) -> std::io::Result<(String, usize)> {
+    pub fn extract_code_snippet(
+        &self,
+        lines_before: usize,
+    ) -> std::io::Result<(String, usize)> {
         let mut file = std::fs::File::open(&self.file_path)?;
 
         let err_line = self.lines_table.line(self.error.span.start);

@@ -155,6 +155,7 @@ pub enum ExprKind<T> {
     Block(Block<T>),
     // Binary(Binary<T>),
     StructLiteral(StructLiteral),
+    FieldAccess(FieldAccess),
 }
 
 #[derive(Debug, Serialize)]
@@ -177,4 +178,10 @@ pub struct StructLiteral {
 pub struct StructLiteralField {
     pub name: S<String>,
     pub value: ExprId,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FieldAccess {
+    pub base: ExprId,
+    pub field_name: S<String>,
 }

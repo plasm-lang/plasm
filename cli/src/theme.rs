@@ -41,7 +41,8 @@ impl Theme {
         keyword: Style::new().fg_color(Some(Color::Rgb(RgbColor(166, 99, 114)))),
         bracket: Style::new().fg_color(Some(Color::Rgb(RgbColor(230, 235, 106)))),
         literal: Style::new().fg_color(Some(Color::Rgb(RgbColor(93, 133, 140)))),
-        built_in_type: Style::new().fg_color(Some(Color::Rgb(RgbColor(166, 99, 114)))),
+        built_in_type: Style::new()
+            .fg_color(Some(Color::Rgb(RgbColor(166, 99, 114)))),
         comment: Style::new()
             .fg_color(Some(Color::Rgb(RgbColor(50, 36, 77))))
             .italic(),
@@ -61,7 +62,8 @@ impl Theme {
         keyword: Style::new().fg_color(Some(Color::Rgb(RgbColor(139, 233, 253)))),
         bracket: Style::new().fg_color(Some(Color::Rgb(RgbColor(255, 184, 108)))),
         literal: Style::new().fg_color(Some(Color::Rgb(RgbColor(189, 147, 249)))),
-        built_in_type: Style::new().fg_color(Some(Color::Rgb(RgbColor(139, 233, 253)))),
+        built_in_type: Style::new()
+            .fg_color(Some(Color::Rgb(RgbColor(139, 233, 253)))),
         comment: Style::new()
             .fg_color(Some(Color::Rgb(RgbColor(68, 71, 90))))
             .italic(),

@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use clap::{
-    Args, CommandFactory, Error, Parser, Subcommand, ValueEnum, ValueHint, error::ErrorKind,
+    Args, CommandFactory, Error, Parser, Subcommand, ValueEnum, ValueHint,
+    error::ErrorKind,
 };
 
 mod emit;
@@ -112,9 +113,12 @@ fn main() {
                         .with_cmd(&Cli::command())
                         .exit();
                 } else {
-                    Error::raw(ErrorKind::Io, format!("Can't find {CONFIG_FILE_NAME}\n"))
-                        .with_cmd(&Cli::command())
-                        .exit();
+                    Error::raw(
+                        ErrorKind::Io,
+                        format!("Can't find {CONFIG_FILE_NAME}\n"),
+                    )
+                    .with_cmd(&Cli::command())
+                    .exit();
                 }
             };
             emit(root, ty, args.format, args.stage, args.ansi);

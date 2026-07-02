@@ -12,7 +12,13 @@ use tokenizer::{CharIndicesIter, tokenize};
 use super::printer::Printer;
 use crate::{EnableAsni, Format, PathType, Stage};
 
-pub fn emit(path: PathBuf, ty: PathType, format: Format, stage: Stage, ansi: EnableAsni) {
+pub fn emit(
+    path: PathBuf,
+    ty: PathType,
+    format: Format,
+    stage: Stage,
+    ansi: EnableAsni,
+) {
     let mut printer = Printer::new(ansi);
 
     match ty {
@@ -87,7 +93,10 @@ pub fn emit(path: PathBuf, ty: PathType, format: Format, stage: Stage, ansi: Ena
     }
 }
 
-fn print_data<T: ?Sized + std::fmt::Display + serde::Serialize>(data: &T, fmt: Format) {
+fn print_data<T: ?Sized + std::fmt::Display + serde::Serialize>(
+    data: &T,
+    fmt: Format,
+) {
     let string = match fmt {
         Format::Json => serde_json::to_string_pretty(data).unwrap(),
         Format::Text => data.to_string(),
@@ -110,7 +119,8 @@ fn print_errors<E>(
         }
         Format::Text => {
             for error in errors {
-                let error_message = ErrorMessage::new(error, lines_table.clone(), path.clone());
+                let error_message =
+                    ErrorMessage::new(error, lines_table.clone(), path.clone());
                 if printer.error(error_message).is_err() {
                     eprintln!("Failed to read {}", path.display());
                     continue;

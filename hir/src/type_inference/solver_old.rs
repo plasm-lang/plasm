@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use diagnostic::{MaybeSpanned, Span, Spanned};
 use utils::ids::{ExprId, HIRTypeId, LocalId, TypeVarId};
 
-use super::type_var::{Constraint, Shape, TyClass, TypeVar};
+use super::type_var::{Constraint, Shape, TyClass, TypeVar, Attribute};
 use crate::error::Error;
 use crate::types::{HIRType, HIRTypeArena, StructField, StructType};
 
@@ -54,6 +54,8 @@ pub struct Solver<'a> {
     /// `union`, their shapes are merged by `merge_shapes` before reconciliation.
     shapes: HashMap<TypeVarId, S<Shape>>,
 
+    attributes: HashMap<TypeVarId, Vec<Attribute>>,
+
     expr_ty: HashMap<ExprId, S<TypeVar>>,
     local_ty: HashMap<LocalId, S<TypeVar>>,
 }
@@ -82,6 +84,7 @@ impl<'a> Solver<'a> {
             binding: HashMap::new(),
             classes: HashMap::new(),
             shapes: HashMap::new(),
+            attributes: HashMap::new(),
             expr_ty,
             local_ty,
         };
@@ -103,6 +106,9 @@ impl<'a> Solver<'a> {
                         let errs = solver.has_shape(type_var_id, S::new(shape, type_var.span));
                         errors.extend(errs.into_iter().map(|e| S::new(e, type_var.span)));
                     }
+                }
+                Constraint::HasAttribute(type_var, attribute) => {
+                    todo!()
                 }
             }
         }

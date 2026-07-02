@@ -10,7 +10,7 @@ use crate::hir::{
 use crate::types::HIRTypeArena;
 
 use super::solver::Solver;
-use super::type_var::{Constraint, Shape, TyClass, TypeVar};
+use super::type_var::{Attribute, Constraint, Shape, TyClass, TypeVar};
 
 // For brevity
 type OT = Option<S<HIRTypeId>>;
@@ -180,6 +180,15 @@ impl<'a> FunctionCtx<'a> {
                         .collect::<Vec<_>>();
                     let shape = Shape::Struct(fields);
                     constraints.push(Constraint::HasShape(expr_type_var, shape));
+                }
+                ExprKind::FieldAccess(field_access) => {
+                    let base_ty_var = self.ty_of_expr(&field_access.base).clone();
+                    let field_name = field_access.field_name.clone();
+                    let attribute = Attribute::Field {
+                        name: field_name,
+                        ty: expr_type_var,
+                    };
+                    constraints.push(Constraint::HasAttribute(base_ty_var, attribute));
                 }
             }
         }

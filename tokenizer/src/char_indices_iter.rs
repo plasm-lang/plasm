@@ -25,7 +25,12 @@ impl<R: BufRead> CharIndicesIter<R> {
     }
 
     #[inline]
-    fn read_more(&mut self, buf: &mut [u8], have: usize, need: usize) -> Result<bool> {
+    fn read_more(
+        &mut self,
+        buf: &mut [u8],
+        have: usize,
+        need: usize,
+    ) -> Result<bool> {
         debug_assert!(need <= 3);
         let mut filled = 0usize;
         while filled < need {

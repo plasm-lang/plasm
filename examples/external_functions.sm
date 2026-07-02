@@ -7,11 +7,11 @@ fn sum(x1: i32, x2: i32) -> i32
 fn print_u8(x: u8) -> void
 
 fn print_i32(x: i32)
-// `void` is not nessesary
+// `void` is not necessary
 
 fn main() {
     let x = 42
     let y = sum(x, 15)
     print_i32(y)
-    print_u8(255) 
+    print_u8(255)
 }

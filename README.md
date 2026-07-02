@@ -173,7 +173,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>func(arg2=var2, arg1=var2)</code></td>
+      <td><code>func(arg2: var2, arg1: var1)</code></td>
     </tr>
     <tr>
       <th>Global Variables</th>
@@ -272,7 +272,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <th>Named Typing</th>
       <td>✅</td>
       <td>✅</td>
-      <td>⬜</td>
+      <td>✅</td>
       <td>⬜</td>
       <td>⬜</td>
       <td><code>type MyType = struct {...}</code></td>
