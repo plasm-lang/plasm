@@ -84,7 +84,8 @@ impl<R: BufRead> Iterator for CharIndicesIter<R> {
             _ => return None, // early EOF
         }
 
-        // basic check of continuation bytes (10xxxxxx). Other prohibitions (overlongs, surrogates) will be checked by from_utf8.
+        // basic check of continuation bytes (10xxxxxx). Other prohibitions
+        // (overlongs, surrogates) will be checked by from_utf8.
         for item in code.iter().take(need_cont + 1).skip(1) {
             if item & 0b1100_0000 != 0b1000_0000 {
                 return None;
@@ -304,9 +305,9 @@ mod tests {
 
     #[test]
     fn surrogate_should_fail_if_encoded() {
-        // Surrogate is not allowed in Unicode scalar values, valid UTF-8 does not encode it.
-        // Synthetic: try "D800" in three-byte form (often found in broken streams).
-        // This is a sequence that from_utf8 will reject.
+        // Surrogate is not allowed in Unicode scalar values, valid UTF-8 does not
+        // encode it. Synthetic: try "D800" in three-byte form (often found
+        // in broken streams). This is a sequence that from_utf8 will reject.
         let bytes = [0xED, 0xA0, 0x80]; // U+D800 (surrogate)
         let cur = Cursor::new(bytes);
         let mut it = CharIndicesIter::new(BufReader::new(cur));

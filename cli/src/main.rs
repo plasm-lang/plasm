@@ -1,9 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use clap::{
-    Args, CommandFactory, Error, Parser, Subcommand, ValueEnum, ValueHint,
-    error::ErrorKind,
-};
+use clap::error::ErrorKind;
+use clap::{Args, CommandFactory, Error, Parser, Subcommand, ValueEnum, ValueHint};
 
 mod emit;
 mod printer;

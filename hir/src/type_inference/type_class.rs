@@ -3,7 +3,7 @@ use utils::primitive_types::PrimitiveType;
 use crate::types::HIRType;
 
 /// Type class (for literals)
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum TypeClass {
     Void,
     Int,
@@ -35,6 +35,13 @@ impl TypeClass {
                 F8 | F16 | F32 | F64 | F128 | F256 | F512 | F1024,
             ) => Some(TypeClass::Float),
             _ => None,
+        }
+    }
+
+    pub fn is_compatible_with(&self, ty: &HIRType) -> bool {
+        match Self::from_type(ty) {
+            Some(class) => class == *self,
+            None => false,
         }
     }
 }

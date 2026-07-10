@@ -1,4 +1,5 @@
-/// The same as `std::iter::Peekable`, but with a fixed-size lookahead buffer of size `N`.
+/// The same as `std::iter::Peekable`, but with a fixed-size lookahead buffer of
+/// size `N`.
 pub struct Lookahead<I, const N: usize>
 where
     I: Iterator,

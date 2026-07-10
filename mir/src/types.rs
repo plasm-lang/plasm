@@ -1,7 +1,6 @@
 use bimap::BiHashMap;
+use hir::{HIRType, HIRTypeArena};
 use serde::Serialize;
-
-use hir::HIRType;
 use utils::ids::MIRTypeId;
 use utils::primitive_types::PrimitiveType;
 
@@ -13,18 +12,27 @@ pub enum MIRType {
 }
 
 impl MIRType {
-    pub fn from_hir(ty: HIRType) -> Self {
+    pub fn from_hir(ty: &HIRType, type_arena: &HIRTypeArena) -> Self {
         match ty {
-            hir::HIRType::Primitive(p) => MIRType::Primitive(p),
+            hir::HIRType::Primitive(p) => MIRType::Primitive(*p),
             hir::HIRType::Struct(s) => {
                 let fields = s
                     .fields
-                    .into_iter()
-                    .map(|field| MIRType::from_hir(field.node.ty.node))
+                    .iter()
+                    .map(|field| {
+                        let field_hir_type =
+                            type_arena.get_by_id(field.ty_id.node).unwrap();
+                        let field_mir_type =
+                            MIRType::from_hir(field_hir_type, type_arena);
+                        field_mir_type
+                    })
                     .collect();
                 MIRType::Tuple(fields)
             }
-            hir::HIRType::Named(name, _sub_ty) => MIRType::Named(name),
+            hir::HIRType::Named(name, _sub_ty) => {
+                todo!("Handle sub type properly");
+                MIRType::Named(name.clone())
+            }
         }
     }
 }

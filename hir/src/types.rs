@@ -1,7 +1,6 @@
 use bimap::BiHashMap;
-use serde::Serialize;
-
 use diagnostic::Spanned;
+use serde::Serialize;
 use utils::ids::HIRTypeId;
 use utils::primitive_types::PrimitiveType;
 
@@ -54,12 +53,13 @@ impl std::fmt::Display for StructType {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct StructField {
     pub name: S<String>,
-    pub ty: S<HIRType>,
+    pub ty_id: S<HIRTypeId>,
 }
 
 impl std::fmt::Display for StructField {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.name.node, self.ty)
+        todo!("Display actual type instead of type id");
+        write!(f, "{}: {}", self.name.node, self.ty_id.node)
     }
 }
 

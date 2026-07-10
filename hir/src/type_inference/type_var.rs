@@ -1,10 +1,10 @@
-use diagnostic::{MaybeSpanned, Spanned};
+use diagnostic::Spanned;
 use utils::ids::{HIRTypeId, TypeVarId};
 
 // For brevity
 type S<T> = Spanned<T>;
-type MS<T> = MaybeSpanned<T>;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InferType {
     Var(TypeVarId),
     /// Invariant: it's always id of scalar type, never constructed

@@ -10,7 +10,6 @@ use inkwell::targets::{
 };
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StringRadix};
 use inkwell::values::{BasicValue, BasicValueEnum, CallSiteValue};
-
 use mir::MIR;
 use utils::ids::ValueId;
 use utils::primitive_types::PrimitiveType;
@@ -148,7 +147,8 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
             mir::Function::Internal(int_func) => {
                 self.translate_internal_function(int_func)
             }
-            mir::Function::External(_ext_func) => {} // No body to translate for external functions
+            mir::Function::External(_ext_func) => {} /* No body to translate for
+                                                      * external functions */
         }
     }
 
@@ -242,7 +242,9 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
                 cond,
                 then_block,
                 else_block,
-            } => unimplemented!(),
+            } => {
+                unimplemented!()
+            }
             mir::Terminator::Switch {
                 discr,
                 targets,

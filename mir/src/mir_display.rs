@@ -4,8 +4,7 @@ use super::mir::{
     Call, Constant, ConstantValue, Function, FunctionSignature, Global, Instruction,
     MIR, MetaInfo, Module, Operand, RValue, Terminator,
 };
-use super::types::MIRType;
-use super::types::MIRTypeArena;
+use super::types::{MIRType, MIRTypeArena};
 
 impl Display for MIR {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {

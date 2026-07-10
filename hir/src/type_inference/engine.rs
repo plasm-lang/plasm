@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 
 use bimap::BiHashMap;
+use diagnostic::Spanned;
+use utils::ids::FuncId;
 
-use diagnostic::{MaybeSpanned, Spanned};
-use utils::ids::{FuncId, HIRTypeId};
-
+use super::annotator::annotate_function;
+use super::constraint_gen::generate_function_constraints;
+use super::error::TypeInferenceError;
+use super::type_solver::solve_function_types;
 use crate::error::Error;
 use crate::hir::{
     Function, FunctionSignature, InternalFunction, Item, OptHIR, OptTyped, THIR,
@@ -12,15 +15,7 @@ use crate::hir::{
 };
 use crate::types::HIRTypeArena;
 
-use super::constraint_gen::{
-    Constraints, Equality, FunctionConstraintGen, Obligation,
-};
-use super::type_class::TypeClass;
-use super::type_solver::FunctionTypeSolver;
-use super::type_var::InferType;
-
 // For brevity
-type MS<T> = MaybeSpanned<T>;
 type S<T> = Spanned<T>;
 
 pub fn opt_hir_to_t_hir(opt_hir: OptHIR) -> (THIR, Vec<S<Error>>) {
@@ -73,10 +68,18 @@ impl TypeInferenceEngine {
         for item in in_items.into_iter() {
             match item {
                 Item::Function(Function::Internal(func)) => {
-                    let (typed_func, func_errors) =
+                    let type_infer_res =
                         infer_func(func, &self.module_ctx, &mut self.type_arena);
-                    out_items.push(Item::Function(Function::Internal(typed_func)));
-                    errors.extend(func_errors);
+                    match type_infer_res {
+                        Ok(typed_func) => {
+                            out_items.push(Item::Function(Function::Internal(
+                                typed_func,
+                            )));
+                        }
+                        Err(func_errors) => {
+                            errors.extend(func_errors);
+                        }
+                    };
                 }
                 Item::Function(Function::External(func)) => {
                     out_items.push(Item::Function(Function::External(func)))
@@ -89,7 +92,13 @@ impl TypeInferenceEngine {
             funcs_map: self.module_ctx.func_map,
             type_arena: self.type_arena,
         };
-        (thir, errors)
+        (
+            thir,
+            errors
+                .into_iter()
+                .map(|spanned_e| spanned_e.map(|e| e.into()))
+                .collect(),
+        )
     }
 }
 
@@ -99,13 +108,17 @@ fn infer_func(
     func: InternalFunction<OptTyped>,
     module_ctx: &ModuleCtx,
     type_arena: &mut HIRTypeArena,
-) -> (InternalFunction<Typed>, Vec<S<Error>>) {
-    let constraints = FunctionConstraintGen::new(&func, module_ctx, type_arena)
-        .generate_constraints();
-    FunctionTypeSolver::new(func, constraints).solve(type_arena)
+) -> Result<InternalFunction<Typed>, Vec<S<TypeInferenceError>>> {
+    let constraints = generate_function_constraints(&func, module_ctx, type_arena);
+    let (solution, errors) = solve_function_types(constraints, type_arena);
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+    let annotated_func = annotate_function(func, solution, type_arena);
+    Ok(annotated_func)
 }
 
 pub struct ModuleCtx {
-    func_map: BiHashMap<FuncId, S<String>>,
-    func_signatures: HashMap<FuncId, FunctionSignature>,
+    pub func_map: BiHashMap<FuncId, S<String>>,
+    pub func_signatures: HashMap<FuncId, FunctionSignature>,
 }

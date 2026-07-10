@@ -1,1 +1,10 @@
 max_width = 85
+unstable_features = true
+
+wrap_comments = true
+normalize_comments = true
+reorder_impl_items = true
+use_field_init_shorthand = true
+
+imports_granularity = "Module"
+group_imports = "StdExternalCrate"

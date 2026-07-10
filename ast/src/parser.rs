@@ -3,7 +3,7 @@ use std::iter::Filter;
 
 use diagnostic::{Span, Spanned};
 use tokenizer::{Bracket, Keyword, Number, SpecialSymbol, Token};
-use utils::binop::BinaryOp;
+use utils::bin_op::BinaryOp;
 
 use super::ast::{
     AST, Argument, BinaryExpr, Block, CallArgument, Expr, ExternalFunction,
@@ -151,7 +151,8 @@ where
         )
     }
 
-    // Parses a comma-separated list of items (for function arguments and struct fields).
+    // Parses a comma-separated list of items (for function arguments and struct
+    // fields).
     fn parse_comma_separated<T, F>(
         &mut self,
         // Token that terminates the list.
@@ -225,8 +226,8 @@ where
     }
 
     pub fn parse(mut self) -> (AST, Vec<Spanned<ParseError>>) {
-        // It's `(AST, Vec<Spanned<ParseError>>)` instead of `Result<AST, Spanned<ParseError>>`
-        // for error recovery in the future.
+        // It's `(AST, Vec<Spanned<ParseError>>)` instead of `Result<AST,
+        // Spanned<ParseError>>` for error recovery in the future.
         let mut ast = AST::new();
 
         while let Some((token, _)) = self.iter.peek() {
@@ -432,7 +433,8 @@ where
                 })
             }
             // Variable assignment
-            // TODO: Add support for variable type annotation in assignment, e.g. `let x: i32 = 5`
+            // TODO: Add support for variable type annotation in assignment, e.g.
+            // `let x: i32 = 5`
             Token::SpecialSymbol(SpecialSymbol::Equals) => {
                 self.take_next(); // consume '='
                 let expr = self.parse_expression(0)?;
@@ -678,7 +680,8 @@ where
                     };
                     match id.as_str() {
                         "true" => {
-                            // TODO: it's incorrect to be identifier, must be a literal
+                            // TODO: it's incorrect to be identifier, must be a
+                            // literal
                             return Ok(Spanned::new(
                                 Expr::Literal(Literal::Bool(true)),
                                 span,
@@ -723,7 +726,8 @@ where
                 Token::Bracket(Bracket::CurlyOpen) => {
                     // Lookahead to distinguish between struct literal and block
                     match (self.iter.peek_nth(1), self.iter.peek_nth(2)) {
-                        // If we see an identifier with `:` after `{`, it's a struct literal
+                        // If we see an identifier with `:` after `{`, it's a struct
+                        // literal
                         (
                             Some((Token::Identifier(_), _)),
                             Some((Token::SpecialSymbol(SpecialSymbol::Colon), _)),
@@ -836,9 +840,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use indoc::indoc;
     use tokenizer::tokenize;
+
+    use super::*;
 
     fn parse_and_check_by_display(code: &str, expected_display: &str) {
         let mut token_iter = tokenize(code.char_indices());

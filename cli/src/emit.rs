@@ -101,7 +101,7 @@ fn print_data<T: ?Sized + std::fmt::Display + serde::Serialize>(
         Format::Json => serde_json::to_string_pretty(data).unwrap(),
         Format::Text => data.to_string(),
     };
-    println!("{}", string);
+    println!("{string}");
 }
 
 fn print_errors<E>(

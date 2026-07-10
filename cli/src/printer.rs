@@ -1,17 +1,14 @@
-use std::{
-    io::{Result, Stderr, Stdout, Write, stderr, stdout},
-    str::FromStr,
-};
+use std::io::{Result, Stderr, Stdout, Write, stderr, stdout};
+use std::str::FromStr;
 
 use anstream::AutoStream;
 use anstyle::Reset;
-
-use super::theme::Theme;
-use crate::EnableAsni;
-
 use diagnostic::{ErrorMessage, ErrorType};
 use tokenizer::{Comment, Token, tokenize};
 use utils::primitive_types::PrimitiveType;
+
+use super::theme::Theme;
+use crate::EnableAsni;
 
 const LINES_BEFORE: usize = 5;
 

@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use bimap::BiHashMap;
-
 use hir::{HIRTypeArena, THIR};
 use utils::ids::{ExprId, HIRTypeId, LocalId, MIRTypeId, ValueId};
 use utils::primitive_types::PrimitiveType;
@@ -50,7 +49,7 @@ impl HIRTranslator {
                     let name = def.name;
                     let hir_ty =
                         hir_type_arena.get_by_id(def.ty.node).unwrap().clone();
-                    let mir_ty = MIRType::from_hir(hir_ty);
+                    let mir_ty = MIRType::from_hir(&hir_ty, &hir_type_arena);
                     self.mir.modules[0]
                         .type_arena
                         .insert_named(name.node, mir_ty);
@@ -62,7 +61,7 @@ impl HIRTranslator {
 
     fn register_types(&mut self, hir_type_arena: &HIRTypeArena) {
         for ty in hir_type_arena.types.right_values() {
-            let mir_ty = MIRType::from_hir(ty.clone());
+            let mir_ty = MIRType::from_hir(ty, hir_type_arena);
             self.mir.modules[0].type_arena.insert(mir_ty);
         }
     }
@@ -144,9 +143,8 @@ impl<'a> HIRFunctionTranslator<'a> {
         let hir_ty = self
             .hir_type_arena
             .get_by_id(id)
-            .expect("HIRTypeId not found in arena. Internal error.")
-            .clone();
-        let mir_ty = MIRType::from_hir(hir_ty);
+            .expect("HIRTypeId not found in arena. Internal error.");
+        let mir_ty = MIRType::from_hir(hir_ty, self.hir_type_arena);
         self.module.type_arena.get_or_insert(mir_ty)
     }
 
@@ -174,7 +172,8 @@ impl<'a> HIRFunctionTranslator<'a> {
             hir::TypedExprKind::FunctionCall(hir_call) => {
                 if self.is_void_type(type_id) {
                     panic!(
-                        "void expression cannot be lowered in value context. Internal error."
+                        "void expression cannot be lowered in value context. \
+                         Internal error."
                     );
                 }
 
@@ -230,7 +229,8 @@ impl<'a> HIRFunctionTranslator<'a> {
                     args,
                 }));
             }
-            // Expression statements without side effects should not materialize vregs.
+            // Expression statements without side effects should not materialize
+            // vregs.
             hir::TypedExprKind::Literal(_) | hir::TypedExprKind::Local(_) => {}
             _ => {
                 unimplemented!(
@@ -327,7 +327,15 @@ impl<'a> HIRFunctionTranslator<'a> {
     ) -> InternalFunction {
         let hir_signature = func.signature;
 
-        for local in func.body.locals {
+        let hir::ExprKind::Block(func_body) =
+            func.expr_arena.get(func.body).unwrap().node.kind.clone()
+        else {
+            unreachable!(
+                "Impossible Invariant: function body must be a block expression."
+            );
+        };
+
+        for local in func_body.locals {
             // Alloca for each local variable
             let type_id = self.lower_hir_type_id(local.ty.node);
             let stack_ptr = self.next_vreg();
@@ -344,7 +352,7 @@ impl<'a> HIRFunctionTranslator<'a> {
         let signature = self.translate_signature(hir_signature.clone());
         self.emit_store_instructions_for_args(&hir_signature, &signature);
 
-        for statement in func.body.statements {
+        for statement in func_body.statements {
             self.lower_statement(statement, &func.expr_arena);
         }
 

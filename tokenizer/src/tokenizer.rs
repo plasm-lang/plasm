@@ -1,8 +1,9 @@
 use std::iter::Peekable;
 use std::mem::take;
 
-use super::token::{Bracket, Comment, Keyword, Number, SpecialSymbol, Token};
 use diagnostic::{LinesTable, Span};
+
+use super::token::{Bracket, Comment, Keyword, Number, SpecialSymbol, Token};
 
 pub fn tokenize<I: Iterator<Item = (usize, char)>>(chars: I) -> TokenIter<I> {
     TokenIter {
@@ -372,8 +373,9 @@ impl<I: Iterator<Item = (usize, char)>> Iterator for TokenIter<I> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use indoc::indoc;
+
+    use super::*;
 
     const BASIC_CODE: &str = indoc! {"
         // Basic inline comment 1

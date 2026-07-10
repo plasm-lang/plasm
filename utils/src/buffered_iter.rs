@@ -1,5 +1,6 @@
-//! Deprecated: a more general `Lookahead` struct is implemented in `lookahead.rs`
-//! (ast crate) and should be used instead. This module is kept for "just in case".
+//! Deprecated: a more general `Lookahead` struct is implemented in
+//! `lookahead.rs` (ast crate) and should be used instead. This module is kept
+//! for "just in case".
 
 use std::collections::VecDeque;
 
@@ -12,8 +13,8 @@ use std::collections::VecDeque;
 /// - **Recording**: items are read from the inner iterator as usual, but each
 ///   item is also cloned into the internal buffer.
 ///
-/// Call [`start_recording`](BufferedIter::start_recording) to enter recording mode.
-/// Call [`rewind`](BufferedIter::rewind) to exit recording mode and allow
+/// Call [`start_recording`](BufferedIter::start_recording) to enter recording
+/// mode. Call [`rewind`](BufferedIter::rewind) to exit recording mode and allow
 /// consuming the recorded items.
 /// Call [`release`](BufferedIter::release) to exit recording
 /// mode and discard the recording when replay is not needed.

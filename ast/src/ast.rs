@@ -1,10 +1,9 @@
 use std::str::FromStr;
 
-use serde::Serialize;
-
 use diagnostic::Spanned;
+use serde::Serialize;
 use tokenizer::Number;
-use utils::binop::BinaryOp;
+use utils::bin_op::BinaryOp;
 use utils::primitive_types::PrimitiveType;
 
 pub type S<T> = Spanned<T>;
@@ -77,7 +76,8 @@ pub struct Argument {
 pub type Block = Vec<S<Statement>>;
 
 /// Represents a statement in the AST
-/// A statement is a line of code that does something, special language construction, it has no type, cannot be returned
+/// A statement is a line of code that does something, special language
+/// construction, it has no type, cannot be returned
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum Statement {
     VariableDeclaration(VariableDeclaration),
@@ -94,7 +94,8 @@ pub struct VariableDeclaration {
 }
 
 /// Represents an expression in the AST
-/// Fundamentally, an expression is a value that can be evaluated, returned, has returning type
+/// Fundamentally, an expression is a value that can be evaluated, returned, has
+/// returning type
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum Expr {
     Literal(Literal),
@@ -144,7 +145,7 @@ pub struct FunctionCall {
     pub args: Vec<CallArgument>,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum Literal {
     Void,
     Bool(bool),
@@ -210,8 +211,8 @@ pub struct FieldAccess {
 }
 
 // `Place` and `FieldAccess` are similar, but `Place` is for assignment target,
-// `FieldAccess` is for expression. It's not unified to avoid expression assignment
-// like `some_Func() = 5` or `"string1" = "string2"`.
+// `FieldAccess` is for expression. It's not unified to avoid expression
+// assignment like `some_Func() = 5` or `"string1" = "string2"`.
 // pub enum Place {
 //     Variable(S<String>),
 //     Field(Box<Place>, S<String>),
