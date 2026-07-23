@@ -58,7 +58,6 @@ pub struct StructField {
 
 impl std::fmt::Display for StructField {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!("Display actual type instead of type id");
         write!(f, "{}: {}", self.name.node, self.ty_id.node)
     }
 }

@@ -1,23 +1,20 @@
 use std::collections::HashMap;
 
-use diagnostic::{MaybeSpanned, Spanned};
+use diagnostic::Spanned;
 
 use super::type_solver::Solution;
 use crate::hir::{
     Block, Expr, ExprArena, ExprKind, HIRLocal, InternalFunction, OptTyped, Typed,
 };
-use crate::types::HIRTypeArena;
 
 // For brevity
 type S<T> = Spanned<T>;
-type MS<T> = MaybeSpanned<T>;
 
 pub fn annotate_function(
     func: InternalFunction<OptTyped>,
     solution: Solution,
-    arena: &mut HIRTypeArena,
 ) -> InternalFunction<Typed> {
-    FunctionAnnotator::new(solution).annotate(func, arena)
+    FunctionAnnotator::new(solution).annotate(func)
 }
 
 struct FunctionAnnotator {
@@ -32,7 +29,6 @@ impl FunctionAnnotator {
     fn annotate(
         mut self,
         in_func: InternalFunction<OptTyped>,
-        arena: &mut HIRTypeArena,
     ) -> InternalFunction<Typed> {
         let annotated_expr_arena = self.annotate_expr_arena(in_func.expr_arena);
         InternalFunction {

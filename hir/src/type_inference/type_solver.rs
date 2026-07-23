@@ -1,3 +1,32 @@
+//! ```text
+//! +----------------------------------------------------+
+//! |                 FunctionTypeSolver                 |
+//! +----------------------------------------------------+
+//! |   |                                                |
+//! |   | step 1.              +---------+               |
+//! |   +--- Vec<Equality> --> | Unifier |               |
+//! |   |                      +---------+               |
+//! |   | step 2.                                        |
+//! |   +--- Vec<Obligation> --> validate_obligations()  |
+//! |   |                                                |
+//! |   | step 3.                                        |
+//! |   +--- InferTypeMaps --> generate_solution()       |
+//! |                                                    |
+//! |                                                    |
+//! |   generate_solution() -> Solution                  |
+//! |   | step 1.                                        |
+//! |   +---> Try to get type using Unifier              |
+//! |   | step2.                                         |
+//! |   +---> try to get fallback type using obligations |
+//! |   | error.                                         |
+//! |   +---> TypeInferenceError::CantResolveType        |
+//! |                                                    |
+//! +----------------------------------------------------+
+//! ```
+//! 
+//! TODO: Move out obligation-related logic (validation + fallback generation)
+//! to a separate module, e.g. `ObligationSolver` or `Obligator`.
+
 use std::collections::HashMap;
 
 use diagnostic::{MaybeSpanned, Span, Spanned};
@@ -9,7 +38,7 @@ use super::type_class::TypeClass;
 use super::type_var::InferType;
 use super::unifier::{Unifier, UnifyError};
 use crate::type_inference::constraint_gen::Obligation;
-use crate::types::HIRTypeArena;
+use crate::types::{HIRType, HIRTypeArena, StructField, StructType};
 
 // For brevity
 type S<T> = Spanned<T>;
@@ -25,6 +54,7 @@ pub fn solve_function_types(
 struct FunctionTypeSolver {
     unifier: Unifier,
     classes: HashMap<TypeVarId, TypeClass>,
+    struct_shapes: HashMap<TypeVarId, Vec<(S<String>, S<InferType>)>>,
 }
 
 impl FunctionTypeSolver {
@@ -32,6 +62,7 @@ impl FunctionTypeSolver {
         Self {
             unifier: Unifier::new(),
             classes: HashMap::new(),
+            struct_shapes: HashMap::new(),
         }
     }
 
@@ -112,14 +143,6 @@ impl FunctionTypeSolver {
                 S::new(error, unify_error.span)
             }
             UnifyError::Recursion(a, b) => todo!(),
-            UnifyError::MissingStructField {
-                struct_ty,
-                field_name,
-            } => todo!(),
-            UnifyError::UnknownStructField {
-                struct_ty,
-                field_name,
-            } => todo!(),
         }
     }
 
@@ -138,9 +161,100 @@ impl FunctionTypeSolver {
                         obligation_errors.push(error);
                     }
                 }
+                Obligation::StructShape(infer_type, fields) => {
+                    let errors = self
+                        .validate_struct_shape_obligation(infer_type, fields, arena);
+                    obligation_errors.extend(errors);
+                }
             }
         }
         obligation_errors
+    }
+
+    /// This function is almost the same as `validate_in_class_obligation`.
+    /// This should be encapsulated in ObligationSolver or something like this.
+    fn validate_struct_shape_obligation(
+        &mut self,
+        infer_type: S<InferType>,
+        shape_fields: Vec<(S<String>, S<InferType>)>,
+        arena: &HIRTypeArena,
+    ) -> Vec<S<TypeInferenceError>> {
+        match infer_type.node {
+            InferType::Scalar(type_id) => {
+                let ty = arena.get_by_id(type_id).unwrap().clone();
+                let err = TypeInferenceError::ShapeOnNonStructType { ty };
+                vec![S::new(err, infer_type.span)]
+            }
+            InferType::Var(type_var_id) => {
+                self.add_struct_shape(type_var_id, shape_fields.clone());
+
+                let Some(binding_infer_type) = self.unifier.binding_of(type_var_id)
+                else {
+                    // If not bound, we will generate fallback type later
+                    return Vec::new();
+                };
+
+                if binding_infer_type == &infer_type {
+                    return Vec::new();
+                }
+
+                match binding_infer_type.node.clone() {
+                    InferType::Var(binding_type_var_id) => {
+                        self.add_struct_shape(binding_type_var_id, shape_fields);
+                        Vec::new()
+                    }
+                    InferType::Scalar(type_id) => {
+                        let ty = arena.get_by_id(type_id).unwrap().clone();
+                        let err = TypeInferenceError::ShapeOnNonStructType { ty };
+                        vec![S::new(err, binding_infer_type.span)]
+                    }
+                    InferType::Struct(fields) => {
+                        self.validate_struct_shape(shape_fields, fields)
+                    }
+                }
+            }
+            InferType::Struct(fields) => {
+                self.validate_struct_shape(shape_fields, fields)
+            }
+        }
+    }
+
+    /// Order of fields doesn't matter here.
+    fn validate_struct_shape(
+        &mut self,
+        shape_fields: Vec<(S<String>, S<InferType>)>,
+        struct_fields: Vec<(S<String>, S<InferType>)>,
+    ) -> Vec<S<TypeInferenceError>> {
+        let shape_fields_map = shape_fields.into_iter().collect::<HashMap<_, _>>();
+        let struct_fields_map = struct_fields.into_iter().collect::<HashMap<_, _>>();
+
+        let unknown_struct_field_errors = shape_fields_map
+            .keys()
+            .filter(|name| !struct_fields_map.contains_key(*name))
+            .map(|name| {
+                let err = TypeInferenceError::UnknownStructField {
+                    struct_name: None,
+                    field_name: name.node.clone(),
+                };
+                S::new(err, name.span)
+            })
+            .collect::<Vec<_>>();
+        let missing_struct_field_errors = struct_fields_map
+            .keys()
+            .filter(|name| !shape_fields_map.contains_key(*name))
+            .map(|name| {
+                let err = TypeInferenceError::MissingStructField {
+                    struct_name: None,
+                    field_name: name.node.clone(),
+                };
+                S::new(err, name.span)
+            })
+            .collect::<Vec<_>>();
+
+        unknown_struct_field_errors
+            .into_iter()
+            .chain(missing_struct_field_errors)
+            .collect()
     }
 
     fn generate_solution(
@@ -179,30 +293,66 @@ impl FunctionTypeSolver {
         arena: &mut HIRTypeArena,
     ) -> Result<MS<HIRTypeId>, S<TypeInferenceError>> {
         let span = infer_type.span;
-        match infer_type.node {
+        match &infer_type.node {
             InferType::Var(type_var_id) => {
-                let root_type_var_id = self.unifier.find(type_var_id);
+                let root_type_var_id = self.unifier.find(*type_var_id);
                 if let Some(infer_type) = self.unifier.binding_of(root_type_var_id) {
-                    match &infer_type.node {
+                    let binding_node = infer_type.node.clone();
+                    match binding_node {
                         InferType::Var(_) => unreachable!(
                             "Invariant: binding of type variable is never InferType::Var"
                         ),
                         InferType::Scalar(type_id) => {
-                            return Ok(MS::new(*type_id).with_span(infer_type.span));
+                            return Ok(MS::new(type_id).with_span(infer_type.span));
                         }
-                        InferType::Struct(_) => todo!(),
+                        InferType::Struct(fields) => {
+                            return self.get_type_id_from_struct_fields(
+                                &fields, arena, span,
+                            );
+                        }
                     };
                 }
-                if let Some(class) = self.get_class(type_var_id) {
+                // Fallbacks
+                if let Some(class) = self.get_class(*type_var_id) {
                     let fallback_type = class.fallback_type();
                     let type_id = arena.get_or_insert(fallback_type);
                     return Ok(MS::new(type_id).with_span(span));
                 }
+                if let Some(fields) = self.get_struct_shape(*type_var_id) {
+                    return self
+                        .get_type_id_from_struct_fields(&fields, arena, span);
+                }
                 Err(S::new(TypeInferenceError::CantResolveType, span))
             }
-            InferType::Scalar(type_id) => Ok(MS::new(type_id).with_span(span)),
-            InferType::Struct(_) => todo!(),
+            InferType::Scalar(type_id) => Ok(MS::new(*type_id).with_span(span)),
+            InferType::Struct(fields) => {
+                self.get_type_id_from_struct_fields(fields, arena, span)
+            }
         }
+    }
+
+    fn get_type_id_from_struct_fields(
+        &mut self,
+        fields: &[(S<String>, S<InferType>)],
+        arena: &mut HIRTypeArena,
+        span: Span,
+    ) -> Result<MS<HIRTypeId>, S<TypeInferenceError>> {
+        let mut struct_fields = Vec::new();
+        for (name, field_infer_type) in fields {
+            let field_type_id = self
+                .get_type_id(field_infer_type, arena)?
+                .into_spanned_or(name.span);
+            let struct_field = StructField {
+                name: name.clone(),
+                ty_id: field_type_id,
+            };
+            struct_fields.push(S::new(struct_field, name.span));
+        }
+        let hir_type = HIRType::Struct(StructType {
+            fields: struct_fields,
+        });
+        let type_id = arena.get_or_insert(hir_type);
+        Ok(MS::new(type_id).with_span(span))
     }
 
     fn validate_in_class_obligation(
@@ -262,6 +412,23 @@ impl FunctionTypeSolver {
         self.classes.get(&root_type_var_id).cloned()
     }
 
+    fn add_struct_shape(
+        &mut self,
+        type_var_id: TypeVarId,
+        fields: Vec<(S<String>, S<InferType>)>,
+    ) {
+        let root_type_var_id = self.unifier.find(type_var_id);
+        self.struct_shapes.insert(root_type_var_id, fields);
+    }
+
+    fn get_struct_shape(
+        &mut self,
+        type_var_id: TypeVarId,
+    ) -> Option<Vec<(S<String>, S<InferType>)>> {
+        let root_type_var_id = self.unifier.find(type_var_id);
+        self.struct_shapes.get(&root_type_var_id).cloned()
+    }
+
     fn validate_type_class(
         type_id: HIRTypeId,
         class: TypeClass,
@@ -288,58 +455,75 @@ pub struct Solution {
 
 // ------------------- Helpers to test manually ------------------- //
 
+// TODO: Remove these functions after adding support for structs.
+
 fn print_constraints(constraints: &Constraints, type_arena: &HIRTypeArena) {
     println!("Equalities:");
     for eq in &constraints.equalities {
-        print!("\t");
-        print_infer_type(&eq.0.node, type_arena);
-        print!(" == ");
-        print_infer_type(&eq.1.node, type_arena);
-        println!();
+        let infer_type_str_a = format_infer_type(&eq.0.node, type_arena);
+        let infer_type_str_b = format_infer_type(&eq.1.node, type_arena);
+        println!("\t{infer_type_str_a} == {infer_type_str_b}");
     }
 
     println!("Obligations:");
     for obligation in &constraints.obligations {
         print!("\t");
         match obligation {
-            Obligation::InClass(s_infer_ty, ty_class) => {
-                print_infer_type(&s_infer_ty.node, type_arena);
-                print!(" ∈ {ty_class:?}");
+            Obligation::InClass(infer_ty, ty_class) => {
+                let infer_type_str = format_infer_type(&infer_ty.node, type_arena);
+                print!("{infer_type_str} ∈ {ty_class:?}");
+            }
+            Obligation::StructShape(infer_ty, fields) => {
+                let infer_type_str = format_infer_type(&infer_ty.node, type_arena);
+                print!("{infer_type_str} === {{ ");
+                for (name, field_infer_ty) in fields {
+                    let field_infer_type_str =
+                        format_infer_type(&field_infer_ty.node, type_arena);
+                    print!("{}: {}, ", name.node, field_infer_type_str);
+                }
+                print!("}}");
             }
         }
         println!();
     }
 
     println!("Expr type map:");
+    if constraints.maps.expr_ty.is_empty() {
+        println!("\tNo.");
+    }
     for (expr_id, infer_ty) in &constraints.maps.expr_ty {
-        print!("\t{expr_id} == ");
-        print_infer_type(&infer_ty.node, type_arena);
-        println!();
+        let infer_type_str = format_infer_type(&infer_ty.node, type_arena);
+        println!("\t{expr_id} == {infer_type_str}");
     }
 
     println!("Local type map:");
+    if constraints.maps.local_ty.is_empty() {
+        println!("\tNo.");
+    }
     for (local_id, infer_ty) in &constraints.maps.local_ty {
-        print!("\t{local_id} == ");
-        print_infer_type(&infer_ty.node, type_arena);
-        println!();
+        let infer_type_str = format_infer_type(&infer_ty.node, type_arena);
+        println!("\t{local_id} == {infer_type_str}");
     }
 }
 
-fn print_infer_type(infer_type: &InferType, type_arena: &HIRTypeArena) {
+fn format_infer_type(infer_type: &InferType, type_arena: &HIRTypeArena) -> String {
     match infer_type {
-        InferType::Var(id) => print!("{id}"),
+        InferType::Var(id) => format!("{id}"),
         InferType::Scalar(type_id) => {
             let ty = type_arena.get_by_id(*type_id).unwrap();
-            print!("{ty:?}");
+            format!("{ty:?}")
         }
         InferType::Struct(fields) => {
-            print!("Struct {{ ");
+            let mut s = String::from("Struct { ");
             for (name, field_infer_type) in fields {
-                print!("{}: ", name.node);
-                print_infer_type(&field_infer_type.node, type_arena);
-                print!(", ");
+                s.push_str(&format!(
+                    "{}: {}, ",
+                    name.node,
+                    format_infer_type(&field_infer_type.node, type_arena)
+                ));
             }
-            print!("}}");
+            s.push('}');
+            s
         }
     }
 }
@@ -358,7 +542,19 @@ fn print_unifier_state(unifier: &Unifier, arena: &HIRTypeArena) {
                 let hir_type = arena.get_by_id(*type_id).unwrap();
                 format!("{hir_type}")
             }
-            InferType::Struct(_) => todo!(),
+            InferType::Struct(fields) => {
+                let mut s = String::from("Struct { ");
+                for (name, field_infer_type) in fields {
+                    let field_infer_type_str =
+                        format_infer_type(&field_infer_type.node, arena);
+                    s.push_str(&format!(
+                        "{}: {}, ",
+                        name.node, field_infer_type_str
+                    ));
+                }
+                s.push('}');
+                s
+            }
         };
         println!("\t{type_var_id:?} -> {binding_str}");
     }
@@ -374,4 +570,5 @@ fn print_solution(solution: &Solution, arena: &HIRTypeArena) {
         let ty = arena.get_by_id(type_id.node).unwrap();
         println!("\t{local_id:?}: {ty}");
     }
+    println!();
 }

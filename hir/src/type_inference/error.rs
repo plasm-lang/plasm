@@ -13,27 +13,29 @@ pub enum TypeInferenceError {
         first: MaybeSpanned<HIRType>,
         second: MaybeSpanned<HIRType>,
     },
-    IncompatibleTypeClass {
-        ty: HIRType,
-        class: TypeClass,
-    },
-    CantResolveType,
-    UnknownStructField {
-        struct_name: String,
-        field_name: String,
-    },
-    MissingStructField {
-        struct_name: String,
-        field_name: String,
-    },
     UnknownTypeName {
         name: String,
     },
     CircularTypeDefinition {
         cycle: Vec<String>,
     },
+    CantResolveType,
+
+    // Obligation related errors below
+    IncompatibleTypeClass {
+        ty: HIRType,
+        class: TypeClass,
+    },
+    UnknownStructField {
+        struct_name: Option<String>,
+        field_name: String,
+    },
+    MissingStructField {
+        struct_name: Option<String>,
+        field_name: String,
+    },
     ShapeOnNonStructType {
-        known: MaybeSpanned<HIRType>,
+        ty: HIRType,
     },
 }
 
@@ -60,18 +62,21 @@ impl Display for TypeInferenceError {
             UnknownStructField {
                 struct_name,
                 field_name,
-            } => {
-                write!(
-                    f,
-                    "Struct `{struct_name}` doesn't have field `{field_name}`"
-                )
-            }
+            } => match struct_name {
+                Some(name) => {
+                    write!(f, "Struct `{name}` doesn't have field `{field_name}`")
+                }
+                None => write!(f, "Struct does not have field `{field_name}`"),
+            },
             MissingStructField {
                 struct_name,
                 field_name,
-            } => {
-                write!(f, "Missing struct field `{field_name}` for `{struct_name}`")
-            }
+            } => match struct_name {
+                Some(name) => {
+                    write!(f, "Missing struct field `{field_name}` for `{name}`")
+                }
+                None => write!(f, "Missing struct field `{field_name}`"),
+            },
             UnknownTypeName { name } => {
                 write!(f, "Unknown type name `{name}`")
             }
@@ -83,11 +88,10 @@ impl Display for TypeInferenceError {
                     .join(", ");
                 write!(f, "Circular type definition involving types {names}")
             }
-            ShapeOnNonStructType { known } => {
+            ShapeOnNonStructType { ty } => {
                 write!(
                     f,
-                    "Expected a struct type for struct literal, but found `{}`",
-                    known.node
+                    "Expected a struct type for struct literal, but found `{ty}`",
                 )
             }
         }

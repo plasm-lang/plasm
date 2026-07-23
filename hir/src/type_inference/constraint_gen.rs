@@ -33,6 +33,11 @@ pub struct Equality(pub S<InferType>, pub S<InferType>);
 #[derive(Debug)]
 pub enum Obligation {
     InClass(S<InferType>, TypeClass),
+    /// Generated for struct literals. It means that `InferType` must be a
+    /// struct, must have the given fields with the given types wth the given
+    /// names. The order of fields doesn't matter for the obligation
+    /// checking, but matters in fallback case.
+    StructShape(S<InferType>, Vec<(S<String>, S<InferType>)>),
 }
 
 #[derive(Debug, Default)]
@@ -158,7 +163,17 @@ impl<'a> FunctionConstraintGen<'a> {
                 let eq = Equality(infer_type.clone(), block_infer_type);
                 self.result.equalities.push(eq);
             }
-            _ => todo!(),
+            StructLiteral(struct_literal) => {
+                let mut infer_type_fields = Vec::new();
+                for field in struct_literal.fields.iter() {
+                    let field_infer_type = self.process_expr(field.value);
+                    infer_type_fields.push((field.name.clone(), field_infer_type));
+                }
+                let obligation =
+                    Obligation::StructShape(infer_type.clone(), infer_type_fields);
+                self.result.obligations.push(obligation);
+            }
+            FieldAccess(field_access) => todo!(),
         };
         infer_type
     }
@@ -239,7 +254,7 @@ impl<'a> FunctionConstraintGen<'a> {
                     .collect();
                 InferType::Struct(infer_type_fields)
             }
-            HIRType::Named(_name, sub_type) => {
+            HIRType::Named(_name, _sub_type) => {
                 todo!()
             }
         }

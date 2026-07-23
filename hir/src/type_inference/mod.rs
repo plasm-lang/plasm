@@ -1,3 +1,43 @@
+//! This is how the data flows between
+//! type inference components:
+//! ```text
+//!              OptHIR
+//!                |
+//!                V
+//! +------------------------------+
+//! |     TypeInferenceEngine      |
+//! +------------------------------+
+//! |                              |
+//! |  InternalFunction<OptTyped>  |
+//! |              |               |
+//! |              V               |
+//! |  +-----------------------+   |
+//! |  | FunctionConstraintGen |   |
+//! |  +-----------------------+   |
+//! |              |               |
+//! |         Constraints          |
+//! |              |               |
+//! |              V               |
+//! |    +--------------------+    |
+//! |    | FunctionTypeSolver |    |
+//! |    +--------------------+    |
+//! |              |               |
+//! |           Solution           |
+//! |              |               |
+//! |              V               |
+//! |     +-------------------+    |
+//! |     | FunctionAnnotator |    |
+//! |     +-------------------+    |
+//! |              |               |
+//! |              V               |
+//! |   InternalFunction<Typed>    |
+//! |                              |
+//! +------------------------------+
+//!                |
+//!                V
+//!              THIR
+//! ```
+
 mod annotator;
 mod constraint_gen;
 mod engine;

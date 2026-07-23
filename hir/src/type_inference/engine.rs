@@ -109,12 +109,13 @@ fn infer_func(
     module_ctx: &ModuleCtx,
     type_arena: &mut HIRTypeArena,
 ) -> Result<InternalFunction<Typed>, Vec<S<TypeInferenceError>>> {
+    println!("===== {} =====", func.signature.name.node);
     let constraints = generate_function_constraints(&func, module_ctx, type_arena);
     let (solution, errors) = solve_function_types(constraints, type_arena);
     if !errors.is_empty() {
         return Err(errors);
     }
-    let annotated_func = annotate_function(func, solution, type_arena);
+    let annotated_func = annotate_function(func, solution);
     Ok(annotated_func)
 }
 

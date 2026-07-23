@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use diagnostic::{MaybeSpanned, Spanned};
+use diagnostic::{MaybeSpanned, Span, Spanned};
 use utils::ids::TypeVarId;
 
 use super::constraint_gen::Equality;
@@ -13,14 +13,6 @@ type MS<T> = MaybeSpanned<T>;
 pub enum UnifyError {
     Conflict(S<InferType>, S<InferType>),
     Recursion(S<InferType>, S<InferType>),
-    MissingStructField {
-        struct_ty: S<InferType>,
-        field_name: S<String>,
-    },
-    UnknownStructField {
-        struct_ty: S<InferType>,
-        field_name: S<String>,
-    },
 }
 
 /// Union–find (disjoint-set) data structure to group type variables that must
@@ -30,7 +22,6 @@ pub enum UnifyError {
 #[derive(Debug)]
 pub struct Unifier {
     pub parent: HashMap<TypeVarId, TypeVarId>,
-    /// Invariant: value of `binding` is never `InferType::Var`.
     pub binding: HashMap<TypeVarId, S<InferType>>,
 }
 
@@ -85,26 +76,75 @@ impl Unifier {
     /// Recursively unifies two type variables, returning a list of errors if
     /// any.
     fn unify(&mut self, a: S<InferType>, b: S<InferType>) -> Vec<S<UnifyError>> {
-        match (&a.node, &b.node) {
+        let (a_node, a_span) = a.unwrap();
+        let (b_node, b_span) = b.unwrap();
+        match (a_node, b_node) {
             (InferType::Var(type_var_id_a), InferType::Var(type_var_id_b)) => {
-                return self.unify_var_var(*type_var_id_a, *type_var_id_b);
+                self.unify_var_var(type_var_id_a, type_var_id_b)
             }
-            (InferType::Var(type_var_id), _) => {
-                return self.bind(*type_var_id, b);
+            (InferType::Var(type_var_id), node) => {
+                self.bind(type_var_id, S::new(node, b_span))
             }
-            (_, InferType::Var(type_var_id)) => {
-                return self.bind(*type_var_id, a);
+            (mode, InferType::Var(type_var_id)) => {
+                self.bind(type_var_id, S::new(mode, a_span))
             }
-            (InferType::Scalar(scalar_a), InferType::Scalar(scalar_b)) => {
-                if scalar_a != scalar_b {
-                    let span = a.span.max(b.span);
-                    return vec![S::new(UnifyError::Conflict(a, b), span)];
-                }
+            (InferType::Scalar(scalar_a), InferType::Scalar(scalar_b))
+                if scalar_a == scalar_b =>
+            {
+                Vec::new()
             }
-            _ => todo!(),
+            (InferType::Struct(struct_a), InferType::Struct(struct_b)) => {
+                self.unify_structs(struct_a, struct_b, a_span, b_span)
+            }
+            (a_node, b_node) => {
+                let span = a_span.max(b_span);
+                vec![S::new(
+                    UnifyError::Conflict(
+                        S::new(a_node, a_span),
+                        S::new(b_node, b_span),
+                    ),
+                    span,
+                )]
+            }
+        }
+    }
+
+    fn unify_structs(
+        &mut self,
+        struct_a: Vec<(S<String>, S<InferType>)>,
+        struct_b: Vec<(S<String>, S<InferType>)>,
+        span_a: Span,
+        span_b: Span,
+    ) -> Vec<S<UnifyError>> {
+        // Fields order matters here.
+        let field_names_order_mismatch: bool = struct_a.iter().zip(&struct_b).any(
+            |((field_a_name, _), (field_b_name, _))| field_a_name != field_b_name,
+        );
+
+        let fields_count_mismatch = struct_a.len() != struct_b.len();
+
+        // If the field names mismatch, we don't unify the structs.
+        if field_names_order_mismatch || fields_count_mismatch {
+            let span = span_a.max(span_b);
+            return vec![S::new(
+                UnifyError::Conflict(
+                    S::new(InferType::Struct(struct_a), span_a),
+                    S::new(InferType::Struct(struct_b), span_b),
+                ),
+                span,
+            )];
         }
 
-        Vec::new()
+        let mut errors = Vec::new();
+        for ((field_a_name, field_a_type), (field_b_name, field_b_type)) in
+            struct_a.into_iter().zip(struct_b)
+        {
+            if field_a_name != field_b_name {
+                todo!("Field order mismatch")
+            }
+            errors.extend(self.unify(field_a_type, field_b_type));
+        }
+        errors
     }
 
     fn unify_var_var(
