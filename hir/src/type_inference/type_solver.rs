@@ -23,7 +23,7 @@
 //! |                                                    |
 //! +----------------------------------------------------+
 //! ```
-//! 
+//!
 //! TODO: Move out obligation-related logic (validation + fallback generation)
 //! to a separate module, e.g. `ObligationSolver` or `Obligator`.
 
@@ -134,11 +134,10 @@ impl FunctionTypeSolver {
                     Ok(type_id) => type_id,
                     Err(e) => return e,
                 };
-                let hir_type_b =
-                    type_id_b.map(|id| arena.get_by_id(id).unwrap().clone());
+                let hir_type_b = type_id_b.map(|id| arena.get_by_id(id).unwrap());
                 let error = TypeInferenceError::TypesConflict {
-                    first: hir_type_a,
-                    second: hir_type_b,
+                    first: hir_type_a.map(|ty| ty.format(arena)),
+                    second: hir_type_b.map(|ty| ty.format(arena)),
                 };
                 S::new(error, unify_error.span)
             }
@@ -181,8 +180,8 @@ impl FunctionTypeSolver {
     ) -> Vec<S<TypeInferenceError>> {
         match infer_type.node {
             InferType::Scalar(type_id) => {
-                let ty = arena.get_by_id(type_id).unwrap().clone();
-                let err = TypeInferenceError::ShapeOnNonStructType { ty };
+                let ty_str = arena.get_by_id(type_id).unwrap().format(arena);
+                let err = TypeInferenceError::ShapeOnNonStructType { ty: ty_str };
                 vec![S::new(err, infer_type.span)]
             }
             InferType::Var(type_var_id) => {
@@ -204,8 +203,9 @@ impl FunctionTypeSolver {
                         Vec::new()
                     }
                     InferType::Scalar(type_id) => {
-                        let ty = arena.get_by_id(type_id).unwrap().clone();
-                        let err = TypeInferenceError::ShapeOnNonStructType { ty };
+                        let ty_str = arena.get_by_id(type_id).unwrap().format(arena);
+                        let err =
+                            TypeInferenceError::ShapeOnNonStructType { ty: ty_str };
                         vec![S::new(err, binding_infer_type.span)]
                     }
                     InferType::Struct(fields) => {
@@ -437,10 +437,9 @@ impl FunctionTypeSolver {
     ) -> Option<S<TypeInferenceError>> {
         let ty = arena.get_by_id(type_id).unwrap();
         if !class.is_compatible_with(ty) {
-            let error = TypeInferenceError::IncompatibleTypeClass {
-                ty: ty.clone(),
-                class,
-            };
+            let ty_str = ty.format(arena);
+            let error =
+                TypeInferenceError::IncompatibleTypeClass { ty: ty_str, class };
             return Some(S::new(error, span));
         }
         None
@@ -539,8 +538,7 @@ fn print_unifier_state(unifier: &Unifier, arena: &HIRTypeArena) {
         let binding_str = match &binding.node {
             InferType::Var(type_var_id) => format!("{type_var_id:?}"),
             InferType::Scalar(type_id) => {
-                let hir_type = arena.get_by_id(*type_id).unwrap();
-                format!("{hir_type}")
+                arena.get_by_id(*type_id).unwrap().format(arena)
             }
             InferType::Struct(fields) => {
                 let mut s = String::from("Struct { ");
@@ -563,11 +561,11 @@ fn print_unifier_state(unifier: &Unifier, arena: &HIRTypeArena) {
 fn print_solution(solution: &Solution, arena: &HIRTypeArena) {
     println!("Solution:");
     for (expr_id, type_id) in &solution.expr_ty {
-        let ty = arena.get_by_id(type_id.node).unwrap();
+        let ty = arena.get_by_id(type_id.node).unwrap().format(arena);
         println!("\t{expr_id:?}: {ty}");
     }
     for (local_id, type_id) in &solution.local_ty {
-        let ty = arena.get_by_id(type_id.node).unwrap();
+        let ty = arena.get_by_id(type_id.node).unwrap().format(arena);
         println!("\t{local_id:?}: {ty}");
     }
     println!();

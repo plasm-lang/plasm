@@ -5,13 +5,12 @@ use strum_macros::IntoStaticStr;
 
 use super::type_class::TypeClass;
 use crate::error::Error;
-use crate::types::HIRType;
 
 #[derive(Debug, IntoStaticStr)]
 pub enum TypeInferenceError {
     TypesConflict {
-        first: MaybeSpanned<HIRType>,
-        second: MaybeSpanned<HIRType>,
+        first: MaybeSpanned<String>,
+        second: MaybeSpanned<String>,
     },
     UnknownTypeName {
         name: String,
@@ -23,7 +22,7 @@ pub enum TypeInferenceError {
 
     // Obligation related errors below
     IncompatibleTypeClass {
-        ty: HIRType,
+        ty: String,
         class: TypeClass,
     },
     UnknownStructField {
@@ -35,7 +34,7 @@ pub enum TypeInferenceError {
         field_name: String,
     },
     ShapeOnNonStructType {
-        ty: HIRType,
+        ty: String,
     },
 }
 
@@ -44,9 +43,6 @@ impl Display for TypeInferenceError {
         use TypeInferenceError::*;
         match self {
             TypesConflict { first, second } => {
-                // let first_at = first.span.map(|s| format!(" ({s}
-                // bytes)")).unwrap_or_default(); let second_at =
-                // second.span.map(|s| format!(" ({s} bytes)")).unwrap_or_default();
                 write!(
                     f,
                     "Types conflict between `{}` and `{}`",

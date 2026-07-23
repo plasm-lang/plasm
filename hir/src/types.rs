@@ -21,14 +21,12 @@ impl HIRType {
             other => other,
         }
     }
-}
 
-impl std::fmt::Display for HIRType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    pub fn format(&self, arena: &HIRTypeArena) -> String {
         match self {
-            HIRType::Primitive(p) => write!(f, "{p}"),
-            HIRType::Struct(s) => write!(f, "{s}"),
-            HIRType::Named(name, _sub_ty) => write!(f, "{name}"),
+            HIRType::Primitive(p) => format!("{p}"),
+            HIRType::Struct(s) => s.format(arena),
+            HIRType::Named(name, _sub_ty) => name.to_string(),
         }
     }
 }
@@ -38,15 +36,21 @@ pub struct StructType {
     pub fields: Vec<S<StructField>>,
 }
 
-impl std::fmt::Display for StructType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl StructType {
+    pub fn format(&self, arena: &HIRTypeArena) -> String {
         let fields_str = self
             .fields
             .iter()
-            .map(|field| field.to_string())
+            .map(|field| {
+                format!(
+                    "{}: {}",
+                    field.name.node,
+                    arena.get_by_id(field.ty_id.node).unwrap().format(arena)
+                )
+            })
             .collect::<Vec<_>>()
             .join(", ");
-        write!(f, "struct {{ {fields_str} }}")
+        format!("struct {{ {fields_str} }}")
     }
 }
 
@@ -54,12 +58,6 @@ impl std::fmt::Display for StructType {
 pub struct StructField {
     pub name: S<String>,
     pub ty_id: S<HIRTypeId>,
-}
-
-impl std::fmt::Display for StructField {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.name.node, self.ty_id.node)
-    }
 }
 
 #[derive(Debug, Default, Serialize)]
