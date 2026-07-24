@@ -7,8 +7,10 @@ type S<T> = Spanned<T>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InferType {
     Var(TypeVarId),
+    Named(HIRTypeId, Box<InferType>),
     /// Invariant: it's always id of scalar type, never constructed
     /// type (like struct or tuple).
     Scalar(HIRTypeId),
+    // TODO: Consider add `HIRTypeId` to Struct.
     Struct(Vec<(S<String>, S<InferType>)>),
 }

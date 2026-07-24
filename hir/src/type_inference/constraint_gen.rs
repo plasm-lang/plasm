@@ -254,8 +254,14 @@ impl<'a> FunctionConstraintGen<'a> {
                     .collect();
                 InferType::Struct(infer_type_fields)
             }
-            HIRType::Named(_name, _sub_type) => {
-                todo!()
+            HIRType::Named(_name, sub_type) => {
+                let sub_type_id = self
+                    .type_arena
+                    .get_by_type(sub_type.as_ref())
+                    .copied()
+                    .unwrap();
+                let sub_infer_type = self.type_id_to_infer_type(sub_type_id);
+                InferType::Named(type_id, Box::new(sub_infer_type))
             }
         }
     }

@@ -187,21 +187,28 @@ impl FunctionTypeSolver {
             InferType::Var(type_var_id) => {
                 self.add_struct_shape(type_var_id, shape_fields.clone());
 
-                let Some(binding_infer_type) = self.unifier.binding_of(type_var_id)
+                let Some(binding_infer_type) =
+                    self.unifier.binding_of(type_var_id).cloned()
                 else {
                     // If not bound, we will generate fallback type later
                     return Vec::new();
                 };
 
-                if binding_infer_type == &infer_type {
+                if binding_infer_type == infer_type {
                     return Vec::new();
                 }
 
-                match binding_infer_type.node.clone() {
+                match binding_infer_type.node {
                     InferType::Var(binding_type_var_id) => {
                         self.add_struct_shape(binding_type_var_id, shape_fields);
                         Vec::new()
                     }
+                    InferType::Named(_type_id, sub_infer_type) => self
+                        .validate_struct_shape_obligation(
+                            S::new(*sub_infer_type, binding_infer_type.span),
+                            shape_fields,
+                            arena,
+                        ),
                     InferType::Scalar(type_id) => {
                         let ty_str = arena.get_by_id(type_id).unwrap().format(arena);
                         let err =
@@ -213,6 +220,12 @@ impl FunctionTypeSolver {
                     }
                 }
             }
+            InferType::Named(_type_id, sub_infer_type) => self
+                .validate_struct_shape_obligation(
+                    S::new(*sub_infer_type, infer_type.span),
+                    shape_fields,
+                    arena,
+                ),
             InferType::Struct(fields) => {
                 self.validate_struct_shape(shape_fields, fields)
             }
@@ -302,6 +315,9 @@ impl FunctionTypeSolver {
                         InferType::Var(_) => unreachable!(
                             "Invariant: binding of type variable is never InferType::Var"
                         ),
+                        InferType::Named(type_id, _sub_infer_type) => {
+                            return Ok(MS::new(type_id).with_span(infer_type.span));
+                        }
                         InferType::Scalar(type_id) => {
                             return Ok(MS::new(type_id).with_span(infer_type.span));
                         }
@@ -323,6 +339,9 @@ impl FunctionTypeSolver {
                         .get_type_id_from_struct_fields(&fields, arena, span);
                 }
                 Err(S::new(TypeInferenceError::CantResolveType, span))
+            }
+            InferType::Named(type_id, _sub_infer_type) => {
+                Ok(MS::new(*type_id).with_span(span))
             }
             InferType::Scalar(type_id) => Ok(MS::new(*type_id).with_span(span)),
             InferType::Struct(fields) => {
@@ -367,13 +386,14 @@ impl FunctionTypeSolver {
                 self.add_class(type_var_id, class);
 
                 // Get binding of type variable id from unifier
-                let Some(binding_infer_type) = self.unifier.binding_of(type_var_id)
+                let Some(binding_infer_type) =
+                    self.unifier.binding_of(type_var_id).cloned()
                 else {
                     // If not bound, we will generate fallback type later
                     return None;
                 };
 
-                if binding_infer_type == &infer_type {
+                if binding_infer_type == infer_type {
                     return None;
                 }
 
@@ -381,6 +401,14 @@ impl FunctionTypeSolver {
                     InferType::Var(binding_type_var_id) => {
                         self.add_class(binding_type_var_id, class);
                         None
+                    }
+                    InferType::Named(_type_id, sub_infer_type) => {
+                        // Validate sub_infer_type against class
+                        self.validate_in_class_obligation(
+                            S::new(*sub_infer_type, binding_infer_type.span),
+                            class,
+                            arena,
+                        )
                     }
                     InferType::Scalar(type_id) => {
                         // Validate binding against class
@@ -393,6 +421,14 @@ impl FunctionTypeSolver {
                     }
                     InferType::Struct(_) => todo!(),
                 }
+            }
+            InferType::Named(_type_id, sub_infer_type) => {
+                // Validate sub_infer_type against class
+                self.validate_in_class_obligation(
+                    S::new(*sub_infer_type, infer_type.span),
+                    class,
+                    arena,
+                )
             }
             InferType::Scalar(type_id) => {
                 // Validate Obligation::InClass itself
@@ -508,9 +544,11 @@ fn print_constraints(constraints: &Constraints, type_arena: &HIRTypeArena) {
 fn format_infer_type(infer_type: &InferType, type_arena: &HIRTypeArena) -> String {
     match infer_type {
         InferType::Var(id) => format!("{id}"),
+        InferType::Named(type_id, _sub_infer_type) => {
+            type_arena.get_by_id(*type_id).unwrap().format(type_arena)
+        }
         InferType::Scalar(type_id) => {
-            let ty = type_arena.get_by_id(*type_id).unwrap();
-            format!("{ty:?}")
+            type_arena.get_by_id(*type_id).unwrap().format(type_arena)
         }
         InferType::Struct(fields) => {
             let mut s = String::from("Struct { ");
@@ -537,6 +575,9 @@ fn print_unifier_state(unifier: &Unifier, arena: &HIRTypeArena) {
     for (type_var_id, binding) in &unifier.binding {
         let binding_str = match &binding.node {
             InferType::Var(type_var_id) => format!("{type_var_id:?}"),
+            InferType::Named(type_id, _sub_infer_type) => {
+                arena.get_by_id(*type_id).unwrap().format(arena)
+            }
             InferType::Scalar(type_id) => {
                 arena.get_by_id(*type_id).unwrap().format(arena)
             }

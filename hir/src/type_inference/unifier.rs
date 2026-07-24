@@ -85,8 +85,13 @@ impl Unifier {
             (InferType::Var(type_var_id), node) => {
                 self.bind(type_var_id, S::new(node, b_span))
             }
-            (mode, InferType::Var(type_var_id)) => {
-                self.bind(type_var_id, S::new(mode, a_span))
+            (node, InferType::Var(type_var_id)) => {
+                self.bind(type_var_id, S::new(node, a_span))
+            }
+            (InferType::Named(type_id_a, _), InferType::Named(type_id_b, _))
+                if type_id_a == type_id_b =>
+            {
+                Vec::new()
             }
             (InferType::Scalar(scalar_a), InferType::Scalar(scalar_b))
                 if scalar_a == scalar_b =>

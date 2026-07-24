@@ -90,6 +90,10 @@ impl HIRTypeArena {
         self.types.get_by_left(&id)
     }
 
+    pub fn get_by_type(&self, ty: &HIRType) -> Option<&HIRTypeId> {
+        self.types.get_by_right(ty)
+    }
+
     pub fn get_or_insert(&mut self, ty: HIRType) -> HIRTypeId {
         if let Some(id) = self.types.get_by_right(&ty) {
             *id
