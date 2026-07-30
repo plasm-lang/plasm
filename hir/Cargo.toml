@@ -9,8 +9,12 @@ diagnostic = { path = "../diagnostic" }
 tokenizer = { path = "../tokenizer" }
 ast = { path = "../ast" }
 utils = { path = "../utils" }
+
 serde.workspace = true
 bimap.workspace = true
+
+strum = "0.28.0"
+strum_macros = "0.28.0"
 
 [dev-dependencies]
 indoc.workspace = true

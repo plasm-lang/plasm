@@ -1,10 +1,9 @@
 use std::borrow::Cow;
 
 use bimap::BiHashMap;
-use serde::Serialize;
-
 use diagnostic::Spanned;
-use utils::binop::BinaryOp;
+use serde::Serialize;
+use utils::bin_op::BinaryOp;
 use utils::ids::{FuncId, MIRTypeId, ValueId};
 
 use super::types::MIRTypeArena;

@@ -1,12 +1,11 @@
 use std::fmt::{Display, Formatter};
 
-use diagnostic::{ErrorType, MaybeSpanned, Spanned};
-use utils::ids::{ExprId, LocalId};
+use diagnostic::{ErrorType, Spanned};
+use strum_macros::IntoStaticStr;
 
-use super::type_annotator::TyClass;
-use super::types::HIRType;
+use super::type_inference::TypeInferenceError;
 
-#[derive(Debug)]
+#[derive(Debug, IntoStaticStr)]
 pub enum Error {
     FunctionMultipleDefinitions {
         first: Spanned<String>,
@@ -22,90 +21,37 @@ pub enum Error {
         found: usize,
         expected: usize,
     },
-    TypesConflict {
-        first: MaybeSpanned<HIRType>,
-        second: MaybeSpanned<HIRType>,
-    },
-    AmbiguousClass {
-        possible_classes: Vec<TyClass>,
-    },
-    CantResolveType,
-    UnknownStructField {
-        name: String,
-    },
-    MissingStructField {
-        name: String,
-    },
-    UnregisteredLocalId {
-        id: LocalId,
-    },
-    UnregisteredExprId {
-        id: ExprId,
-    },
+    TypeInferenceError(TypeInferenceError),
 }
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        use Error::*;
+
         match self {
-            Error::FunctionMultipleDefinitions { first, second } => {
+            FunctionMultipleDefinitions { first, second } => {
                 write!(
                     f,
-                    "Function `{}` is defined multiple times: first at {}, then at {}",
+                    "Function `{}` is defined multiple times: first at {}, then at \
+                     {}",
                     first.node, first.span, second.span
                 )
             }
-            Error::UnknownVariable { name } => {
+            UnknownVariable { name } => {
                 write!(f, "Unknown variable `{name}`",)
             }
-            Error::UnknownFunction { name } => {
+            UnknownFunction { name } => {
                 write!(f, "Unknown function `{name}`")
             }
-            Error::ArgumentCountMismatch { found, expected } => {
+            ArgumentCountMismatch { found, expected } => {
                 write!(
                     f,
-                    "Function call argument count mismatch: found {found}, expected {expected}"
+                    "Function call argument count mismatch: found {found}, \
+                     expected {expected}"
                 )
             }
-            Error::TypesConflict { first, second } => {
-                // let first_at = first.span.map(|s| format!(" ({s} bytes)")).unwrap_or_default();
-                // let second_at = second.span.map(|s| format!(" ({s} bytes)")).unwrap_or_default();
-                write!(
-                    f,
-                    "Types conflict between `{}` and `{}`",
-                    first.node, second.node,
-                )
-            }
-            Error::AmbiguousClass { possible_classes } => {
-                let classes = possible_classes
-                    .iter()
-                    .map(|c| format!("{c:?}"))
-                    .collect::<Vec<_>>()
-                    .join(" or ");
-                write!(
-                    f,
-                    "Cannot resolve type because literal is ambiguous - may be {classes}"
-                )
-            }
-            Error::CantResolveType => {
-                write!(f, "Cannot resolve type")
-            }
-            Error::UnknownStructField { name } => {
-                write!(f, "Unknown struct field `{name}`")
-            }
-            Error::MissingStructField { name } => {
-                write!(f, "Missing struct field `{name}`")
-            }
-            Error::UnregisteredLocalId { id } => {
-                write!(
-                    f,
-                    "Unregistered local id {id}. It's a compiler issue, please report it"
-                )
-            }
-            Error::UnregisteredExprId { id } => {
-                write!(
-                    f,
-                    "Unregistered expression id {id}. It's a compiler issue, please report it"
-                )
+            TypeInferenceError(type_inference_error) => {
+                write!(f, "{type_inference_error}")
             }
         }
     }
@@ -113,47 +59,36 @@ impl Display for Error {
 
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
+        use Error::*;
+        match self {
+            TypeInferenceError(type_inference_error) => Some(type_inference_error),
+            _ => None,
+        }
     }
 }
 
 impl ErrorType for Error {
     fn error_type(&self) -> &'static str {
+        use Error::*;
+
         const SEMANTIC_ERROR: &str = "SemanticError";
-        const TYPE_ERROR: &str = "TypeError";
-        const INTERNAL_ERROR: &str = "InternalError";
+
         match self {
-            Error::FunctionMultipleDefinitions { .. } => SEMANTIC_ERROR,
-            Error::UnknownVariable { .. } => SEMANTIC_ERROR,
-            Error::UnknownFunction { .. } => SEMANTIC_ERROR,
-            Error::ArgumentCountMismatch { .. } => SEMANTIC_ERROR,
+            FunctionMultipleDefinitions { .. }
+            | UnknownVariable { .. }
+            | UnknownFunction { .. }
+            | ArgumentCountMismatch { .. } => SEMANTIC_ERROR,
 
-            Error::TypesConflict { .. } => TYPE_ERROR,
-            Error::AmbiguousClass { .. } => TYPE_ERROR,
-            Error::CantResolveType => TYPE_ERROR,
-            Error::UnknownStructField { .. } => TYPE_ERROR,
-            Error::MissingStructField { .. } => TYPE_ERROR,
-
-            Error::UnregisteredLocalId { .. } => INTERNAL_ERROR,
-            Error::UnregisteredExprId { .. } => INTERNAL_ERROR,
+            TypeInferenceError(error) => error.error_type(),
         }
     }
 
     fn error_sub_type(&self) -> &'static str {
+        use Error::*;
+
         match self {
-            Error::FunctionMultipleDefinitions { .. } => "FunctionMultipleDefinitions",
-            Error::UnknownVariable { .. } => "UnknownVariable",
-            Error::UnknownFunction { .. } => "UnknownFunction",
-            Error::ArgumentCountMismatch { .. } => "ArgumentCountMismatch",
-
-            Error::TypesConflict { .. } => "TypesConflict",
-            Error::AmbiguousClass { .. } => "AmbiguousClass",
-            Error::CantResolveType => "CantResolveType",
-            Error::UnknownStructField { .. } => "UnknownStructField",
-            Error::MissingStructField { .. } => "MissingStructField",
-
-            Error::UnregisteredLocalId { .. } => "UnregisteredLocalId",
-            Error::UnregisteredExprId { .. } => "UnregisteredExprId",
+            TypeInferenceError(error) => error.error_sub_type(),
+            _ => self.into(),
         }
     }
 }

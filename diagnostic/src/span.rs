@@ -34,6 +34,16 @@ impl Span {
             other
         }
     }
+
+    pub fn min(self, other: Span) -> Span {
+        if self.start == other.start {
+            if self.end <= other.end { self } else { other }
+        } else if self.start < other.start {
+            self
+        } else {
+            other
+        }
+    }
 }
 
 impl std::fmt::Display for Span {
@@ -101,6 +111,16 @@ impl<T> Spanned<T> {
             node: self.node,
             span: Some(self.span),
         }
+    }
+}
+
+impl<T> Spanned<Option<T>> {
+    #[inline]
+    pub fn transpose(self) -> Option<Spanned<T>> {
+        self.node.map(|node| Spanned {
+            node,
+            span: self.span,
+        })
     }
 }
 
@@ -190,6 +210,13 @@ impl<T> MaybeSpanned<T> {
             node: self.node,
             span: self.span.unwrap_or(default_span),
         }
+    }
+
+    pub fn into_option_spanned(self) -> Option<Spanned<T>> {
+        self.span.map(|span| Spanned {
+            node: self.node,
+            span,
+        })
     }
 
     #[inline]

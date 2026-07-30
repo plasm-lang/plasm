@@ -1,7 +1,6 @@
 use bimap::BiHashMap;
-use serde::Serialize;
-
 use diagnostic::Spanned;
+use serde::Serialize;
 use utils::ids::HIRTypeId;
 use utils::primitive_types::PrimitiveType;
 
@@ -11,14 +10,30 @@ type S<T> = Spanned<T>;
 pub enum HIRType {
     Primitive(PrimitiveType),
     Struct(StructType),
-    // Named(),
+    Named(String, Box<HIRType>),
 }
 
-impl std::fmt::Display for HIRType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl HIRType {
+    /// Follows `Named(_, inner)` chains until a non-Named type is reached.
+    pub fn peel_named(&self) -> &HIRType {
         match self {
-            HIRType::Primitive(p) => write!(f, "{}", p),
-            HIRType::Struct(s) => write!(f, "{}", s),
+            HIRType::Named(_, inner) => inner.peel_named(),
+            other => other,
+        }
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            HIRType::Named(name, _) => Some(name),
+            _ => None,
+        }
+    }
+
+    pub fn format(&self, arena: &HIRTypeArena) -> String {
+        match self {
+            HIRType::Primitive(p) => format!("{p}"),
+            HIRType::Struct(s) => s.format(arena),
+            HIRType::Named(name, _sub_ty) => name.to_string(),
         }
     }
 }
@@ -28,28 +43,28 @@ pub struct StructType {
     pub fields: Vec<S<StructField>>,
 }
 
-impl std::fmt::Display for StructType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl StructType {
+    pub fn format(&self, arena: &HIRTypeArena) -> String {
         let fields_str = self
             .fields
             .iter()
-            .map(|field| field.to_string())
+            .map(|field| {
+                format!(
+                    "{}: {}",
+                    field.name.node,
+                    arena.get_by_id(field.ty_id.node).unwrap().format(arena)
+                )
+            })
             .collect::<Vec<_>>()
             .join(", ");
-        write!(f, "struct {{ {} }}", fields_str)
+        format!("struct {{ {fields_str} }}")
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct StructField {
     pub name: S<String>,
-    pub ty: S<HIRType>,
-}
-
-impl std::fmt::Display for StructField {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.name.node, self.ty)
-    }
+    pub ty_id: S<HIRTypeId>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -80,6 +95,10 @@ impl HIRTypeArena {
 
     pub fn get_by_id(&self, id: HIRTypeId) -> Option<&HIRType> {
         self.types.get_by_left(&id)
+    }
+
+    pub fn get_by_type(&self, ty: &HIRType) -> Option<&HIRTypeId> {
+        self.types.get_by_right(ty)
     }
 
     pub fn get_or_insert(&mut self, ty: HIRType) -> HIRTypeId {

@@ -8,17 +8,17 @@ type Transform = struct {
     },
 }
 
-// fn print_32(x: i32)
+fn print_i32(x: i32)
 
-fn print_pos(pos: struct { x: i32, y: i32 }) {
-    // print_32(pos.x);
-    // print_32(pos.y);
+fn print_transform(t: Transform) {
+    print_i32(t.pos.x)
+    print_i32(t.pos.y)
 }
 
-fn get_pos() -> struct { x: i32, y: i32 } {
-    return struct { x: 10, y: 20 }
+fn get_transform() -> Transform {
+    return { pos: { x: 5, z: 15 } }
 }
 
 fn main() {
-    print_pos(get_pos())
+    print_transform(get_transform())
 }

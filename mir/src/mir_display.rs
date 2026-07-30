@@ -1,11 +1,10 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use super::mir::{
-    Call, Constant, ConstantValue, Function, FunctionSignature, Global, Instruction, MIR, MetaInfo,
-    Module, Operand, RValue, Terminator,
+    Call, Constant, ConstantValue, Function, FunctionSignature, Global, Instruction,
+    MIR, MetaInfo, Module, Operand, RValue, Terminator,
 };
-use super::types::MIRType;
-use super::types::MIRTypeArena;
+use super::types::{MIRType, MIRTypeArena};
 
 impl Display for MIR {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
@@ -65,12 +64,14 @@ impl Display for MIRType {
 fn format_function(func: &Function, module: &Module) -> String {
     match func {
         Function::External(func) => {
-            let mut result = format_signature(&func.signature, module, &func.metainfo);
+            let mut result =
+                format_signature(&func.signature, module, &func.metainfo);
             result.push_str("\n");
             result
         }
         Function::Internal(func) => {
-            let mut result = format_signature(&func.signature, module, &func.metainfo);
+            let mut result =
+                format_signature(&func.signature, module, &func.metainfo);
             result.push_str(" {\n");
 
             for block in &func.blocks {
@@ -96,7 +97,11 @@ fn format_function(func: &Function, module: &Module) -> String {
     }
 }
 
-fn format_signature(signature: &FunctionSignature, module: &Module, metainfo: &MetaInfo) -> String {
+fn format_signature(
+    signature: &FunctionSignature,
+    module: &Module,
+    metainfo: &MetaInfo,
+) -> String {
     let ret_ty = module.type_arena.get_by_id(signature.ret_ty).unwrap();
 
     let args = signature
@@ -113,7 +118,11 @@ fn format_signature(signature: &FunctionSignature, module: &Module, metainfo: &M
     format!("fn {}({}) -> {}", signature.name, args, ret_ty)
 }
 
-fn format_terminator(terminator: &Terminator, module: &Module, metainfo: &MetaInfo) -> String {
+fn format_terminator(
+    terminator: &Terminator,
+    module: &Module,
+    metainfo: &MetaInfo,
+) -> String {
     match terminator {
         Terminator::GoTo(label) => {
             format!("goto {}", label)
@@ -125,7 +134,11 @@ fn format_terminator(terminator: &Terminator, module: &Module, metainfo: &MetaIn
     }
 }
 
-fn format_instruction(instruction: &Instruction, module: &Module, metainfo: &MetaInfo) -> String {
+fn format_instruction(
+    instruction: &Instruction,
+    module: &Module,
+    metainfo: &MetaInfo,
+) -> String {
     match instruction {
         Instruction::Assign(id, rvalue) => {
             format!(
@@ -185,9 +198,15 @@ fn format_call(call: &Call, module: &Module, metainfo: &MetaInfo) -> String {
     format!("call @{func_name}({args})")
 }
 
-fn format_operand(operand: &Operand, module: &Module, metainfo: &MetaInfo) -> String {
+fn format_operand(
+    operand: &Operand,
+    module: &Module,
+    metainfo: &MetaInfo,
+) -> String {
     match operand {
-        Operand::Use(val_id) => format!("%{}", metainfo.get_variable_name(*val_id)),
+        Operand::Use(val_id) => {
+            format!("%{}", metainfo.get_variable_name(*val_id))
+        }
         Operand::Constant(constant) => {
             let ty = module.type_arena.get_by_id(constant.type_id).unwrap();
             format!("{} {}", ty, constant)

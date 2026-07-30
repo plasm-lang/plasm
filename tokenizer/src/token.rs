@@ -57,6 +57,8 @@ pub enum SpecialSymbol {
     Caret,
     /// ~
     Tilde,
+    /// .
+    Dot,
 
     // 2-character symbols
     /// **

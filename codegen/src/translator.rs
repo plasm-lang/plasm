@@ -10,7 +10,6 @@ use inkwell::targets::{
 };
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StringRadix};
 use inkwell::values::{BasicValue, BasicValueEnum, CallSiteValue};
-
 use mir::MIR;
 use utils::ids::ValueId;
 use utils::primitive_types::PrimitiveType;
@@ -25,7 +24,8 @@ pub fn mir_to_asm_string(mir: MIR) -> String {
     let context = Context::create();
     let mir_module = mir.modules.into_iter().next().unwrap();
     let target_machine = get_target_machine();
-    MIRModuleTranslator::new(&context, mir_module).translate_to_asm_string(target_machine)
+    MIRModuleTranslator::new(&context, mir_module)
+        .translate_to_asm_string(target_machine)
 }
 
 fn get_target_machine() -> TargetMachine {
@@ -75,8 +75,7 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
             .write_to_memory_buffer(&llvm_module, FileType::Assembly)
             .unwrap();
         let asm_bytes = memory_buffer.as_slice();
-        let asm_string = String::from_utf8_lossy(asm_bytes).into_owned();
-        asm_string
+        String::from_utf8_lossy(asm_bytes).into_owned()
     }
 
     pub fn translate_to_llvm_ir_string(self) -> String {
@@ -117,7 +116,8 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
             .args
             .iter()
             .map(|(arg_ty_id, _)| {
-                let arg_ty = self.mir_module.type_arena.get_by_id(*arg_ty_id).unwrap();
+                let arg_ty =
+                    self.mir_module.type_arena.get_by_id(*arg_ty_id).unwrap();
                 self.get_llvm_type(arg_ty).unwrap().into()
             })
             .collect();
@@ -143,8 +143,11 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
 
     fn translate_function(&self, func: &mir::Function) {
         match func {
-            mir::Function::Internal(int_func) => self.translate_internal_function(int_func),
-            mir::Function::External(_ext_func) => {} // No body to translate for external functions
+            mir::Function::Internal(int_func) => {
+                self.translate_internal_function(int_func)
+            }
+            mir::Function::External(_ext_func) => {} /* No body to translate for
+                                                      * external functions */
         }
     }
 
@@ -153,7 +156,8 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
 
         let mut bb_map: HashMap<&str, BasicBlock<'ctx>> = HashMap::new();
         for block in &func.blocks {
-            let basic_block = self.context.append_basic_block(function, &block.label);
+            let basic_block =
+                self.context.append_basic_block(function, &block.label);
             bb_map.insert(block.label.as_str(), basic_block);
         }
 
@@ -168,7 +172,12 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
 
         for block in &func.blocks {
             self.builder.position_at_end(bb_map[block.label.as_str()]);
-            self.translate_basic_block(block, &bb_map, &mut value_map, &func.metainfo);
+            self.translate_basic_block(
+                block,
+                &bb_map,
+                &mut value_map,
+                &func.metainfo,
+            );
         }
     }
 
@@ -229,14 +238,16 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
                 self.builder.build_return(return_value).unwrap();
             }
             mir::Terminator::Branch {
-                cond,
-                then_block,
-                else_block,
-            } => unimplemented!(),
+                cond: _,
+                then_block: _,
+                else_block: _,
+            } => {
+                unimplemented!()
+            }
             mir::Terminator::Switch {
-                discr,
-                targets,
-                fallback,
+                discr: _,
+                targets: _,
+                fallback: _,
             } => unimplemented!(),
             mir::Terminator::Unreachable => {
                 self.builder.build_unreachable().unwrap();
@@ -271,15 +282,14 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
                 let ptr_val = value_map.get(ptr_id).unwrap().into_pointer_value();
                 let mir_ty = self.mir_module.type_arena.get_by_id(*type_id).unwrap();
                 let llvm_ty = self.get_llvm_type(mir_ty).unwrap();
-                let load_res = self.builder.build_load(llvm_ty, ptr_val, name).unwrap();
-                load_res
+                self.builder.build_load(llvm_ty, ptr_val, name).unwrap()
             }
-            mir::RValue::GetElementPtr(value_id) => todo!(),
+            mir::RValue::GetElementPtr(_value_id) => todo!(),
             mir::RValue::Call(call) => {
                 let call_site = self.translate_call(call, value_map);
                 call_site.try_as_basic_value().unwrap_basic()
             }
-            mir::RValue::BinaryOp(binary_op, operand, operand1) => todo!(),
+            mir::RValue::BinaryOp(_binary_op, _operand, _operand1) => todo!(),
         }
     }
 
@@ -311,7 +321,10 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
         call_site
     }
 
-    fn translate_constant(&self, constant: &mir::Constant) -> Option<BasicValueEnum<'ctx>> {
+    fn translate_constant(
+        &self,
+        constant: &mir::Constant,
+    ) -> Option<BasicValueEnum<'ctx>> {
         let mir_ty = self
             .mir_module
             .type_arena
@@ -345,7 +358,9 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
                 I128 | U128 => Some(self.context.i128_type().into()),
                 I256 | U256 => Some(self.context.custom_width_int_type(256).into()),
                 I512 | U512 => Some(self.context.custom_width_int_type(512).into()),
-                I1024 | U1024 => Some(self.context.custom_width_int_type(1024).into()),
+                I1024 | U1024 => {
+                    Some(self.context.custom_width_int_type(1024).into())
+                }
                 F8 => unimplemented!(),
                 F16 => Some(self.context.f16_type().into()),
                 F32 => Some(self.context.f32_type().into()),

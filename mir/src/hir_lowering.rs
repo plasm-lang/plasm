@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
 use bimap::BiHashMap;
-
 use hir::{HIRTypeArena, THIR};
 use utils::ids::{ExprId, HIRTypeId, LocalId, MIRTypeId, ValueId};
 use utils::primitive_types::PrimitiveType;
 
 use super::mir::{
-    BasicBlock, BlockLabel, Call, Constant, ExternalFunction, Function, FunctionSignature,
-    Instruction, InternalFunction, MIR, MetaInfo, Module, Operand, RValue, Terminator,
+    BasicBlock, BlockLabel, Call, Constant, ExternalFunction, Function,
+    FunctionSignature, Instruction, InternalFunction, MIR, MetaInfo, Module,
+    Operand, RValue, Terminator,
 };
 use super::types::{MIRType, MIRTypeArena};
 
@@ -47,8 +47,9 @@ impl HIRTranslator {
                 }
                 hir::Item::TypeDefinition(def) => {
                     let name = def.name;
-                    let hir_ty = hir_type_arena.get_by_id(def.ty.node).unwrap().clone();
-                    let mir_ty = MIRType::from_hir(hir_ty);
+                    let hir_ty =
+                        hir_type_arena.get_by_id(def.ty.node).unwrap().clone();
+                    let mir_ty = MIRType::from_hir(&hir_ty, &hir_type_arena);
                     self.mir.modules[0]
                         .type_arena
                         .insert_named(name.node, mir_ty);
@@ -60,7 +61,7 @@ impl HIRTranslator {
 
     fn register_types(&mut self, hir_type_arena: &HIRTypeArena) {
         for ty in hir_type_arena.types.right_values() {
-            let mir_ty = MIRType::from_hir(ty.clone());
+            let mir_ty = MIRType::from_hir(ty, hir_type_arena);
             self.mir.modules[0].type_arena.insert(mir_ty);
         }
     }
@@ -70,7 +71,8 @@ impl HIRTranslator {
         func: hir::TypedFunction,
         hir_type_arena: &HIRTypeArena,
     ) -> Function {
-        let translator = HIRFunctionTranslator::new(&mut self.mir.modules[0], hir_type_arena);
+        let translator =
+            HIRFunctionTranslator::new(&mut self.mir.modules[0], hir_type_arena);
         translator.translate(func)
     }
 }
@@ -141,26 +143,38 @@ impl<'a> HIRFunctionTranslator<'a> {
         let hir_ty = self
             .hir_type_arena
             .get_by_id(id)
-            .expect("HIRTypeId not found in arena. Internal error.")
-            .clone();
-        let mir_ty = MIRType::from_hir(hir_ty);
+            .expect("HIRTypeId not found in arena. Internal error.");
+        let mir_ty = MIRType::from_hir(hir_ty, self.hir_type_arena);
         self.module.type_arena.get_or_insert(mir_ty)
     }
 
-    fn lower_expr_value(&mut self, expr_id: ExprId, expr_arena: &hir::TypedExprArena) -> Operand {
+    fn lower_expr_value(
+        &mut self,
+        expr_id: ExprId,
+        expr_arena: &hir::TypedExprArena,
+    ) -> Operand {
         let expr = expr_arena.get(expr_id).unwrap().as_ref();
         let type_id = self.lower_hir_type_id(expr.ty.node);
 
         match &expr.kind {
             hir::TypedExprKind::Literal(lit) => match lit {
-                hir::Literal::Bool(v) => Operand::Constant(Constant::bool(type_id, *v)),
-                hir::Literal::Integer(v) => Operand::Constant(Constant::int(type_id, v.clone())),
-                hir::Literal::Float(v) => Operand::Constant(Constant::float(type_id, v.clone())),
+                hir::Literal::Bool(v) => {
+                    Operand::Constant(Constant::bool(type_id, *v))
+                }
+                hir::Literal::Integer(v) => {
+                    Operand::Constant(Constant::int(type_id, v.clone()))
+                }
+                hir::Literal::Float(v) => {
+                    Operand::Constant(Constant::float(type_id, v.clone()))
+                }
                 hir::Literal::Void => Operand::Constant(Constant::void(type_id)),
             },
             hir::TypedExprKind::FunctionCall(hir_call) => {
                 if self.is_void_type(type_id) {
-                    panic!("void expression cannot be lowered in value context. Internal error.");
+                    panic!(
+                        "void expression cannot be lowered in value context. \
+                         Internal error."
+                    );
                 }
 
                 let value_id = self.next_vreg();
@@ -168,7 +182,9 @@ impl<'a> HIRFunctionTranslator<'a> {
                 let args = hir_call
                     .args
                     .iter()
-                    .map(|arg_expr_id| self.lower_expr_value(*arg_expr_id, expr_arena))
+                    .map(|arg_expr_id| {
+                        self.lower_expr_value(*arg_expr_id, expr_arena)
+                    })
                     .collect();
 
                 let rvalue = RValue::Call(Call {
@@ -185,11 +201,17 @@ impl<'a> HIRFunctionTranslator<'a> {
                 self.emit_instruction(Instruction::Assign(value_id, rvalue));
                 Operand::Use(value_id)
             }
-            _ => unimplemented!("Expression kind not supported yet: {:?}", expr.kind),
+            _ => {
+                unimplemented!("Expression kind not supported yet: {:?}", expr.kind)
+            }
         }
     }
 
-    fn lower_expr_stmt(&mut self, expr_id: ExprId, expr_arena: &hir::TypedExprArena) {
+    fn lower_expr_stmt(
+        &mut self,
+        expr_id: ExprId,
+        expr_arena: &hir::TypedExprArena,
+    ) {
         let expr = expr_arena.get(expr_id).unwrap().as_ref();
 
         match &expr.kind {
@@ -197,7 +219,9 @@ impl<'a> HIRFunctionTranslator<'a> {
                 let args = hir_call
                     .args
                     .iter()
-                    .map(|arg_expr_id| self.lower_expr_value(*arg_expr_id, expr_arena))
+                    .map(|arg_expr_id| {
+                        self.lower_expr_value(*arg_expr_id, expr_arena)
+                    })
                     .collect();
 
                 self.emit_instruction(Instruction::Call(Call {
@@ -205,7 +229,8 @@ impl<'a> HIRFunctionTranslator<'a> {
                     args,
                 }));
             }
-            // Expression statements without side effects should not materialize vregs.
+            // Expression statements without side effects should not materialize
+            // vregs.
             hir::TypedExprKind::Literal(_) | hir::TypedExprKind::Local(_) => {}
             _ => {
                 unimplemented!(
@@ -216,7 +241,11 @@ impl<'a> HIRFunctionTranslator<'a> {
         }
     }
 
-    fn lower_statement(&mut self, statement: hir::Statement, expr_arena: &hir::TypedExprArena) {
+    fn lower_statement(
+        &mut self,
+        statement: hir::Statement,
+        expr_arena: &hir::TypedExprArena,
+    ) {
         match statement {
             hir::Statement::VariableDeclaration(decl) => {
                 let stack_ptr = *self.stack_slot_ptrs.get(&decl.local_id).unwrap();
@@ -249,7 +278,10 @@ impl<'a> HIRFunctionTranslator<'a> {
         }
     }
 
-    fn translate_signature(&mut self, signature: hir::FunctionSignature) -> FunctionSignature {
+    fn translate_signature(
+        &mut self,
+        signature: hir::FunctionSignature,
+    ) -> FunctionSignature {
         let return_type_id = self.lower_hir_type_id(signature.ret_ty.node);
 
         let args = signature
@@ -277,7 +309,9 @@ impl<'a> HIRFunctionTranslator<'a> {
         hir_signature: &hir::FunctionSignature,
         mir_signature: &FunctionSignature,
     ) {
-        for (hir_arg, (_, value_id)) in hir_signature.args.iter().zip(mir_signature.args.iter()) {
+        for (hir_arg, (_, value_id)) in
+            hir_signature.args.iter().zip(mir_signature.args.iter())
+        {
             let ptr = *self.stack_slot_ptrs.get(&hir_arg.node.local_id).unwrap();
             let instruction = Instruction::Store {
                 value: Operand::Use(*value_id),
@@ -287,10 +321,21 @@ impl<'a> HIRFunctionTranslator<'a> {
         }
     }
 
-    fn translate_internal_func(mut self, func: hir::TypedInternalFunction) -> InternalFunction {
+    fn translate_internal_func(
+        mut self,
+        func: hir::TypedInternalFunction,
+    ) -> InternalFunction {
         let hir_signature = func.signature;
 
-        for local in func.body.locals {
+        let hir::ExprKind::Block(func_body) =
+            func.expr_arena.get(func.body).unwrap().node.kind.clone()
+        else {
+            unreachable!(
+                "Impossible Invariant: function body must be a block expression."
+            );
+        };
+
+        for local in func_body.locals {
             // Alloca for each local variable
             let type_id = self.lower_hir_type_id(local.ty.node);
             let stack_ptr = self.next_vreg();
@@ -307,7 +352,7 @@ impl<'a> HIRFunctionTranslator<'a> {
         let signature = self.translate_signature(hir_signature.clone());
         self.emit_store_instructions_for_args(&hir_signature, &signature);
 
-        for statement in func.body.statements {
+        for statement in func_body.statements {
             self.lower_statement(statement, &func.expr_arena);
         }
 
@@ -318,7 +363,10 @@ impl<'a> HIRFunctionTranslator<'a> {
         }
     }
 
-    fn translate_external_func(mut self, func: hir::ExternalFunction) -> ExternalFunction {
+    fn translate_external_func(
+        mut self,
+        func: hir::ExternalFunction,
+    ) -> ExternalFunction {
         let signature = self.translate_signature(func.signature);
         ExternalFunction {
             signature,

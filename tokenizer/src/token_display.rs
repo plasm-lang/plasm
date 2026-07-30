@@ -8,9 +8,13 @@ impl Display for Token {
             Token::Keyword(keyword) => write!(f, "{keyword}"),
             Token::Identifier(name) => write!(f, "{name}"),
             Token::Number(number) => write!(f, "{number}"),
-            Token::SpecialSymbol(special_symbol) => write!(f, "{special_symbol}"),
+            Token::SpecialSymbol(special_symbol) => {
+                write!(f, "{special_symbol}")
+            }
             Token::Bracket(bracket) => write!(f, "{bracket}"),
-            Token::Whitespace(whitespace) => write!(f, "{}", " ".repeat(*whitespace)),
+            Token::Whitespace(whitespace) => {
+                write!(f, "{}", " ".repeat(*whitespace))
+            }
             Token::Comment(comment) => write!(f, "{comment}"),
             Token::NewLine => writeln!(f),
             Token::Impossible(s) => write!(f, "{s}"),
@@ -59,6 +63,7 @@ impl Display for SpecialSymbol {
             SpecialSymbol::Pipe => "|",
             SpecialSymbol::Caret => "^",
             SpecialSymbol::Tilde => "~",
+            SpecialSymbol::Dot => ".",
 
             SpecialSymbol::DoubleAsterisk => "**",
             SpecialSymbol::DoubleEquals => "==",

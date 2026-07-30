@@ -1,8 +1,6 @@
-use std::{
-    fmt::{Debug, Display, Formatter},
-    marker::PhantomData,
-    num::NonZeroUsize,
-};
+use std::fmt::{Debug, Display, Formatter};
+use std::marker::PhantomData;
+use std::num::NonZeroUsize;
 
 use serde::{Serialize, Serializer};
 

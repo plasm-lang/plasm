@@ -1,39 +1,38 @@
 // Warning: This example can't be compiled yet.
 // It's written for syntax demonstration.
 
-type 3DPosType = (i32, i32, i32)
-// A new independend type. Passing (i32, i32, i32) into
+type Pos3DType = (i32, i32, i32)
+// A new independent type. Passing (i32, i32, i32) into
 // function that accepts 3DPosType will be considered as an error.
 // `type` is used to define a new datatype.
 
-alias 3DPosAlias = (i32, i32, i32)
+alias Pos3DAlias = (i32, i32, i32)
 // For convenience, you can also make aliases for types,
 // e.g. you can write alias 3DPosAlias = (i32, i32, i32),
 // and then you can write 3DPosAlias interchangeably with
 // (i32, i32, i32) in function signatures, type definitions, etc.
 
-fn func_type_arg(x: 3DPosType)
+fn func_type_arg(x: Pos3DType)
 
 fn func_raw_arg(x: (i32, i32, i32))
 
-fn func_alias_arg(x: 3DPosAlias)
+fn func_alias_arg(x: Pos3DAlias)
 
 
 fn main() {
-    let x = 1, 2, 3 // Type: (i32, i32, i32)
-    func_type_arg(x) // Error: Expected 3DPosType, but got (i32, i32, i32).
+    let x: (i32, i32, i32) = (1, 2, 3)
+    func_type_arg(x) // Error: Expected Pos3DType, but got (i32, i32, i32).
     func_raw_arg(x) // It's ok
     func_alias_arg(x) // It's ok
 
-    // The same as above, but explicitly
-    let x: 3DPosAlias = 1, 2, 3
-    func_type_arg(x) // Error: Expected 3DPosType, but got (i32, i32, i32).
+    // The same as above
+    let x: Pos3DAlias = (1, 2, 3) // Type: (i32, i32, i32)
+    func_type_arg(x) // Error: Expected Pos3DType, but got (i32, i32, i32).
     func_raw_arg(x) // It's ok
     func_alias_arg(x) // It's ok
 
-    let x = 3DPosType(1, 2, 3)
-    // or `let pos: 3DPosType = 1, 2, 3`
+    let x: Pos3DType = (1, 2, 3)
     func_type_arg(x) // It's right
-    func_raw_arg(x) // Error: Expected (i32, i32, i32), but got 3DPosType.
-    func_alias_arg(x) // Error: Expected (i32, i32, i32), but got 3DPosType.
+    func_raw_arg(x) // Error: Expected (i32, i32, i32), but got Pos3DType.
+    func_alias_arg(x) // Error: Expected (i32, i32, i32), but got Pos3DType.
 }

@@ -21,7 +21,7 @@ Mainly inspired by [Rust](https://github.com/rust-lang/rust)'s type system, [Ver
 * **Transparency** - The compilation pipeline must be fully observable and predictable. The language design strictly prohibits "hidden magic": every transformation, such as syntactic desugaring or optimization passes, must be auditable. The compiler guarantees explicit, traceable causality for all actions and errors, eliminating opaque failures (like unexplainable segmentation faults<a href="#ref-10"><sup>[10]</sup></a>) in favor of graceful, highly contextual diagnostics.
 * **Readability** - The syntax prioritizes clear intent over extreme brevity. Plasm rejects convoluted, nested declarations (such as the C spiral rule) in favor of linear, straightforward constructs. The goal is simple: an engineer unfamiliar with Plasm should be able to read and understand the logic of a codebase without reading a manual first. Syntactic abbreviations are allowed, but they are strictly limited so they never compromise clarity for an outside observer.
 * **One-Way Designability** - There should be exactly one canonical way to express a specific logic or declare a construct. Plasm actively avoids the syntactic fragmentation found in languages like C++, where a single operation can be written in multiple equivalent forms. If multiple approaches must exist for different contexts, the distinction is unambiguous and strictly enforced by the default linter, ensuring a uniform, highly predictable codebase across the entire ecosystem.
-* **Runtime Performance & Safety > Compilation Time** - The quality of the final executable is paramount. Plasm explicitly prioritizes aggressive optimization passes and exhaustive compile-time verification over rapid build times. While fast developer iteration is fully supported through stripped-down debug profiles, production builds will never sacrifice execution speed or safety just to compile faster. This establishes a definitive architectural priority: if a heavy compiler pass prevents a runtime bug or extracts maximum performance, it is always worth the wait.
+* **Runtime Performance & Safety > Compilation Time** - The quality of the final executable is paramount. Plasm explicitly prioritizes aggressive optimization passes and exhaustive compile-time verification over rapid build times. While fast development iteration is fully supported through stripped-down debug profiles, production builds will never sacrifice execution speed or safety just to compile faster. This establishes a definitive architectural priority: if a heavy compiler pass prevents a runtime bug or extracts maximum performance, it is always worth the wait.
 
 > #### References and Terms
 > 1.  <a id="ref-1"></a> D. Leijen. "Koka: Programming with Row Polymorphic Effect Types" in Electronic Proceedings in Theoretical Computer Science, vol. 153, pp. 100–126, 2014. DOI: [10.48550/arXiv.1406.2061](https://doi.org/10.48550/arXiv.1406.2061)
@@ -173,7 +173,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>func(arg2=var2, arg1=var2)</code></td>
+      <td><code>func(arg2: var2, arg1: var1)</code></td>
     </tr>
     <tr>
       <th>Global Variables</th>
@@ -257,7 +257,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>type MyType = struct {...}</code></td>
+      <td><code>struct {...}</code></td>
     </tr>
     <tr>
       <th>Struct Fields</th>
@@ -266,7 +266,16 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>type MyType = struct { filed: i32 }</code></td>
+      <td><code>struct { field: i32 }</code></td>
+    </tr>
+    <tr>
+      <th>Named Typing</th>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>type MyType = struct {...}</code></td>
     </tr>
     <tr>
       <th>Reference Type</th>
@@ -275,7 +284,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>&x</code></td>
+      <td><code>&x</code>/<code>Ref[T]</code></td>
     </tr>
     <tr>
       <th>Linked Functions</th>
@@ -314,15 +323,6 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td><code>type MyEnum = enum { A, B, C }</code></td>
     </tr>
     <tr>
-      <th>Enum Defaults</th>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>WIP</td>
-    </tr>
-    <tr>
       <th>Zero-Size Enums</th>
       <td>⬜</td>
       <td>⬜</td>
@@ -350,16 +350,34 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td><code>A | B | C</code></td>
     </tr>
     <tr>
+      <th>Type Aliasing</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>alias Pos = (i32, i32, i32)</code></td>
+    </tr>
+    <tr>
       <th colspan="7" align="center">Polymorphism</th>
     </tr>
     <tr>
-      <th>Interfaces|Traits</th>
+      <th>Interfaces/Traits</th>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td>WIP</td>
+      <td><code>trait Default { fn default() -> self }</code></td>
+    </tr>
+    <tr>
+      <th>Interface/Trait Generics</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>trait Add[R, O] { fn add(self, right: R) -> O }</code></td>
     </tr>
     <tr>
       <th>Implementations</th>
@@ -368,7 +386,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>impl Add for MyType {...}</code></td>
+      <td><code>impl Add[MyType, MyType] for MyType {...}</code></td>
     </tr>
     <tr>
       <th>Static Dispatch</th>
@@ -377,16 +395,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td>WIP</td>
-    </tr>
-    <tr>
-      <th>Dynamic Dispatch</th>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>WIP</td>
+      <td><code>fn func(arg: T) where T: Any</code></td>
     </tr>
     <tr>
       <th><code>where</code> Bounds</th>
@@ -395,10 +404,19 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>fn func(arg: T) where T: Default & Add {...}</code></td>
+      <td><code>fn sum3(a: T, b: T, c: T) -> T where T: Add[T, T] {...}</code></td>
     </tr>
     <tr>
-      <th>For</th>
+      <th>Dynamic Dispatch</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>fn sum_len(arg: List[T]) where T: vtable Len[usize] -> usize {...}</code></td>
+    </tr>
+    <tr>
+      <th>For (needs `Iter` trait)</th>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
@@ -410,16 +428,153 @@ This is the roadmap for implementing a minimal working framework that will serve
       <th colspan="7" align="center">Metaprogramming & Compile-time</th>
     </tr>
     <tr>
-      <th colspan="7" align="center">Compiler Extensions</th>
+      <th>Compile-Time Reflection / AST Representation Access</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>SomeStruct.ast.fields[0].name</code></td>
+    </tr>
+    <tr>
+      <th>Meta Functions</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>meta fn add_defaults(func: ast.Function) -> ast.Function {...}</code></td>
+    </tr>
+    <tr>
+      <th>Compile-Time Evaluation</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>let value = @retrieve_value_from_db(...)</code></td>
     </tr>
     <tr>
       <th colspan="7" align="center">Algebraic Effects</th>
+    </tr>
+    <tr>
+      <th>Effect Definition</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>effect async { fn await() {...} }</code></td>
+    </tr>
+    <tr>
+      <th>Effect Usage</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>async fn async_fn() { return await async_fn_2() }</code></td>
+    </tr>
+    <tr>
+      <th>Effect Generics</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>WIP</td>
+    </tr>
+    <tr>
+      <th>Effect Polymorphism</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>
+        fn map(seq: I, func: F) -> O
+          where I: Iter[T],
+                O: Iter[U],
+                F: fn(T) -> U {}</code></td>
+    </tr>
+    </tr>
+    <tr>
+      <th>Effect Sets</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>effect syscall { read, write, open, close, ... }</code></td>
     </tr>
     <tr>
       <th colspan="7" align="center">Memory Regions</th>
     </tr>
     <tr>
       <th colspan="7" align="center">Standard Library</th>
+    </tr>
+    <tr>
+      <th>Binary & Unary Operation Traits</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>Add, Mul, Neg, And</code></td>
+    </tr>
+    <tr>
+      <th>Strings</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>CString, UTF8String, UTF32String</code></td>
+    </tr>
+    <tr>
+      <th>Vector/List</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>List[T]</code></td>
+    </tr>
+    <tr>
+      <th>HashMap</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>HashMap[K, V]</code></td>
+    </tr>
+    <tr>
+      <th>Int (bit unlimited)</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>let v: Int = 9999999999999</code></td>
+    </tr>
+    <tr>
+      <th>Float (bit unlimited)</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>let v: Float = 0.9999999999999</code></td>
+    </tr>
+    <tr>
+      <th>Iter traits</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>trait Iter[T] {...}</code></td>
     </tr>
   </tbody>
 </table>

@@ -1,9 +1,10 @@
 use std::fmt::{Display, Formatter, Result};
 
 use super::ast::{
-    AST, Argument, BinaryExpr, CallArgument, Expr, ExternalFunction, Function, FunctionCall,
-    FunctionSignature, InternalFunction, Item, Literal, Statement, StructField, StructLiteralExpr,
-    StructLiteralField, StructType, Type, TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
+    AST, Argument, BinaryExpr, CallArgument, Expr, ExternalFunction, FieldAccess,
+    Function, FunctionCall, FunctionSignature, InternalFunction, Item, Literal,
+    Statement, StructField, StructLiteralExpr, StructLiteralField, StructType, Type,
+    TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
 };
 
 impl Display for AST {
@@ -92,7 +93,10 @@ impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Type::Primitive(primitive_type) => write!(f, "{primitive_type}"),
-            Type::Struct(struct_type) => write!(f, "{}", Indent::new(struct_type).with_indent(0)),
+            Type::Struct(struct_type) => {
+                write!(f, "{}", Indent::new(struct_type).with_indent(0))
+            }
+            Type::Named(name) => write!(f, "{name}"),
         }
     }
 }
@@ -156,7 +160,10 @@ impl<'a> Display for Indent<'a, Type> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self.node {
             Type::Primitive(p) => write!(f, "{p}"),
-            Type::Struct(s) => write!(f, "{}", Indent::new(s).with_indent(self.indent)),
+            Type::Struct(s) => {
+                write!(f, "{}", Indent::new(s).with_indent(self.indent))
+            }
+            Type::Named(name) => write!(f, "{name}"),
         }
     }
 }
@@ -241,7 +248,7 @@ impl<'a> Display for Indent<'a, CallArgument> {
         if let Some(name) = &self.node.name {
             write!(
                 f,
-                "{}={}",
+                "{}: {}",
                 name,
                 Indent::new(&self.node.value.node).with_indent(self.indent)
             )
@@ -261,31 +268,47 @@ impl<'a> Display for Indent<'a, Expr> {
         match self.node {
             Literal(l) => write!(f, "{l}"),
             Variable(n) => write!(f, "{n}"),
-            FunctionCall(fc) => write!(f, "{}", Indent::new(fc).with_indent(self.indent)),
-            Unary(u) => write!(f, "{}", Indent::new(u).with_indent(self.indent)),
-            Binary(b) => write!(f, "{}", Indent::new(b).with_indent(self.indent)),
+            FunctionCall(fc) => {
+                write!(f, "{}", Indent::new(fc).with_indent(self.indent))
+            }
+            Unary(u) => {
+                write!(f, "{}", Indent::new(u).with_indent(self.indent))
+            }
+            Binary(b) => {
+                write!(f, "{}", Indent::new(b).with_indent(self.indent))
+            }
             Block(stmts) => {
                 if stmts.is_empty() {
                     return write!(f, "{{}}");
                 }
                 writeln!(f, "{{")?;
                 for s in stmts {
-                    write!(f, "{}", Indent::new(&s.node).with_indent(self.indent + 1))?;
+                    write!(
+                        f,
+                        "{}",
+                        Indent::new(&s.node).with_indent(self.indent + 1)
+                    )?;
                 }
                 write_indent(f, self.indent)?;
                 write!(f, "}}")
             }
-            StructLiteral(lit) => write!(f, "{}", Indent::new(lit).with_indent(self.indent)),
+            StructLiteral(lit) => {
+                write!(f, "{}", Indent::new(lit).with_indent(self.indent))
+            }
+            FieldAccess(fa) => {
+                write!(f, "{}", Indent::new(fa).with_indent(self.indent))
+            }
         }
     }
 }
+
 impl<'a> Display for Indent<'a, StructLiteralExpr> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if self.node.fields.is_empty() {
-            return write!(f, "struct {{}}");
+            return write!(f, "{{}}");
         }
 
-        writeln!(f, "struct {{")?;
+        writeln!(f, "{{")?;
         for field in &self.node.fields {
             writeln!(
                 f,
@@ -334,6 +357,17 @@ impl<'a> Display for Indent<'a, BinaryExpr> {
             Indent::new(&self.node.left.node).with_indent(self.indent),
             self.node.op,
             Indent::new(&self.node.right.node).with_indent(self.indent)
+        )
+    }
+}
+
+impl<'a> Display for Indent<'a, FieldAccess> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}.{}",
+            Indent::new(&self.node.base.node).with_indent(self.indent),
+            self.node.field_name,
         )
     }
 }

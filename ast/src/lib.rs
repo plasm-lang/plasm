@@ -1,6 +1,7 @@
 pub mod ast;
 mod ast_display;
 mod error;
+mod lookahead;
 mod parser;
 
 pub use ast::*;

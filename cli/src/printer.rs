@@ -1,17 +1,14 @@
-use std::{
-    io::{Result, Stderr, Stdout, Write, stderr, stdout},
-    str::FromStr,
-};
+use std::io::{Result, Stderr, Stdout, Write, stderr, stdout};
+use std::str::FromStr;
 
 use anstream::AutoStream;
 use anstyle::Reset;
-
-use super::theme::Theme;
-use crate::EnableAsni;
-
 use diagnostic::{ErrorMessage, ErrorType};
 use tokenizer::{Comment, Token, tokenize};
 use utils::primitive_types::PrimitiveType;
+
+use super::theme::Theme;
+use crate::EnableAsni;
 
 const LINES_BEFORE: usize = 5;
 
@@ -44,13 +41,28 @@ impl Printer {
         tokenize(code.char_indices())
             .map(|(token, _span)| match token {
                 Token::Keyword(_) => {
-                    format!("{}{}{}", self.theme.keyword.render(), token, Reset.render())
+                    format!(
+                        "{}{}{}",
+                        self.theme.keyword.render(),
+                        token,
+                        Reset.render()
+                    )
                 }
                 Token::Bracket(_) => {
-                    format!("{}{}{}", self.theme.bracket.render(), token, Reset.render())
+                    format!(
+                        "{}{}{}",
+                        self.theme.bracket.render(),
+                        token,
+                        Reset.render()
+                    )
                 }
                 Token::Number(_) => {
-                    format!("{}{}{}", self.theme.literal.render(), token, Reset.render())
+                    format!(
+                        "{}{}{}",
+                        self.theme.literal.render(),
+                        token,
+                        Reset.render()
+                    )
                 }
                 Token::Identifier(ref s) => {
                     if let Ok(ty) = PrimitiveType::from_str(s) {
@@ -61,20 +73,40 @@ impl Printer {
                             Reset.render()
                         )
                     } else {
-                        format!("{}{}{}", self.theme.code.render(), token, Reset.render())
+                        format!(
+                            "{}{}{}",
+                            self.theme.code.render(),
+                            token,
+                            Reset.render()
+                        )
                     }
                 }
                 Token::Comment(Comment::SingleLine(_)) => {
-                    format!("{}{}{}", self.theme.comment.render(), token, Reset.render())
+                    format!(
+                        "{}{}{}",
+                        self.theme.comment.render(),
+                        token,
+                        Reset.render()
+                    )
                 }
                 Token::Comment(Comment::MultiLine(_)) => format!("{token}")
                     .split("\n")
                     .map(|line| {
-                        format!("{}{}{}", self.theme.comment.render(), line, Reset.render())
+                        format!(
+                            "{}{}{}",
+                            self.theme.comment.render(),
+                            line,
+                            Reset.render()
+                        )
                     })
                     .collect::<Vec<_>>()
                     .join("\n"),
-                _ => format!("{}{}{}", self.theme.code.render(), token, Reset.render()),
+                _ => format!(
+                    "{}{}{}",
+                    self.theme.code.render(),
+                    token,
+                    Reset.render()
+                ),
             })
             .collect()
     }

@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 
-use bimap::BiHashMap;
-use serde::Serialize;
-
 use ast::ast::Literal;
+use bimap::BiHashMap;
 use diagnostic::{MaybeSpanned, Spanned};
+use serde::Serialize;
 use utils::ids::{ExprId, FuncId, HIRTypeId, LocalId};
 
 use super::types::HIRTypeArena;
@@ -70,7 +69,7 @@ pub struct TypeDefinition {
 #[derive(Debug, Serialize)]
 pub struct InternalFunction<T> {
     pub signature: FunctionSignature,
-    pub body: Block<T>,
+    pub body: ExprId,
     pub expr_arena: ExprArena<T>,
 }
 
@@ -94,7 +93,7 @@ pub struct Argument {
     pub ty: S<HIRTypeId>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Block<T> {
     pub locals: Vec<HIRLocal<T>>,
     pub statements: Vec<Statement>,
@@ -107,14 +106,14 @@ pub struct HIRLocal<T> {
     pub name: S<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub enum Statement {
     VariableDeclaration(VariableDeclaration),
     Expr(ExprId),
     Return(ExprId),
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct VariableDeclaration {
     pub local_id: LocalId,
     pub expr_id: ExprId,
@@ -147,7 +146,7 @@ pub struct Expr<T> {
     pub kind: ExprKind<T>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub enum ExprKind<T> {
     Literal(Literal),
     Local(LocalId),
@@ -155,9 +154,10 @@ pub enum ExprKind<T> {
     Block(Block<T>),
     // Binary(Binary<T>),
     StructLiteral(StructLiteral),
+    FieldAccess(FieldAccess),
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FunctionCall {
     pub func_id: FuncId,
     pub args: Vec<ExprId>,
@@ -168,13 +168,19 @@ pub struct FunctionCall {
 
 // }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct StructLiteral {
     pub fields: Vec<S<StructLiteralField>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct StructLiteralField {
     pub name: S<String>,
     pub value: ExprId,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FieldAccess {
+    pub base: ExprId,
+    pub field_name: S<String>,
 }
