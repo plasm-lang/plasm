@@ -15,7 +15,7 @@
 //! |  | FunctionConstraintGen |   |
 //! |  +-----------------------+   |
 //! |              |               |
-//! |         Constraints          |
+//! |        ConstraintSet         |
 //! |              |               |
 //! |              V               |
 //! |    +--------------------+    |
@@ -45,7 +45,8 @@ mod error;
 mod type_class;
 mod type_solver;
 mod type_var;
-mod unifier;
+mod union_find;
+mod work_list;
 
 pub use engine::opt_hir_to_t_hir;
 pub use error::TypeInferenceError;

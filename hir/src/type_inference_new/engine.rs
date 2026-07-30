@@ -92,13 +92,11 @@ impl TypeInferenceEngine {
             funcs_map: self.module_ctx.func_map,
             type_arena: self.type_arena,
         };
-        (
-            thir,
-            errors
-                .into_iter()
-                .map(|spanned_e| spanned_e.map(|e| e.into()))
-                .collect(),
-        )
+        let errors = errors
+            .into_iter()
+            .map(|error| error.map(Into::into))
+            .collect();
+        (thir, errors)
     }
 }
 
@@ -109,8 +107,7 @@ fn infer_func(
     module_ctx: &ModuleCtx,
     type_arena: &mut HIRTypeArena,
 ) -> Result<InternalFunction<Typed>, Vec<S<TypeInferenceError>>> {
-    println!("===== {} =====", func.signature.name.node);
-    let constraints = generate_function_constraints(&func, module_ctx, type_arena);
+    let constraints = generate_function_constraints(&func, module_ctx);
     let (solution, errors) = solve_function_types(constraints, type_arena);
     if !errors.is_empty() {
         return Err(errors);

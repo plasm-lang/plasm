@@ -2,6 +2,7 @@ mod ast_translator;
 mod error;
 mod hir;
 mod hir_display;
+#[path = "type_inference_new/mod.rs"]
 mod type_inference;
 mod types;
 

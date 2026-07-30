@@ -75,8 +75,7 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
             .write_to_memory_buffer(&llvm_module, FileType::Assembly)
             .unwrap();
         let asm_bytes = memory_buffer.as_slice();
-        let asm_string = String::from_utf8_lossy(asm_bytes).into_owned();
-        asm_string
+        String::from_utf8_lossy(asm_bytes).into_owned()
     }
 
     pub fn translate_to_llvm_ir_string(self) -> String {
@@ -239,16 +238,16 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
                 self.builder.build_return(return_value).unwrap();
             }
             mir::Terminator::Branch {
-                cond,
-                then_block,
-                else_block,
+                cond: _,
+                then_block: _,
+                else_block: _,
             } => {
                 unimplemented!()
             }
             mir::Terminator::Switch {
-                discr,
-                targets,
-                fallback,
+                discr: _,
+                targets: _,
+                fallback: _,
             } => unimplemented!(),
             mir::Terminator::Unreachable => {
                 self.builder.build_unreachable().unwrap();
@@ -283,16 +282,14 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
                 let ptr_val = value_map.get(ptr_id).unwrap().into_pointer_value();
                 let mir_ty = self.mir_module.type_arena.get_by_id(*type_id).unwrap();
                 let llvm_ty = self.get_llvm_type(mir_ty).unwrap();
-                let load_res =
-                    self.builder.build_load(llvm_ty, ptr_val, name).unwrap();
-                load_res
+                self.builder.build_load(llvm_ty, ptr_val, name).unwrap()
             }
-            mir::RValue::GetElementPtr(value_id) => todo!(),
+            mir::RValue::GetElementPtr(_value_id) => todo!(),
             mir::RValue::Call(call) => {
                 let call_site = self.translate_call(call, value_map);
                 call_site.try_as_basic_value().unwrap_basic()
             }
-            mir::RValue::BinaryOp(binary_op, operand, operand1) => todo!(),
+            mir::RValue::BinaryOp(_binary_op, _operand, _operand1) => todo!(),
         }
     }
 

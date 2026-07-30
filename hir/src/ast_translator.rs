@@ -689,14 +689,18 @@ mod tests {
     /// counted).
     fn check_errors(code: &str, expected_subtypes: &[&str]) {
         use diagnostic::ErrorType;
+
         let (ast, parse_errors) = parse(&mut tokenize(code.char_indices()));
         assert!(parse_errors.is_empty(), "parse errors: {parse_errors:?}");
+
         let (_hir, errors) = ast_to_hir(ast);
         let mut got: Vec<&str> =
             errors.iter().map(|e| e.node.error_sub_type()).collect();
-        let mut expected: Vec<&str> = expected_subtypes.to_vec();
         got.sort_unstable();
+
+        let mut expected: Vec<&str> = expected_subtypes.to_vec();
         expected.sort_unstable();
+
         assert_eq!(
             got, expected,
             "error sub-types mismatch\ngot:      {got:?}\nexpected: \
@@ -967,8 +971,8 @@ mod tests {
             type A = A
             fn f(x: A) {}
         "};
-        // CircularTypeDefinition for the type def, UnknownTypeName for the usage in
-        // f
+        // CircularTypeDefinition for the type def, UnknownTypeName for
+        // the usage in `f`
         check_errors(code, &["CircularTypeDefinition", "UnknownTypeName"]);
     }
 
@@ -996,5 +1000,20 @@ mod tests {
             }
         "};
         check_by_display(code, expected_hir_display);
+    }
+
+    #[test]
+    fn struct_shape_fields_mismatch() {
+        let code = indoc! {"
+            type Pos = struct {
+                x: i32,
+                y: i32,
+            }
+
+            fn get_pos() -> Pos {
+                return { x: true, y: 15 }
+            }
+        "};
+        check_errors(code, &["IncompatibleTypeClass"]);
     }
 }

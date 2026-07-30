@@ -1,0 +1,22 @@
+type Transform = struct {
+    pos: struct {
+        x: i32,
+        y: i32,
+    },
+}
+
+fn print_i32(x: i32)
+
+fn print_transform(t: Transform) {
+    print_i32(t.pos.x)
+    print_i32(t.pos.y)
+}
+
+fn get_pos() -> struct { x: i32, y: i32 } {
+    return { x: 5, y: 15 }
+}
+
+fn main() {
+    let data = { pos: get_pos() }
+    print_transform(data)
+}

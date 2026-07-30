@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 
 use diagnostic::Spanned;
-use utils::ids::{ExprId, HIRTypeId, LocalId, TypeVarId};
+use utils::ids::{ExprId, LocalId, TypeVarId};
 
 use super::engine::ModuleCtx;
 use super::type_class::TypeClass;
 use super::type_var::InferType;
 use crate::hir::{Block, ExprKind, HIRLocal, InternalFunction, OptTyped, Statement};
-use crate::types::{HIRType, HIRTypeArena};
 
 // For brevity
 type S<T> = Spanned<T>;
@@ -15,29 +14,55 @@ type S<T> = Spanned<T>;
 pub fn generate_function_constraints(
     func: &InternalFunction<OptTyped>,
     module_ctx: &ModuleCtx,
-    type_arena: &HIRTypeArena,
-) -> Constraints {
-    FunctionConstraintGen::new(func, module_ctx, type_arena).generate_constraints()
+) -> ConstraintSet {
+    FunctionConstraintGen::new(func, module_ctx).generate_constraints()
 }
 
 #[derive(Debug, Default)]
-pub struct Constraints {
-    pub equalities: Vec<Equality>,
-    pub obligations: Vec<Obligation>,
+pub struct ConstraintSet {
+    pub constraints: Vec<Constraint>,
     pub maps: InferTypeMaps,
 }
 
-#[derive(Debug)]
-pub struct Equality(pub S<InferType>, pub S<InferType>);
-
-#[derive(Debug)]
-pub enum Obligation {
+pub enum Constraint {
+    Equality(S<InferType>, S<InferType>),
     InClass(S<InferType>, TypeClass),
     /// Generated for struct literals. It means that `InferType` must be a
     /// struct, must have the given fields with the given types wth the given
     /// names. The order of fields doesn't matter for the obligation
     /// checking, but matters in fallback case.
     StructShape(S<InferType>, Vec<(S<String>, S<InferType>)>),
+    HasField {
+        base: S<InferType>,
+        field_name: S<String>,
+        field_type: S<InferType>,
+    },
+}
+
+impl std::fmt::Debug for Constraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Constraint::Equality(a, b) => write!(f, "{:?} == {:?}", a.node, b.node),
+            Constraint::InClass(a, class) => write!(f, "{:?} ∈ {:?}", a.node, class),
+            Constraint::StructShape(base, fields) => {
+                let fields_str: String = fields
+                    .iter()
+                    .map(|(name, ty)| format!("{:?}: {:?}", name.node, ty.node))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "{:?} === {{ {} }}", base.node, fields_str,)
+            }
+            Constraint::HasField {
+                base,
+                field_name,
+                field_type,
+            } => write!(
+                f,
+                "{:?} must have field {:?} of type {:?}",
+                base.node, field_name.node, field_type.node
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -48,28 +73,25 @@ pub struct InferTypeMaps {
 
 struct FunctionConstraintGen<'a> {
     next_type_var_id: TypeVarId,
-    result: Constraints,
+    result: ConstraintSet,
     func: &'a InternalFunction<OptTyped>,
     module_ctx: &'a ModuleCtx,
-    type_arena: &'a HIRTypeArena,
 }
 
 impl<'a> FunctionConstraintGen<'a> {
     pub fn new(
         func: &'a InternalFunction<OptTyped>,
         module_ctx: &'a ModuleCtx,
-        type_arena: &'a HIRTypeArena,
     ) -> Self {
         FunctionConstraintGen {
             next_type_var_id: TypeVarId::one(),
-            result: Constraints::default(),
+            result: ConstraintSet::default(),
             func,
             module_ctx,
-            type_arena,
         }
     }
 
-    pub fn generate_constraints(mut self) -> Constraints {
+    pub fn generate_constraints(mut self) -> ConstraintSet {
         let func_body_type_infer = self.process_expr(self.func.body);
 
         // Bind function return type with the type of the function body
@@ -77,11 +99,11 @@ impl<'a> FunctionConstraintGen<'a> {
             .func
             .signature
             .ret_ty
-            .map(|type_id| self.type_id_to_infer_type(type_id))
+            .map(InferType::Known)
             // If return span doesn't exist (it's void), use function name's span.
             .into_spanned_or(self.func.signature.name.span);
-        let eq = Equality(return_type_infer, func_body_type_infer);
-        self.result.equalities.push(eq);
+        let eq = Constraint::Equality(return_type_infer, func_body_type_infer);
+        self.result.constraints.push(eq);
 
         self.result
     }
@@ -94,37 +116,37 @@ impl<'a> FunctionConstraintGen<'a> {
         // If expression type id is unknown, generate a fresh type variable and save
         // it with expression span.
         let infer_type = match expr.ty {
-            Some(s_ty) => s_ty.map(|ty| self.type_id_to_infer_type(ty)),
+            Some(s_ty) => s_ty.map(InferType::Known),
             None => S::new(self.fresh_type_var(), expr.span),
         };
 
-        self.result.maps.expr_ty.insert(expr_id, infer_type.clone());
+        self.result.maps.expr_ty.insert(expr_id, infer_type);
 
         use ExprKind::*;
         match &expr.kind {
-            // For literals add `Obligation::InClass`.
+            // Literal types must belong to their corresponding type classes.
             Literal(ast::Literal::Void) => self
                 .result
-                .obligations
-                .push(Obligation::InClass(infer_type.clone(), TypeClass::Void)),
+                .constraints
+                .push(Constraint::InClass(infer_type, TypeClass::Void)),
             Literal(ast::Literal::Bool(_)) => self
                 .result
-                .obligations
-                .push(Obligation::InClass(infer_type.clone(), TypeClass::Bool)),
+                .constraints
+                .push(Constraint::InClass(infer_type, TypeClass::Bool)),
             Literal(ast::Literal::Integer(_)) => self
                 .result
-                .obligations
-                .push(Obligation::InClass(infer_type.clone(), TypeClass::Int)),
+                .constraints
+                .push(Constraint::InClass(infer_type, TypeClass::Int)),
             Literal(ast::Literal::Float(_)) => self
                 .result
-                .obligations
-                .push(Obligation::InClass(infer_type.clone(), TypeClass::Float)),
+                .constraints
+                .push(Constraint::InClass(infer_type, TypeClass::Float)),
 
             Local(local_id) => {
                 let local_infer_type =
-                    self.result.maps.local_ty.get(local_id).unwrap().clone();
-                let eq = Equality(infer_type.clone(), local_infer_type);
-                self.result.equalities.push(eq);
+                    *self.result.maps.local_ty.get(local_id).unwrap();
+                let eq = Constraint::Equality(infer_type, local_infer_type);
+                self.result.constraints.push(eq);
             }
             FunctionCall(func_call) => {
                 let signature = self
@@ -135,15 +157,14 @@ impl<'a> FunctionConstraintGen<'a> {
                     .clone();
 
                 // Bind the return type with the type of current expression.
-                let return_infer_type =
-                    self.type_id_to_infer_type(signature.ret_ty.node);
+                let return_infer_type = InferType::Known(signature.ret_ty.node);
                 let return_span =
                     signature.ret_ty.span.unwrap_or(signature.name.span);
-                let eq = Equality(
-                    infer_type.clone(),
+                let eq = Constraint::Equality(
+                    infer_type,
                     S::new(return_infer_type, return_span),
                 );
-                self.result.equalities.push(eq);
+                self.result.constraints.push(eq);
 
                 // Bind arguments.
                 for (arg_expr_id, arg) in
@@ -151,17 +172,17 @@ impl<'a> FunctionConstraintGen<'a> {
                 {
                     let arg_expr_infer_type = self.process_expr(*arg_expr_id);
 
-                    let arg_infer_type =
-                        arg.ty.map(|ty| self.type_id_to_infer_type(ty));
-                    let eq = Equality(arg_expr_infer_type, arg_infer_type);
-                    self.result.equalities.push(eq);
+                    let arg_infer_type = arg.ty.map(InferType::Known);
+                    let eq =
+                        Constraint::Equality(arg_expr_infer_type, arg_infer_type);
+                    self.result.constraints.push(eq);
                 }
             }
             Block(block) => {
                 let block_infer_type =
                     self.process_block(&S::new(block.clone(), expr.span));
-                let eq = Equality(infer_type.clone(), block_infer_type);
-                self.result.equalities.push(eq);
+                let eq = Constraint::Equality(infer_type, block_infer_type);
+                self.result.constraints.push(eq);
             }
             StructLiteral(struct_literal) => {
                 let mut infer_type_fields = Vec::new();
@@ -169,11 +190,19 @@ impl<'a> FunctionConstraintGen<'a> {
                     let field_infer_type = self.process_expr(field.value);
                     infer_type_fields.push((field.name.clone(), field_infer_type));
                 }
-                let obligation =
-                    Obligation::StructShape(infer_type.clone(), infer_type_fields);
-                self.result.obligations.push(obligation);
+                let constraint =
+                    Constraint::StructShape(infer_type, infer_type_fields);
+                self.result.constraints.push(constraint);
             }
-            FieldAccess(field_access) => todo!(),
+            FieldAccess(field_access) => {
+                let base_infer_type = self.process_expr(field_access.base);
+                let constraint = Constraint::HasField {
+                    base: base_infer_type,
+                    field_name: field_access.field_name.clone(),
+                    field_type: infer_type,
+                };
+                self.result.constraints.push(constraint);
+            }
         };
         infer_type
     }
@@ -189,20 +218,15 @@ impl<'a> FunctionConstraintGen<'a> {
             match stmt {
                 Statement::VariableDeclaration(var_decl) => {
                     let expr_infer_type = self.process_expr(var_decl.expr_id);
-                    let local_infer_type = self
-                        .result
-                        .maps
-                        .local_ty
-                        .get(&var_decl.local_id)
-                        .unwrap()
-                        .clone();
-                    let eq = Equality(expr_infer_type, local_infer_type);
-                    self.result.equalities.push(eq);
+                    let local_infer_type =
+                        *self.result.maps.local_ty.get(&var_decl.local_id).unwrap();
+                    let eq = Constraint::Equality(expr_infer_type, local_infer_type);
+                    self.result.constraints.push(eq);
                 }
                 Statement::Return(expr_id) => {
                     let expr_infer_type = self.process_expr(*expr_id);
-                    let eq = Equality(infer_type.clone(), expr_infer_type);
-                    self.result.equalities.push(eq);
+                    let eq = Constraint::Equality(infer_type, expr_infer_type);
+                    self.result.constraints.push(eq);
                 }
                 Statement::Expr(expr_id) => {
                     self.process_expr(*expr_id);
@@ -216,54 +240,16 @@ impl<'a> FunctionConstraintGen<'a> {
     fn process_local(&mut self, local: &HIRLocal<OptTyped>) -> S<InferType> {
         // Check if local is already processed.
         if let Some(infer_type) = self.result.maps.local_ty.get(&local.id) {
-            return infer_type.clone();
+            return *infer_type;
         }
 
         let local_infer_type = match local.ty {
-            Some(s_ty) => s_ty.map(|ty| self.type_id_to_infer_type(ty)),
+            Some(s_ty) => s_ty.map(InferType::Known),
             None => S::new(self.fresh_type_var(), local.name.span),
         };
-        self.result
-            .maps
-            .local_ty
-            .insert(local.id, local_infer_type.clone());
+        self.result.maps.local_ty.insert(local.id, local_infer_type);
 
         local_infer_type
-    }
-
-    fn type_id_to_infer_type(&mut self, type_id: HIRTypeId) -> InferType {
-        let ty_opt = self.type_arena.get_by_id(type_id);
-
-        let Some(ty) = ty_opt else {
-            return self.fresh_type_var();
-        };
-
-        match ty {
-            HIRType::Primitive(_) => InferType::Scalar(type_id),
-            HIRType::Struct(struct_type) => {
-                let infer_type_fields = struct_type
-                    .fields
-                    .iter()
-                    .map(|field| {
-                        let name = field.name.clone();
-                        let infer_type = field
-                            .ty_id
-                            .map(|ty_id| self.type_id_to_infer_type(ty_id));
-                        (name, infer_type)
-                    })
-                    .collect();
-                InferType::Struct(infer_type_fields)
-            }
-            HIRType::Named(_name, sub_type) => {
-                let sub_type_id = self
-                    .type_arena
-                    .get_by_type(sub_type.as_ref())
-                    .copied()
-                    .unwrap();
-                let sub_infer_type = self.type_id_to_infer_type(sub_type_id);
-                InferType::Named(type_id, Box::new(sub_infer_type))
-            }
-        }
     }
 
     fn next_type_var_id(&mut self) -> TypeVarId {

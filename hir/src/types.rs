@@ -22,6 +22,13 @@ impl HIRType {
         }
     }
 
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            HIRType::Named(name, _) => Some(name),
+            _ => None,
+        }
+    }
+
     pub fn format(&self, arena: &HIRTypeArena) -> String {
         match self {
             HIRType::Primitive(p) => format!("{p}"),

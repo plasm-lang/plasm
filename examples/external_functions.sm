@@ -1,4 +1,4 @@
-// To write a promised (external) function that will be recived on linking
+// To write a promised (external) function that will be received on linking
 // stage just don't write brackets `{}` and function body.
 // C ABI/FFI will be used. Plasm has no its own public and stable ABI.
 

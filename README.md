@@ -21,7 +21,7 @@ Mainly inspired by [Rust](https://github.com/rust-lang/rust)'s type system, [Ver
 * **Transparency** - The compilation pipeline must be fully observable and predictable. The language design strictly prohibits "hidden magic": every transformation, such as syntactic desugaring or optimization passes, must be auditable. The compiler guarantees explicit, traceable causality for all actions and errors, eliminating opaque failures (like unexplainable segmentation faults<a href="#ref-10"><sup>[10]</sup></a>) in favor of graceful, highly contextual diagnostics.
 * **Readability** - The syntax prioritizes clear intent over extreme brevity. Plasm rejects convoluted, nested declarations (such as the C spiral rule) in favor of linear, straightforward constructs. The goal is simple: an engineer unfamiliar with Plasm should be able to read and understand the logic of a codebase without reading a manual first. Syntactic abbreviations are allowed, but they are strictly limited so they never compromise clarity for an outside observer.
 * **One-Way Designability** - There should be exactly one canonical way to express a specific logic or declare a construct. Plasm actively avoids the syntactic fragmentation found in languages like C++, where a single operation can be written in multiple equivalent forms. If multiple approaches must exist for different contexts, the distinction is unambiguous and strictly enforced by the default linter, ensuring a uniform, highly predictable codebase across the entire ecosystem.
-* **Runtime Performance & Safety > Compilation Time** - The quality of the final executable is paramount. Plasm explicitly prioritizes aggressive optimization passes and exhaustive compile-time verification over rapid build times. While fast developer iteration is fully supported through stripped-down debug profiles, production builds will never sacrifice execution speed or safety just to compile faster. This establishes a definitive architectural priority: if a heavy compiler pass prevents a runtime bug or extracts maximum performance, it is always worth the wait.
+* **Runtime Performance & Safety > Compilation Time** - The quality of the final executable is paramount. Plasm explicitly prioritizes aggressive optimization passes and exhaustive compile-time verification over rapid build times. While fast development iteration is fully supported through stripped-down debug profiles, production builds will never sacrifice execution speed or safety just to compile faster. This establishes a definitive architectural priority: if a heavy compiler pass prevents a runtime bug or extracts maximum performance, it is always worth the wait.
 
 > #### References and Terms
 > 1.  <a id="ref-1"></a> D. Leijen. "Koka: Programming with Row Polymorphic Effect Types" in Electronic Proceedings in Theoretical Computer Science, vol. 153, pp. 100–126, 2014. DOI: [10.48550/arXiv.1406.2061](https://doi.org/10.48550/arXiv.1406.2061)
@@ -284,7 +284,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>&x</code></td>
+      <td><code>&x</code>/<code>Ref[T]</code></td>
     </tr>
     <tr>
       <th>Linked Functions</th>
@@ -395,7 +395,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>fn func(arg: T)</code></td>
+      <td><code>fn func(arg: T) where T: Any</code></td>
     </tr>
     <tr>
       <th><code>where</code> Bounds</th>
@@ -452,7 +452,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>let value = comptime retrieve_value_from_db(...)</code></td>
+      <td><code>let value = @retrieve_value_from_db(...)</code></td>
     </tr>
     <tr>
       <th colspan="7" align="center">Algebraic Effects</th>
@@ -491,7 +491,11 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>E fn map(seq: Iter[T], func: E fn(T) -> U) -> Iter[U] {}</code></td>
+      <td><code>
+        fn map(seq: I, func: F) -> O
+          where I: Iter[T],
+                O: Iter[U],
+                F: fn(T) -> U {}</code></td>
     </tr>
     </tr>
     <tr>
