@@ -458,8 +458,8 @@ impl ASTTranslator {
             statements.push(hir_stmt);
         }
 
-        // If return type is void, ensure there is at least one return statement.
-        // If not, add `return void` at the end of the function.
+        // If return type is Void, ensure there is at least one return statement.
+        // If not, add `return Void` at the end of the function.
         let is_void = opt_ty
             .map(|type_id| type_id.node == self.hir.type_arena.void_id())
             .unwrap_or(true);
@@ -711,7 +711,7 @@ mod tests {
     #[test]
     fn basic_types_inference_test() {
         let code = indoc! {"
-            fn print(x: i32) {}
+            fn print(x: I32) {}
             fn main() {
                 let a = 5
                 let b = a
@@ -719,16 +719,16 @@ mod tests {
                 print(c)
             }"};
         let expected_hir_display = indoc! {"
-            fn print(x: i32) -> void {
-                return void
+            fn print(x: I32) -> Void {
+                return Void
             }
 
-            fn main() -> void {
-                let a: i32 = 5
-                let b: i32 = a
-                let c: i32 = b
+            fn main() -> Void {
+                let a: I32 = 5
+                let b: I32 = a
+                let c: I32 = b
                 print(c)
-                return void
+                return Void
             }
         "};
         check_by_display(code, expected_hir_display);
@@ -737,7 +737,7 @@ mod tests {
     #[test]
     fn bool_type_inference_test() {
         let code = indoc! {"
-            fn is_true(x: bool) {}
+            fn is_true(x: Bool) {}
             fn main() {
                 let a = true
                 let b = a
@@ -746,17 +746,17 @@ mod tests {
                 is_true(false)
             }"};
         let expected_hir_display = indoc! {"
-            fn is_true(x: bool) -> void {
-                return void
+            fn is_true(x: Bool) -> Void {
+                return Void
             }
 
-            fn main() -> void {
-                let a: bool = true
-                let b: bool = a
+            fn main() -> Void {
+                let a: Bool = true
+                let b: Bool = a
                 is_true(a)
                 is_true(b)
                 is_true(false)
-                return void
+                return Void
             }
         "};
         check_by_display(code, expected_hir_display);
@@ -771,14 +771,14 @@ mod tests {
                 let b = a
             }"};
         let expected_hir_display = indoc! {"
-            fn do_nothing() -> void {
-                return void
+            fn do_nothing() -> Void {
+                return Void
             }
 
-            fn main() -> void {
-                let a: void = do_nothing()
-                let b: void = a
-                return void
+            fn main() -> Void {
+                let a: Void = do_nothing()
+                let b: Void = a
+                return Void
             }
         "};
         check_by_display(code, expected_hir_display);
@@ -787,17 +787,17 @@ mod tests {
     #[test]
     fn external_function_translation_test() {
         let code = indoc! {"
-            fn print(x: i32)
+            fn print(x: I32)
             fn main() {
                 print(5)
             }
         "};
         let expected_hir_display = indoc! {"
-            fn print(x: i32) -> void
+            fn print(x: I32) -> Void
 
-            fn main() -> void {
+            fn main() -> Void {
                 print(5)
-                return void
+                return Void
             }
         "};
         check_by_display(code, expected_hir_display);
@@ -807,14 +807,14 @@ mod tests {
     fn struct_type_definition_test() {
         let code = indoc! {"
             type Pos = struct {
-                x: i32,
-                y: i32,
+                x: I32,
+                y: I32,
             }
         "};
         let expected_hir_display = indoc! {"
             type Pos = struct {
-                x: i32,
-                y: i32,
+                x: I32,
+                y: I32,
             }
         "};
         check_by_display(code, expected_hir_display);
@@ -825,16 +825,16 @@ mod tests {
         let code = indoc! {"
             type Transform = struct {
                 pos: struct {
-                    x: i32,
-                    y: i32,
+                    x: I32,
+                    y: I32,
                 },
             }
         "};
         let expected_hir_display = indoc! {"
             type Transform = struct {
                 pos: struct {
-                    x: i32,
-                    y: i32,
+                    x: I32,
+                    y: I32,
                 },
             }
         "};
@@ -844,14 +844,14 @@ mod tests {
     #[test]
     fn struct_type_definition_with_function_test() {
         let code = indoc! {"
-            fn func(arg: struct { x: i32, y: i32 }) {}
+            fn func(arg: struct { x: I32, y: I32 }) {}
         "};
         let expected_hir_display = indoc! {"
             fn func(arg: struct {
-                x: i32,
-                y: i32,
-            }) -> void {
-                return void
+                x: I32,
+                y: I32,
+            }) -> Void {
+                return Void
             }
         "};
         check_by_display(code, expected_hir_display);
@@ -866,11 +866,11 @@ mod tests {
             }
         "};
         let expected_hir_display = indoc! {"
-            fn main() -> void {
+            fn main() -> Void {
                 let a: struct {
                     pos: struct {
-                        x: i32,
-                        y: i32,
+                        x: I32,
+                        y: I32,
                     },
                 } = {
                     pos: {
@@ -880,11 +880,11 @@ mod tests {
                 }
                 let b: struct {
                     pos: struct {
-                        x: i32,
-                        y: i32,
+                        x: I32,
+                        y: I32,
                     },
                 } = a
-                return void
+                return Void
             }
         "};
         check_by_display(code, expected_hir_display);
@@ -894,8 +894,8 @@ mod tests {
     fn named_struct_literal_infers_named_type() {
         let code = indoc! {"
             type Pos = struct {
-                x: i32,
-                y: i32,
+                x: I32,
+                y: I32,
             }
             fn get_pos() -> Pos {
                 let pos = { x: 5, y: 15 }
@@ -904,8 +904,8 @@ mod tests {
         "};
         let expected_hir_display = indoc! {"
             type Pos = struct {
-                x: i32,
-                y: i32,
+                x: I32,
+                y: I32,
             }
 
             fn get_pos() -> Pos {
@@ -922,14 +922,14 @@ mod tests {
     #[test]
     fn chained_named_alias_resolves() {
         let code = indoc! {"
-            type Id = u32
+            type Id = U32
             type MyId = Id
             fn identity(x: MyId) -> MyId {
                 return x
             }
         "};
         let expected_hir_display = indoc! {"
-            type Id = u32
+            type Id = U32
 
             type MyId = Id
 
@@ -986,17 +986,17 @@ mod tests {
             }
         "};
         let expected_hir_display = indoc! {"
-            fn main() -> void {
+            fn main() -> Void {
                 let a: struct {
-                    x: i32,
-                    y: i32,
+                    x: I32,
+                    y: I32,
                 } = {
                     x: 5,
                     y: 10,
                 }
-                let x: i32 = a.x
-                let y: i32 = a.y
-                return void
+                let x: I32 = a.x
+                let y: I32 = a.y
+                return Void
             }
         "};
         check_by_display(code, expected_hir_display);
@@ -1006,8 +1006,8 @@ mod tests {
     fn struct_shape_fields_mismatch() {
         let code = indoc! {"
             type Pos = struct {
-                x: i32,
-                y: i32,
+                x: I32,
+                y: I32,
             }
 
             fn get_pos() -> Pos {

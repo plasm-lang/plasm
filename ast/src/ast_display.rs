@@ -104,7 +104,7 @@ impl Display for Type {
 impl Display for Literal {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Literal::Void => write!(f, "void"),
+            Literal::Void => write!(f, "Void"),
             Literal::Bool(value) => write!(f, "{value}"),
             Literal::Integer(value) => write!(f, "{value}"),
             Literal::Float(spanned) => write!(f, "{spanned}"),

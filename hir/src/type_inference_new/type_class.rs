@@ -32,7 +32,7 @@ impl TypeClass {
                 | U64 | U128 | U256 | U512 | U1024,
             ) => Some(TypeClass::Int),
             HIRType::Primitive(
-                F8 | F16 | F32 | F64 | F128 | F256 | F512 | F1024,
+                F16 | F32 | F64 | F128,
             ) => Some(TypeClass::Float),
             _ => None,
         }

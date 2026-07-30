@@ -4,14 +4,14 @@
 // It's possible to declare structs inside enums:
 
 type Device = enum {
-    CPU: struct { cores: i32 },
-    GPU: struct { cores: i32, vmemory_size: usize },
+    CPU: struct { cores: I32 },
+    GPU: struct { cores: I32, vmemory_size: UWord },
 }
 
 // As well as to declare enums inside structs:
 
 type Connection = struct {
-    port: u16,
+    port: U16,
     status: enum { New, Opened, Closed },
 }
 
@@ -20,14 +20,14 @@ type Connection = struct {
 // to mark difference between new and existing types:
 
 type Quaternion = struct {
-    w: f32,
-    x: f32,
-    y: f32,
-    z: f32,
+    w: F32,
+    x: F32,
+    y: F32,
+    z: F32,
 }
 
 type Orientation = enum {
-    Euler { x: f32, y: f32, z: f32 },
+    Euler { x: F32, y: F32, z: F32 },
     use Quaternion,
 }
 
@@ -38,28 +38,28 @@ type Orientation = enum {
 
 // A globally defined struct that we want to reuse
 type Transform = struct {
-    x: f32,
-    y: f32,
-    z: f32,
+    x: F32,
+    y: F32,
+    z: F32,
 }
 
 // A heavy DTO representing a network event
 type ServerPacket = struct {
-    packet_id: u64,
-    timestamp: u64,
+    packet_id: U64,
+    timestamp: U64,
     
     // Deep inline composition
     payload: enum {
         // Inline struct with an inline enum inside
         PlayerJoined: struct {
-            user_id: u32,
+            user_id: U32,
             nickname: String,
             role: enum { Player, Moderator, Admin },
         },
 
         // Reusing existing type `Transform` inside a variant
         PlayerRotated: struct {
-            client_id: u32,
+            client_id: U32,
             use Transform, 
         },
 
@@ -67,8 +67,8 @@ type ServerPacket = struct {
         Disconnected: struct {
             reason: enum {
                 Timeout,
-                Kicked: struct { admin_id: u32, message: String | None },
-                Banned: struct { expires_at: u64 | None }, 
+                Kicked: struct { admin_id: U32, message: String | None },
+                Banned: struct { expires_at: U64 | None }, 
             }
         },
 

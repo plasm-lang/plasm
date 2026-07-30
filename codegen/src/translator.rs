@@ -361,14 +361,10 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
                 I1024 | U1024 => {
                     Some(self.context.custom_width_int_type(1024).into())
                 }
-                F8 => unimplemented!(),
                 F16 => Some(self.context.f16_type().into()),
                 F32 => Some(self.context.f32_type().into()),
                 F64 => Some(self.context.f64_type().into()),
                 F128 => Some(self.context.f128_type().into()),
-                F256 => unimplemented!(),
-                F512 => unimplemented!(),
-                F1024 => unimplemented!(),
             },
             mir::MIRType::Tuple(_) => unimplemented!(),
             mir::MIRType::Named(_) => unimplemented!(),

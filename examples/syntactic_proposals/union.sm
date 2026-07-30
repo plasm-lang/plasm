@@ -17,7 +17,7 @@ type Result[T] = enum {
 
 // Real power of this notation:
 
-fn sum(a: i32, b: i32) -> i32 | OverflowError | OutOfMemoryError
+fn sum(a: I32, b: I32) -> I32 | OverflowError | OutOfMemoryError
 
 // Here for return type, an anonymous enum will be created,
 // every element of which will reference an existing type.
@@ -31,4 +31,4 @@ enum SumError {
 
 impl Error for SumError {}
 
-fn sum(a: i32, b: i32) -> Result<i32, SumError> {}
+fn sum(a: I32, b: I32) -> Result<I32, SumError> {}

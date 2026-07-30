@@ -9,7 +9,7 @@ type Device = enum {
 
 // Backing type and discriminant values
 
-@repr(u32)
+@repr(U32)
 type HTTPCode = enum {
     @repr(200)
     Success,

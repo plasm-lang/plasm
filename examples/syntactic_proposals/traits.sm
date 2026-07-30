@@ -9,9 +9,9 @@ trait MyTrait {
 
 // Implementing a trait for a type:
 
-impl MyTrait for i32 {
+impl MyTrait for I32 {
     fn my_method() {
-        print("i32: Hello world!")
+        print("I32: Hello world!")
     }
 }
 
@@ -22,7 +22,7 @@ fn call_my_method(x: T) where T: MyTrait {
 }
 
 fn main() {
-    call_my_method(42) // prints "i32: Hello world!"
+    call_my_method(42) // prints "I32: Hello world!"
 }
 
 // Traits can also be generic:
@@ -31,7 +31,7 @@ trait Add[R, O] {
     fn add(self, right: R) -> O
 }
 
-type Pos = (i32, i32)
+type Pos = (I32, I32)
 
 impl Add[Pos, Pos] for Pos {
     fn add(self, right: Pos) -> Pos {
@@ -52,7 +52,7 @@ fn main() {
 
 // Dynamic dispatch:
 
-fn sum_len(x: List[&dyn T]) -> usize where T: Len {
+fn sum_len(x: List[T]) -> UWord where T: vtable Len {
     let mut sum = 0
     for item in x {
         sum += item.len()
@@ -62,5 +62,5 @@ fn sum_len(x: List[&dyn T]) -> usize where T: Len {
 
 fn main() {
     // "hello" has length 5, ["World"] has length 1, so result is 6
-    sum_len([&"hello", &["World"]])
+    sum_len(["hello", ["World"]])
 }

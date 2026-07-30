@@ -3,16 +3,16 @@
 
 type Transform = struct {
     pos: struct {
-        x: i32,
-        y: i32,
+        x: I32,
+        y: I32,
     },
 }
 
-fn print_i32(x: i32)
+fn print_I32(x: I32)
 
 fn print_transform(t: Transform) {
-    print_i32(t.pos.x)
-    print_i32(t.pos.y)
+    print_I32(t.pos.x)
+    print_I32(t.pos.y)
 }
 
 fn get_transform() -> Transform {

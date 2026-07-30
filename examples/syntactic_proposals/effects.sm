@@ -4,7 +4,7 @@
 effect clean {}
 
 effect alloc {
-    fn alloc(size: usize) -> Ptr
+    fn alloc(size: UWord) -> Ptr
     fn free(ptr: Ptr)
 }
 
@@ -15,24 +15,24 @@ effect log {
 // Effects can also be composed:
 
 effect read {
-    fn read() -> [u8]
+    fn read() -> [U8]
 }
 
 effect write {
-    fn write(data: [u8])
+    fn write(data: [U8])
 }
 
 effect syscall { read, write, open, close, ... }
 
 // Effects usage
 
-clean fn add_42(x: i32) -> i32 {
+clean fn add_42(x: I32) -> I32 {
     return x + 42
 }
 
-alloc fn create_i32_list(n: usize) -> List[i32] {
-    let list = List[i32].with_capacity(n) // Requires `alloc` effect
-    for i in range(n.as(i32)) {
+alloc fn create_I32_list(n: UWord) -> List[I32] {
+    let list = List[I32].with_capacity(n) // Requires `alloc` effect
+    for i in range(n.as(I32)) {
         list.push(i)
     }
     return list

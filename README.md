@@ -119,7 +119,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>✅</td>
       <td>✅</td>
-      <td><code>fn func(arg: i32) {}</code></td>
+      <td><code>fn func(arg: I32) {}</code></td>
     </tr>
     <tr>
       <th>Output Args</th>
@@ -128,7 +128,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>✅</td>
       <td>✅</td>
-      <td><code>fn func() -> i32 {}</code></td>
+      <td><code>fn func() -> I32 {}</code></td>
     </tr>
     <tr>
       <th>Function Calls</th>
@@ -155,7 +155,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>✅</td>
       <td>✅</td>
-      <td><code>fn f(x: i32) -> i32</code></td>
+      <td><code>fn f(x: I32) -> I32</code></td>
     </tr>
     <tr>
       <th>Binary & Unary Operations</th>
@@ -182,7 +182,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>let SOME_CONSTANT: i32 = 42</code></td>
+      <td><code>let SOME_CONSTANT: I32 = 42</code></td>
     </tr>
     <tr>
       <th>Module System</th>
@@ -218,7 +218,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>fn func(x: i32 = 0)</code></td>
+      <td><code>fn func(x: I32 = 0)</code></td>
     </tr>
     <tr>
       <th colspan="7" align="center">Typing System</th>
@@ -230,7 +230,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>✅</td>
       <td>✅</td>
-      <td><code>bool, u8, i32, i1024, f64<code></td>
+      <td><code>Bool, U8, I32, I1024, F64<code></td>
     </tr>
     <tr>
       <th>Tuples</th>
@@ -239,7 +239,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>(i32, i32, i32)</code></td>
+      <td><code>(I32, I32, I32)</code></td>
     </tr>
     <tr>
       <th>Arrays</th>
@@ -266,7 +266,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>struct { field: i32 }</code></td>
+      <td><code>struct { field: I32 }</code></td>
     </tr>
     <tr>
       <th>Named Typing</th>
@@ -293,7 +293,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>impl myType {...}</code></td>
+      <td><code>impl MyType {...}</code></td>
     </tr>
     <tr>
       <th>String Literals</th>
@@ -356,7 +356,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>alias Pos = (i32, i32, i32)</code></td>
+      <td><code>alias Pos = (I32, I32, I32)</code></td>
     </tr>
     <tr>
       <th colspan="7" align="center">Polymorphism</th>
@@ -491,11 +491,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>
-        fn map(seq: I, func: F) -> O
-          where I: Iter[T],
-                O: Iter[U],
-                F: fn(T) -> U {}</code></td>
+      <td><code>fn map(seq: I, func: F) -> O where I: Iter[T], O: Iter[U], F: fn(T) -> U {}</code></td>
     </tr>
     </tr>
     <tr>
@@ -550,7 +546,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td><code>HashMap[K, V]</code></td>
     </tr>
     <tr>
-      <th>Int (bit unlimited)</th>
+      <th>Int (bit unlimited, heap allocated)</th>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
@@ -559,13 +555,22 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td><code>let v: Int = 9999999999999</code></td>
     </tr>
     <tr>
-      <th>Float (bit unlimited)</th>
+      <th>Float (bit unlimited, heap allocated)</th>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td><code>let v: Float = 0.9999999999999</code></td>
+    </tr>
+    <tr>
+      <th>Decimal</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>let v: Decimal = 0.1 + 0.2</code></td>
     </tr>
     <tr>
       <th>Iter traits</th>
