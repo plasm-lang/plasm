@@ -131,23 +131,7 @@ impl std::error::Error for TypeInferenceError {
 
 impl ErrorType for TypeInferenceError {
     fn error_type(&self) -> &'static str {
-        use TypeInferenceError::*;
-
-        const TYPE_ERROR: &str = "TypeError";
-
-        match self {
-            TypesConflict { .. }
-            | IncompatibleTypeClass { .. }
-            | MultipleTypeClasses { .. }
-            | CantResolveType
-            | UnknownStructField { .. }
-            | MissingStructField { .. }
-            | UnknownTypeName { .. }
-            | CircularTypeDefinition { .. }
-            | ShapeOnNonStructType { .. }
-            | FieldOnNonStructType { .. }
-            | FieldOnUnknownType { .. } => TYPE_ERROR,
-        }
+        "TypeError"
     }
 
     fn error_sub_type(&self) -> &'static str {

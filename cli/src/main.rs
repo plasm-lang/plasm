@@ -85,10 +85,8 @@ fn resolve_root(path: Option<&Path>) -> Option<(PathBuf, PathType)> {
             if candidate.exists() {
                 return Some(p.to_path_buf());
             }
-            match p.parent() {
-                Some(parent) => p = parent,
-                None => return None,
-            }
+            let parent = p.parent()?;
+            p = parent
         }
     }
 

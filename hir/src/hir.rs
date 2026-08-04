@@ -109,6 +109,7 @@ pub struct HIRLocal<T> {
 #[derive(Debug, Clone, Serialize)]
 pub enum Statement {
     VariableDeclaration(VariableDeclaration),
+    Assignment(ExprId, ExprId),
     Expr(ExprId),
     Return(ExprId),
 }

@@ -8,7 +8,7 @@ use utils::bin_op::BinaryOp;
 use super::ast::{
     AST, Argument, BinaryExpr, Block, CallArgument, Expr, ExternalFunction,
     FieldAccess, Function, FunctionCall, FunctionSignature, InternalFunction,
-    Literal, Statement, StructField, StructLiteralExpr, StructLiteralField,
+    Literal, Place, Statement, StructField, StructLiteralExpr, StructLiteralField,
     StructType, Type, TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
 };
 use super::error::ParseError;
@@ -27,12 +27,16 @@ const STATEMENT_OR_CURLY: &str = "statement or `}`";
 const STATEMENT: &str =
     "statement (function call, variable declaration, return, etc.)";
 const ROUND_OR_EQUAL: &str = "`(` or `=`";
-const RETURN_OR_CURLY: &str = "expression or `}`";
+const EXPRESSION_OR_CURLY: &str = "expression or `}`";
 const COLON_OR_EQUAL: &str = "`:` or `=`";
 const EXPRESSION: &str = "expression";
 const ROUND: &str = "`(`";
+const ASSIGNMENT_OR_STATEMENT_OR_CURLY: &str = "assignment, statement, or `}`";
 
-pub fn parse<I>(token_iter: &mut I) -> (AST, Vec<Spanned<ParseError>>)
+// For brevity
+type S<T> = Spanned<T>;
+
+pub fn parse<I>(token_iter: &mut I) -> (AST, Vec<S<ParseError>>)
 where
     I: Iterator<Item = (Token, Span)>,
 {
@@ -44,7 +48,7 @@ type FilterFn = fn(&(Token, Span)) -> bool;
 
 pub struct ASTParser<'a, I: Iterator<Item = (Token, Span)>> {
     iter: Lookahead<Filter<&'a mut I, FilterFn>, 3>,
-    // errors: Vec<Spanned<ParseError>>,
+    // errors: Vec<S<ParseError>>,
     last_span: Span,
 }
 
@@ -79,8 +83,8 @@ where
         token: Token,
         span: Span,
         expected: impl Into<String>,
-    ) -> Spanned<ParseError> {
-        Spanned::new(
+    ) -> S<ParseError> {
+        S::new(
             ParseError::UnexpectedToken {
                 token,
                 expected: expected.into(),
@@ -89,11 +93,8 @@ where
         )
     }
 
-    fn unexpected_eof(
-        &mut self,
-        expected: impl Into<String>,
-    ) -> Spanned<ParseError> {
-        Spanned::new(
+    fn unexpected_eof(&mut self, expected: impl Into<String>) -> S<ParseError> {
+        S::new(
             ParseError::UnexpectedEOF {
                 expected: expected.into(),
             },
@@ -101,7 +102,7 @@ where
         )
     }
 
-    fn expect(&mut self, expected: Token) -> Result<Span, Spanned<ParseError>> {
+    fn expect(&mut self, expected: Token) -> Result<Span, S<ParseError>> {
         match self.take_next() {
             Some((token, span)) => {
                 if token == expected {
@@ -118,7 +119,7 @@ where
         &mut self,
         extract: F,
         expected: &str,
-    ) -> Result<(T, Span), Spanned<ParseError>>
+    ) -> Result<(T, Span), S<ParseError>>
     where
         F: FnOnce(Token) -> Option<T>,
     {
@@ -131,7 +132,7 @@ where
         }
     }
 
-    fn expect_ident(&mut self) -> Result<(String, Span), Spanned<ParseError>> {
+    fn expect_ident(&mut self) -> Result<(String, Span), S<ParseError>> {
         self.expect_extract(
             |t| match t {
                 Token::Identifier(s) => Some(s),
@@ -141,7 +142,7 @@ where
         )
     }
 
-    fn expect_number(&mut self) -> Result<(Number, Span), Spanned<ParseError>> {
+    fn expect_number(&mut self) -> Result<(Number, Span), S<ParseError>> {
         self.expect_extract(
             |t| match t {
                 Token::Number(n) => Some(n),
@@ -162,9 +163,9 @@ where
         // Error message when a separator is expected.
         separator_expected_msg: &str,
         mut parse_item: F,
-    ) -> Result<Vec<T>, Spanned<ParseError>>
+    ) -> Result<Vec<T>, S<ParseError>>
     where
-        F: FnMut(&mut Self) -> Result<T, Spanned<ParseError>>,
+        F: FnMut(&mut Self) -> Result<T, S<ParseError>>,
     {
         let mut items = Vec::new();
         let mut expect_item = true;
@@ -225,62 +226,72 @@ where
         }
     }
 
-    pub fn parse(mut self) -> (AST, Vec<Spanned<ParseError>>) {
-        // It's `(AST, Vec<Spanned<ParseError>>)` instead of `Result<AST,
-        // Spanned<ParseError>>` for error recovery in the future.
+    pub fn parse(mut self) -> (AST, Vec<S<ParseError>>) {
+        // It's `(AST, Vec<S<ParseError>>)` instead of `Result<AST,
+        // S<ParseError>>` for error recovery in the future.
         let mut ast = AST::new();
+        let mut errors = Vec::new();
 
         while let Some((token, _)) = self.iter.peek() {
             match token {
                 Token::Keyword(Keyword::Fn) => match self.parse_function() {
                     Ok(func) => ast.add_function(func),
-                    Err(err) => return (ast, vec![err]),
+                    Err(err) => {
+                        errors.push(err);
+                        self.iter.last(); // Skip to the last token to fill lines table.
+                        break;
+                    }
                 },
                 Token::Keyword(Keyword::Type) => {
                     match self.parse_type_definition() {
                         Ok(ty_def) => ast.add_type_definition(ty_def),
-                        Err(err) => return (ast, vec![err]),
+                        Err(err) => {
+                            errors.push(err);
+                            self.iter.last(); // Skip to the last token to fill lines table.
+                            break;
+                        }
                     }
                 }
                 _ => {
                     let Some((token, span)) = self.take_next() else {
                         continue;
                     };
-                    return (
-                        ast,
-                        vec![self.unexpected_token(token, span, FUNCTION_OR_TYPE)],
-                    );
+                    errors.push(self.unexpected_token(
+                        token,
+                        span,
+                        FUNCTION_OR_TYPE,
+                    ));
+                    self.iter.last(); // Skip to the last token to fill lines table.
+                    break;
                 }
             }
         }
 
-        (ast, vec![])
+        (ast, errors)
     }
 
-    fn parse_type_definition(
-        &mut self,
-    ) -> Result<TypeDefinition, Spanned<ParseError>> {
+    fn parse_type_definition(&mut self) -> Result<TypeDefinition, S<ParseError>> {
         self.expect(Token::Keyword(Keyword::Type))?;
         let (type_name, type_name_span) = self.expect_ident()?;
         self.expect(Token::SpecialSymbol(SpecialSymbol::Equals))?;
         let ty = self.parse_type()?;
         let ty_def = TypeDefinition {
-            name: Spanned::new(type_name, type_name_span),
+            name: S::new(type_name, type_name_span),
             ty,
         };
         Ok(ty_def)
     }
 
-    fn parse_type(&mut self) -> Result<Spanned<Type>, Spanned<ParseError>> {
+    fn parse_type(&mut self) -> Result<S<Type>, S<ParseError>> {
         match self.iter.peek() {
             Some((Token::Identifier(_), _)) => {
                 let (type_name, type_name_span) = self.expect_ident()?;
                 let ty = Type::from_ident(&type_name);
-                Ok(Spanned::new(ty, type_name_span))
+                Ok(S::new(ty, type_name_span))
             }
             Some((Token::Keyword(Keyword::Struct), _)) => {
                 let (struct_type, span) = self.parse_struct()?.unwrap();
-                Ok(Spanned::new(Type::Struct(struct_type), span))
+                Ok(S::new(Type::Struct(struct_type), span))
             }
             Some(_) => {
                 let (token, span) = self.take_next().unwrap();
@@ -290,7 +301,7 @@ where
         }
     }
 
-    fn parse_struct(&mut self) -> Result<Spanned<StructType>, Spanned<ParseError>> {
+    fn parse_struct(&mut self) -> Result<S<StructType>, S<ParseError>> {
         let start_span = self.expect(Token::Keyword(Keyword::Struct))?;
         self.expect(Token::Bracket(Bracket::CurlyOpen))?;
 
@@ -303,40 +314,36 @@ where
 
         let struct_type = StructType { fields };
         let span = start_span.join(self.last_span);
-        Ok(Spanned::new(struct_type, span))
+        Ok(S::new(struct_type, span))
     }
 
-    fn parse_struct_field(
-        &mut self,
-    ) -> Result<Spanned<StructField>, Spanned<ParseError>> {
+    fn parse_struct_field(&mut self) -> Result<S<StructField>, S<ParseError>> {
         let (field_name, field_name_span) = self.expect_ident()?;
         self.expect(Token::SpecialSymbol(SpecialSymbol::Colon))?;
         let ty = self.parse_type()?;
         let type_span = ty.span;
-        Ok(Spanned::new(
+        Ok(S::new(
             StructField {
-                name: Spanned::new(field_name, field_name_span),
+                name: S::new(field_name, field_name_span),
                 ty,
             },
             field_name_span.join(type_span),
         ))
     }
 
-    fn parse_function_arg(
-        &mut self,
-    ) -> Result<Spanned<Argument>, Spanned<ParseError>> {
+    fn parse_function_arg(&mut self) -> Result<S<Argument>, S<ParseError>> {
         let (arg_name, arg_name_span) = self.expect_ident()?;
         self.expect(Token::SpecialSymbol(SpecialSymbol::Colon))?;
         let ty = self.parse_type()?;
         let arg = Argument {
-            name: Spanned::new(arg_name, arg_name_span),
+            name: S::new(arg_name, arg_name_span),
             ty,
         };
         let arg_span = arg.name.span.join(arg.ty.span);
-        Ok(Spanned::new(arg, arg_span))
+        Ok(S::new(arg, arg_span))
     }
 
-    fn parse_function(&mut self) -> Result<Function, Spanned<ParseError>> {
+    fn parse_function(&mut self) -> Result<Function, S<ParseError>> {
         self.expect(Token::Keyword(Keyword::Fn))?;
         let (func_name, func_name_span) = self.expect_ident()?;
         self.expect(Token::Bracket(Bracket::RoundOpen))?;
@@ -358,7 +365,7 @@ where
         };
 
         let signature = FunctionSignature {
-            name: Spanned::new(func_name, func_name_span),
+            name: S::new(func_name, func_name_span),
             args,
             return_type,
         };
@@ -376,7 +383,7 @@ where
         }
     }
 
-    fn parse_block(&mut self) -> Result<Spanned<Block>, Spanned<ParseError>> {
+    fn parse_block(&mut self) -> Result<S<Block>, S<ParseError>> {
         let start_span = self.expect(Token::Bracket(Bracket::CurlyOpen))?;
         let mut block = Vec::new();
 
@@ -384,7 +391,7 @@ where
             match self.iter.peek() {
                 Some((Token::Bracket(Bracket::CurlyClose), _span)) => {
                     let (_, end_span) = self.take_next().unwrap();
-                    break Ok(Spanned::new(block, start_span.join(end_span)));
+                    break Ok(S::new(block, start_span.join(end_span)));
                 }
                 Some(_) => {
                     let stmt = self.parse_statement()?;
@@ -397,17 +404,17 @@ where
         }
     }
 
-    fn parse_statement(
-        &mut self,
-    ) -> Result<Spanned<Statement>, Spanned<ParseError>> {
+    fn parse_statement(&mut self) -> Result<S<Statement>, S<ParseError>> {
         let Some((token, _)) = self.iter.peek() else {
             return Err(self.unexpected_eof(STATEMENT));
         };
 
         match token {
-            Token::Keyword(Keyword::Let) => self.parse_variable_declaration(),
-            Token::Identifier(_) => self.parse_identifier_statement(),
+            Token::Keyword(Keyword::Let) => {
+                self.parse_variable_declaration_statement()
+            }
             Token::Keyword(Keyword::Return) => self.parse_return_statement(),
+            Token::Identifier(_) => self.parse_identifier_statement(),
             _ => {
                 let (token, span) = self.take_next().unwrap();
                 Err(self.unexpected_token(token, span, STATEMENT))
@@ -415,65 +422,103 @@ where
         }
     }
 
-    fn parse_identifier_statement(
+    fn parse_variable_declaration_statement(
         &mut self,
-    ) -> Result<Spanned<Statement>, Spanned<ParseError>> {
-        let Some((Token::Identifier(id), span)) = self.take_next() else {
-            unreachable!(); // Unreachable: parse_statement dispatches this branch only for identifiers.
-        };
+    ) -> Result<S<Statement>, S<ParseError>> {
+        let first_span = self.expect(Token::Keyword(Keyword::Let))?;
+        let (var_name, var_name_span) = self.expect_ident()?;
 
-        let Some((next_token, _)) = self.iter.peek() else {
-            return Err(self.unexpected_eof(ROUND_OR_EQUAL));
-        };
-
-        match next_token {
-            Token::Bracket(Bracket::RoundOpen) => {
-                self.parse_function_call(id, span).map(|spanned_call| {
-                    spanned_call.map(Expr::FunctionCall).map(Statement::Expr)
-                })
-            }
-            // Variable assignment
-            // TODO: Add support for variable type annotation in assignment, e.g.
-            // `let x: i32 = 5`
-            Token::SpecialSymbol(SpecialSymbol::Equals) => {
-                self.take_next(); // consume '='
+        match self.take_next() {
+            // If type is not specified, expect '=' next
+            Some((Token::SpecialSymbol(SpecialSymbol::Equals), _span)) => {
                 let expr = self.parse_expression(0)?;
                 let end_span = expr.span;
-                let var_decl = VariableDeclaration {
-                    name: Spanned::new(id, span),
+                let stmt = VariableDeclaration {
+                    name: S::new(var_name, var_name_span),
                     ty: None,
                     value: expr,
                 };
-                Ok(Spanned::new(
-                    Statement::VariableDeclaration(var_decl),
-                    span.join(end_span),
+                Ok(S::new(
+                    Statement::VariableDeclaration(stmt),
+                    first_span.join(end_span),
                 ))
             }
-            _ => {
-                let (token, span) = self.take_next().unwrap();
-                Err(self.unexpected_token(token, span, ROUND_OR_EQUAL))
+            // If type is specified, expect ': Type =' next
+            Some((Token::SpecialSymbol(SpecialSymbol::Colon), _span)) => {
+                let ty = self.parse_type()?;
+                self.expect(Token::SpecialSymbol(SpecialSymbol::Equals))?;
+                let expr = self.parse_expression(0)?;
+                let end_span = expr.span;
+                let stmt = VariableDeclaration {
+                    name: S::new(var_name, var_name_span),
+                    ty: Some(ty),
+                    value: expr,
+                };
+                Ok(S::new(
+                    Statement::VariableDeclaration(stmt),
+                    first_span.join(end_span),
+                ))
             }
+            Some((token, span)) => {
+                Err(self.unexpected_token(token, span, COLON_OR_EQUAL))
+            }
+            None => Err(self.unexpected_eof(COLON_OR_EQUAL)),
         }
     }
 
-    fn parse_return_statement(
-        &mut self,
-    ) -> Result<Spanned<Statement>, Spanned<ParseError>> {
+    fn parse_identifier_statement(&mut self) -> Result<S<Statement>, S<ParseError>> {
+        let expr = self.parse_expression(0)?;
+
+        let Some((next_token, _)) = self.iter.peek() else {
+            return Err(self.unexpected_eof(ASSIGNMENT_OR_STATEMENT_OR_CURLY));
+        };
+
+        match next_token {
+            Token::SpecialSymbol(SpecialSymbol::Equals) => {
+                self.take_next(); // consume '='
+                let r_value_expr = self.parse_expression(0)?;
+                let place = Self::expr_to_place(expr)?;
+                let span = place.span.join(r_value_expr.span);
+                Ok(S::new(Statement::Assignment(place, r_value_expr), span))
+            }
+            _ => Ok(S::new(Statement::Expr(expr.node), expr.span)),
+        }
+    }
+
+    fn expr_to_place(expr: S<Expr>) -> Result<S<Place>, S<ParseError>> {
+        let (expr, span) = expr.unwrap();
+        let place = match expr {
+            Expr::Variable(name) => Place::Variable(S::new(name, span)),
+            Expr::FieldAccess(FieldAccess { base, field_name }) => {
+                let base_place = Self::expr_to_place(*base)?;
+                Place::Field {
+                    base: Box::new(base_place),
+                    field_name,
+                }
+            }
+            _ => {
+                return Err(S::new(ParseError::InvalidLeftValue, span));
+            }
+        };
+        Ok(S::new(place, span))
+    }
+
+    fn parse_return_statement(&mut self) -> Result<S<Statement>, S<ParseError>> {
         let return_span = self.expect(Token::Keyword(Keyword::Return))?;
         let Some((token, _)) = self.iter.peek() else {
-            return Err(self.unexpected_eof(RETURN_OR_CURLY));
+            return Err(self.unexpected_eof(EXPRESSION_OR_CURLY));
         };
 
         if Self::is_expression_start(token) {
             let expr = self.parse_expression(0)?;
             let end_span = expr.span;
-            return Ok(Spanned::new(
+            return Ok(S::new(
                 Statement::Return(Some(expr)),
                 return_span.join(end_span),
             ));
         }
 
-        Ok(Spanned::new(Statement::Return(None), return_span))
+        Ok(S::new(Statement::Return(None), return_span))
     }
 
     fn is_expression_start(token: &Token) -> bool {
@@ -494,7 +539,7 @@ where
         &mut self,
         id: String,
         span: Span,
-    ) -> Result<Spanned<FunctionCall>, Spanned<ParseError>> {
+    ) -> Result<S<FunctionCall>, S<ParseError>> {
         self.expect(Token::Bracket(Bracket::RoundOpen))?;
         let parse_call_arg = |parser: &mut Self| {
             let expr = parser.parse_expression(0)?;
@@ -511,63 +556,16 @@ where
             parse_call_arg,
         )?;
 
-        Ok(Spanned::new(
+        Ok(S::new(
             FunctionCall {
-                name: Spanned::new(id, span),
+                name: S::new(id, span),
                 args: arguments,
             },
             span.join(self.last_span),
         ))
     }
 
-    fn parse_variable_declaration(
-        &mut self,
-    ) -> Result<Spanned<Statement>, Spanned<ParseError>> {
-        let first_span = self.expect(Token::Keyword(Keyword::Let))?;
-        let (var_name, var_name_span) = self.expect_ident()?;
-
-        match self.take_next() {
-            // If type is not specified, expect '=' next
-            Some((Token::SpecialSymbol(SpecialSymbol::Equals), _span)) => {
-                let expr = self.parse_expression(0)?;
-                let end_span = expr.span;
-                let stmt = VariableDeclaration {
-                    name: Spanned::new(var_name, var_name_span),
-                    ty: None,
-                    value: expr,
-                };
-                Ok(Spanned::new(
-                    Statement::VariableDeclaration(stmt),
-                    first_span.join(end_span),
-                ))
-            }
-            // If type is specified, expect ': Type =' next
-            Some((Token::SpecialSymbol(SpecialSymbol::Colon), _span)) => {
-                let ty = self.parse_type()?;
-                self.expect(Token::SpecialSymbol(SpecialSymbol::Equals))?;
-                let expr = self.parse_expression(0)?;
-                let end_span = expr.span;
-                let stmt = VariableDeclaration {
-                    name: Spanned::new(var_name, var_name_span),
-                    ty: Some(ty),
-                    value: expr,
-                };
-                Ok(Spanned::new(
-                    Statement::VariableDeclaration(stmt),
-                    first_span.join(end_span),
-                ))
-            }
-            Some((token, span)) => {
-                Err(self.unexpected_token(token, span, COLON_OR_EQUAL))
-            }
-            None => Err(self.unexpected_eof(COLON_OR_EQUAL)),
-        }
-    }
-
-    fn parse_expression(
-        &mut self,
-        min_bp: u8,
-    ) -> Result<Spanned<Expr>, Spanned<ParseError>> {
+    fn parse_expression(&mut self, min_bp: u8) -> Result<S<Expr>, S<ParseError>> {
         let mut left_expr = self.parse_atomic_expression()?;
 
         loop {
@@ -579,10 +577,10 @@ where
                 let (field_name, field_span) = self.expect_ident()?;
                 let base_span = left_expr.span;
                 let span = base_span.join(field_span);
-                left_expr = Spanned::new(
+                left_expr = S::new(
                     Expr::FieldAccess(FieldAccess {
                         base: Box::new(left_expr),
-                        field_name: Spanned::new(field_name, field_span),
+                        field_name: S::new(field_name, field_span),
                     }),
                     span,
                 );
@@ -591,7 +589,7 @@ where
 
             let op = match self.iter.peek() {
                 Some((token, _span)) => match token {
-                    // Arithemetic operations
+                    // Arithmetic operations
                     Token::SpecialSymbol(SpecialSymbol::Plus) => BinaryOp::Add,
                     Token::SpecialSymbol(SpecialSymbol::Minus) => BinaryOp::Sub,
                     Token::SpecialSymbol(SpecialSymbol::Asterisk) => BinaryOp::Mul,
@@ -654,7 +652,7 @@ where
             let left_expr_span = left_expr.span;
             let right_expr_span = right_expr.span;
             let span = left_expr_span.join(right_expr_span);
-            left_expr = Spanned::new(
+            left_expr = S::new(
                 Expr::Binary(BinaryExpr {
                     op,
                     left: Box::new(left_expr),
@@ -668,9 +666,7 @@ where
     }
 
     /// Parse an atomic expression: a literal, variable, function call.
-    fn parse_atomic_expression(
-        &mut self,
-    ) -> Result<Spanned<Expr>, Spanned<ParseError>> {
+    fn parse_atomic_expression(&mut self) -> Result<S<Expr>, S<ParseError>> {
         match self.iter.peek() {
             Some((token, _span)) => match token {
                 Token::Identifier(_) => {
@@ -682,22 +678,19 @@ where
                         "true" => {
                             // TODO: it's incorrect to be identifier, must be a
                             // literal
-                            return Ok(Spanned::new(
+                            return Ok(S::new(
                                 Expr::Literal(Literal::Bool(true)),
                                 span,
                             ));
                         }
                         "false" => {
-                            return Ok(Spanned::new(
+                            return Ok(S::new(
                                 Expr::Literal(Literal::Bool(false)),
                                 span,
                             ));
                         }
                         "void" => {
-                            return Ok(Spanned::new(
-                                Expr::Literal(Literal::Void),
-                                span,
-                            ));
+                            return Ok(S::new(Expr::Literal(Literal::Void), span));
                         }
                         _ => {}
                     }
@@ -708,7 +701,7 @@ where
                                 .map(|spanned_call| {
                                     spanned_call.map(Expr::FunctionCall)
                                 }),
-                            _ => Ok(Spanned::new(Expr::Variable(id), span)),
+                            _ => Ok(S::new(Expr::Variable(id), span)),
                         },
                         None => Err(self.unexpected_eof(ROUND)),
                     }
@@ -738,7 +731,7 @@ where
                         (Some((Token::Bracket(Bracket::CurlyClose), _)), _) => {
                             let start_span = self.take_next().unwrap().1; // consume '{'
                             let end_span = self.take_next().unwrap().1; // consume '}'
-                            Ok(Spanned::new(
+                            Ok(S::new(
                                 Expr::StructLiteral(StructLiteralExpr {
                                     fields: Vec::new(),
                                 }),
@@ -755,7 +748,7 @@ where
                     let (_, start_span) = self.take_next().unwrap(); // consume '-'
                     self.parse_atomic_expression().map(|spanned_expr| {
                         let end_span = spanned_expr.span;
-                        Spanned::new(
+                        S::new(
                             Expr::Unary(UnaryExpr {
                                 op: UnaryOp::Negate,
                                 expr: Box::new(spanned_expr),
@@ -768,7 +761,7 @@ where
                     let (_, start_span) = self.take_next().unwrap(); // consume '!'
                     self.parse_atomic_expression().map(|spanned_expr| {
                         let end_span = spanned_expr.span;
-                        Spanned::new(
+                        S::new(
                             Expr::Unary(UnaryExpr {
                                 op: UnaryOp::Not,
                                 expr: Box::new(spanned_expr),
@@ -781,7 +774,7 @@ where
                     let (_, start_span) = self.take_next().unwrap(); // consume '~'
                     self.parse_atomic_expression().map(|spanned_expr| {
                         let end_span = spanned_expr.span;
-                        Spanned::new(
+                        S::new(
                             Expr::Unary(UnaryExpr {
                                 op: UnaryOp::BitNot,
                                 expr: Box::new(spanned_expr),
@@ -801,7 +794,7 @@ where
 
     fn parse_struct_literal(
         &mut self,
-    ) -> Result<Spanned<StructLiteralExpr>, Spanned<ParseError>> {
+    ) -> Result<S<StructLiteralExpr>, S<ParseError>> {
         let start_span = self.expect(Token::Bracket(Bracket::CurlyOpen))?;
 
         let fields = self.parse_comma_separated(
@@ -813,28 +806,28 @@ where
 
         let struct_lit = StructLiteralExpr { fields };
         let span = start_span.join(self.last_span);
-        Ok(Spanned::new(struct_lit, span))
+        Ok(S::new(struct_lit, span))
     }
 
     fn parse_struct_literal_field(
         &mut self,
-    ) -> Result<Spanned<StructLiteralField>, Spanned<ParseError>> {
+    ) -> Result<S<StructLiteralField>, S<ParseError>> {
         let (field_name, field_name_span) = self.expect_ident()?;
         self.expect(Token::SpecialSymbol(SpecialSymbol::Colon))?;
         let value = self.parse_expression(0)?;
         let value_span = value.span;
-        Ok(Spanned::new(
+        Ok(S::new(
             StructLiteralField {
-                name: Spanned::new(field_name, field_name_span),
+                name: S::new(field_name, field_name_span),
                 value,
             },
             field_name_span.join(value_span),
         ))
     }
 
-    fn parse_number(&mut self) -> Result<Spanned<Literal>, Spanned<ParseError>> {
+    fn parse_number(&mut self) -> Result<S<Literal>, S<ParseError>> {
         let (number, number_span) = self.expect_number()?;
-        Ok(Spanned::new(Literal::from_number(number), number_span))
+        Ok(S::new(Literal::from_number(number), number_span))
     }
 }
 
@@ -855,7 +848,7 @@ mod tests {
         assert_eq!(format!("{ast}"), expected_display);
     }
 
-    fn parse_and_get_errors(code: &str) -> Vec<Spanned<ParseError>> {
+    fn parse_and_get_errors(code: &str) -> Vec<S<ParseError>> {
         let mut token_iter = tokenize(code.char_indices());
         let (_ast, errors) = ASTParser::new(&mut token_iter).parse();
         errors
@@ -870,7 +863,7 @@ mod tests {
             } => {
                 assert_eq!(actual, expected);
             }
-            ParseError::UnexpectedEOF { .. } => {
+            _ => {
                 panic!("expected UnexpectedToken as first error")
             }
         }
@@ -1395,6 +1388,31 @@ mod tests {
                         y: 20,
                     }
                     let x = pos.x
+                }
+            "},
+        );
+    }
+
+    #[test]
+    fn test_assignment() {
+        parse_and_check_by_display(
+            indoc! {"
+                fn main() {
+                    let x = 5
+                    x = 10
+                    let pos = { x: 1, y: 2 }
+                    pos.x = 3
+                }
+            "},
+            indoc! {"
+                fn main() {
+                    let x = 5
+                    x = 10
+                    let pos = {
+                        x: 1,
+                        y: 2,
+                    }
+                    pos.x = 3
                 }
             "},
         );

@@ -201,6 +201,9 @@ impl<'a> HIRFunctionTranslator<'a> {
                 self.emit_instruction(Instruction::Assign(value_id, rvalue));
                 Operand::Use(value_id)
             }
+            hir::TypedExprKind::FieldAccess(field_access) => {
+                todo!()
+            }
             _ => {
                 unimplemented!("Expression kind not supported yet: {:?}", expr.kind)
             }
@@ -257,6 +260,7 @@ impl<'a> HIRFunctionTranslator<'a> {
                 };
                 self.emit_instruction(instruction);
             }
+            hir::Statement::Assignment(lhs, rhs) => todo!(),
             hir::Statement::Expr(expr_id) => {
                 self.lower_expr_stmt(expr_id, expr_arena);
             }

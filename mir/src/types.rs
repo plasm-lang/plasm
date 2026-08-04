@@ -7,9 +7,12 @@ use utils::primitive_types::PrimitiveType;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub enum MIRType {
     Primitive(PrimitiveType),
-    Tuple(Vec<MIRType>),
-    Named(String),
+    Tuple(TupleType),
+    Named(String, TupleType),
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+pub struct TupleType(pub Vec<MIRType>);
 
 impl MIRType {
     pub fn from_hir(ty: &HIRType, type_arena: &HIRTypeArena) -> Self {
@@ -22,16 +25,19 @@ impl MIRType {
                     .map(|field| {
                         let field_hir_type =
                             type_arena.get_by_id(field.ty_id.node).unwrap();
-                        let field_mir_type =
-                            MIRType::from_hir(field_hir_type, type_arena);
-                        field_mir_type
+                        MIRType::from_hir(field_hir_type, type_arena)
                     })
                     .collect();
-                MIRType::Tuple(fields)
+                MIRType::Tuple(TupleType(fields))
             }
-            hir::HIRType::Named(name, _sub_ty) => {
-                todo!("Handle sub type properly");
-                MIRType::Named(name.clone())
+            hir::HIRType::Named(name, sub_ty) => {
+                let sub_mir_type =
+                    MIRType::from_hir(sub_ty.peel_named(), type_arena);
+                if let MIRType::Tuple(tuple_type) = sub_mir_type {
+                    MIRType::Named(name.clone(), tuple_type)
+                } else {
+                    sub_mir_type
+                }
             }
         }
     }

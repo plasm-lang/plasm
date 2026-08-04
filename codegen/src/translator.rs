@@ -284,7 +284,11 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
                 let llvm_ty = self.get_llvm_type(mir_ty).unwrap();
                 self.builder.build_load(llvm_ty, ptr_val, name).unwrap()
             }
-            mir::RValue::GetElementPtr(_value_id) => todo!(),
+            mir::RValue::GetElementPtr {
+                type_id: _,
+                ptr: _,
+                index: _,
+            } => todo!(),
             mir::RValue::Call(call) => {
                 let call_site = self.translate_call(call, value_map);
                 call_site.try_as_basic_value().unwrap_basic()
@@ -367,7 +371,7 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
                 F128 => Some(self.context.f128_type().into()),
             },
             mir::MIRType::Tuple(_) => unimplemented!(),
-            mir::MIRType::Named(_) => unimplemented!(),
+            mir::MIRType::Named(_, _) => unimplemented!(),
         }
     }
 }

@@ -3,8 +3,8 @@ use std::fmt::{Display, Formatter, Result};
 use super::ast::{
     AST, Argument, BinaryExpr, CallArgument, Expr, ExternalFunction, FieldAccess,
     Function, FunctionCall, FunctionSignature, InternalFunction, Item, Literal,
-    Statement, StructField, StructLiteralExpr, StructLiteralField, StructType, Type,
-    TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
+    Place, Statement, StructField, StructLiteralExpr, StructLiteralField,
+    StructType, Type, TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
 };
 
 impl Display for AST {
@@ -193,6 +193,16 @@ impl<'a> Display for Indent<'a, Statement> {
                 write!(f, "{}", Indent::new(e).with_indent(self.indent))?;
                 writeln!(f)
             }
+            Assignment(place, expr) => {
+                write_indent(f, self.indent)?;
+                write!(
+                    f,
+                    "{} = {}",
+                    Indent::new(&place.node).with_indent(self.indent),
+                    Indent::new(&expr.node).with_indent(self.indent)
+                )?;
+                writeln!(f)
+            }
             Return(Some(e)) => {
                 write_indent(f, self.indent)?;
                 writeln!(
@@ -327,7 +337,7 @@ impl<'a> Display for Indent<'a, StructLiteralField> {
         write!(
             f,
             "{}: {},",
-            &self.node.name,
+            self.node.name,
             Indent::new(&self.node.value.node).with_indent(self.indent)
         )
     }
@@ -369,5 +379,21 @@ impl<'a> Display for Indent<'a, FieldAccess> {
             Indent::new(&self.node.base.node).with_indent(self.indent),
             self.node.field_name,
         )
+    }
+}
+
+impl<'a> Display for Indent<'a, Place> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self.node {
+            Place::Variable(name) => write!(f, "{name}"),
+            Place::Field { base, field_name } => {
+                write!(
+                    f,
+                    "{}.{}",
+                    Indent::new(&base.node).with_indent(self.indent),
+                    field_name
+                )
+            }
+        }
     }
 }

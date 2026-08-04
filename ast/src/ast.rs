@@ -82,7 +82,7 @@ pub type Block = Vec<S<Statement>>;
 pub enum Statement {
     VariableDeclaration(VariableDeclaration),
     Expr(Expr),
-    // Assignment(Place, Expr),
+    Assignment(S<Place>, S<Expr>),
     Return(Option<S<Expr>>),
 }
 
@@ -98,6 +98,7 @@ pub struct VariableDeclaration {
 /// returning type
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum Expr {
+    // RValue?
     Literal(Literal),
     Variable(String),
     FunctionCall(FunctionCall),
@@ -212,8 +213,12 @@ pub struct FieldAccess {
 
 // `Place` and `FieldAccess` are similar, but `Place` is for assignment target,
 // `FieldAccess` is for expression. It's not unified to avoid expression
-// assignment like `some_Func() = 5` or `"string1" = "string2"`.
-// pub enum Place {
-//     Variable(S<String>),
-//     Field(Box<Place>, S<String>),
-// }
+// assignment like `3 = 5` or `"string1" = "string2"`.
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub enum Place {
+    Variable(S<String>),
+    Field {
+        base: Box<S<Place>>,
+        field_name: S<String>,
+    },
+}

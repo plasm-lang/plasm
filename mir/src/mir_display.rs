@@ -4,7 +4,7 @@ use super::mir::{
     Call, Constant, ConstantValue, Function, FunctionSignature, Global, Instruction,
     MIR, MetaInfo, Module, Operand, RValue, Terminator,
 };
-use super::types::{MIRType, MIRTypeArena};
+use super::types::{MIRType, MIRTypeArena, TupleType};
 
 impl Display for MIR {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
@@ -28,7 +28,7 @@ fn format_module(module: &Module) -> String {
     }
     for (i, function) in module.functions.iter().enumerate() {
         if i > 0 {
-            result.push_str("\n");
+            result.push('\n');
         }
 
         result.push_str(format_function(function, module).as_str());
@@ -48,7 +48,7 @@ impl Display for MIRType {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             MIRType::Primitive(p) => write!(f, "{p}"),
-            MIRType::Tuple(fields) => {
+            MIRType::Tuple(TupleType(fields)) => {
                 let fields_str = fields
                     .iter()
                     .map(|field| format!("{}", field))
@@ -56,7 +56,7 @@ impl Display for MIRType {
                     .join(", ");
                 write!(f, "({fields_str})")
             }
-            MIRType::Named(name) => todo!(),
+            MIRType::Named(name, _tuple) => write!(f, "%{name}"),
         }
     }
 }
@@ -66,7 +66,7 @@ fn format_function(func: &Function, module: &Module) -> String {
         Function::External(func) => {
             let mut result =
                 format_signature(&func.signature, module, &func.metainfo);
-            result.push_str("\n");
+            result.push('\n');
             result
         }
         Function::Internal(func) => {
@@ -160,8 +160,8 @@ fn format_instruction(
 
 fn format_rvalue(rvalue: &RValue, module: &Module, metainfo: &MetaInfo) -> String {
     match rvalue {
-        RValue::Alloca(ty_id) => {
-            let ty = module.type_arena.get_by_id(*ty_id).unwrap();
+        RValue::Alloca(type_id) => {
+            let ty = module.type_arena.get_by_id(*type_id).unwrap();
             format!("alloca {}", ty)
         }
         RValue::Load(type_id, ptr) => {
@@ -169,7 +169,15 @@ fn format_rvalue(rvalue: &RValue, module: &Module, metainfo: &MetaInfo) -> Strin
             let ptr_str = format!("%{}", metainfo.get_variable_name(*ptr));
             format!("load {}, ptr {}", ty, ptr_str)
         }
-        RValue::GetElementPtr(val_id) => format!("getelementptr {}", val_id),
+        RValue::GetElementPtr {
+            type_id,
+            ptr,
+            index,
+        } => {
+            let ty = module.type_arena.get_by_id(*type_id).unwrap();
+            let ptr_str = format!("%{}", metainfo.get_variable_name(*ptr));
+            format!("getelementptr {}, ptr {}, index {}", ty, ptr_str, index)
+        }
         RValue::Call(call) => format_call(call, module, metainfo),
         RValue::BinaryOp(op, left, right) => {
             format!(

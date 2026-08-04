@@ -65,6 +65,8 @@ dependencies = [
  "diagnostic",
  "indoc",
  "serde",
+ "strum",
+ "strum_macros",
  "tokenizer",
  "utils",
 ]

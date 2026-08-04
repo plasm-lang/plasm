@@ -1,14 +1,16 @@
 use std::fmt::{Display, Formatter};
 
 use diagnostic::ErrorType;
+use strum_macros::IntoStaticStr;
 use tokenizer::Token;
 
 pub type Result<T> = std::result::Result<T, ParseError>;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, IntoStaticStr)]
 pub enum ParseError {
     UnexpectedToken { token: Token, expected: String },
     UnexpectedEOF { expected: String },
+    InvalidLeftValue,
 }
 
 impl Display for ParseError {
@@ -19,6 +21,9 @@ impl Display for ParseError {
             }
             ParseError::UnexpectedEOF { expected } => {
                 write!(f, "Unexpected end of the file, expected {expected}")
+            }
+            ParseError::InvalidLeftValue => {
+                write!(f, "Invalid left value for assignment")
             }
         }
     }
@@ -36,9 +41,6 @@ impl ErrorType for ParseError {
     }
 
     fn error_sub_type(&self) -> &'static str {
-        match self {
-            ParseError::UnexpectedToken { .. } => "UnexpectedToken",
-            ParseError::UnexpectedEOF { .. } => "UnexpectedEOF",
-        }
+        self.into()
     }
 }

@@ -223,6 +223,12 @@ impl<'a> FunctionConstraintGen<'a> {
                     let eq = Constraint::Equality(expr_infer_type, local_infer_type);
                     self.result.constraints.push(eq);
                 }
+                Statement::Assignment(lhs, rhs) => {
+                    let lhs_infer_type = self.process_expr(*lhs);
+                    let rhs_infer_type = self.process_expr(*rhs);
+                    let eq = Constraint::Equality(lhs_infer_type, rhs_infer_type);
+                    self.result.constraints.push(eq);
+                }
                 Statement::Return(expr_id) => {
                     let expr_infer_type = self.process_expr(*expr_id);
                     let eq = Constraint::Equality(infer_type, expr_infer_type);

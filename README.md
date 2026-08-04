@@ -269,6 +269,15 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td><code>struct { field: I32 }</code></td>
     </tr>
     <tr>
+      <th>Assignment</th>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>a.b.c.d = 42</code></td>
+    </tr>
+    <tr>
       <th>Named Typing</th>
       <td>✅</td>
       <td>✅</td>

@@ -8,6 +8,8 @@ tokenizer = { path = "../tokenizer" }
 diagnostic = { path = "../diagnostic" }
 utils = { path = "../utils" }
 serde.workspace = true
+strum.workspace = true
+strum_macros.workspace = true
 
 [dev-dependencies]
 indoc.workspace = true

@@ -18,7 +18,7 @@ use super::types::{HIRType, StructField, StructType};
 /// For brevity
 type OT = Option<S<HIRTypeId>>;
 type S<T> = Spanned<T>;
-type MaybeS<T> = MaybeSpanned<T>;
+type MS<T> = MaybeSpanned<T>;
 
 pub fn ast_to_hir(ast: ast::AST) -> (THIR, Vec<S<Error>>) {
     let (opt_hir, translation_errors) = ast_to_opt_hir(ast);
@@ -185,17 +185,17 @@ impl ASTTranslator {
             .cloned()
             .unwrap();
         let ret_ty_id = match signature.return_type {
-            None => MaybeS::new(self.hir.type_arena.void_id()),
+            None => MS::new(self.hir.type_arena.void_id()),
             Some(ty_spanned) => {
                 let span = ty_spanned.span;
                 let ty = ty_spanned.node;
                 let mut resolving = Vec::new();
                 match self.translate_type(ty, span, &mut resolving) {
-                    Some((id, _)) => MaybeS {
+                    Some((id, _)) => MS {
                         node: id,
                         span: Some(span),
                     },
-                    None => MaybeS::new(self.hir.type_arena.void_id()),
+                    None => MS::new(self.hir.type_arena.void_id()),
                 }
             }
         };
@@ -417,7 +417,6 @@ impl ASTTranslator {
                     };
                     locals.push(local);
 
-                    // Translate Expr and build VariableDeclaration
                     let (expr_id, local_expr_arena) = self.translate_expr(
                         variable_declaration.value,
                         &locals,
@@ -453,6 +452,15 @@ impl ASTTranslator {
                     expr_arena = expr_arena.join(local_expr_arena);
                     Statement::Return(expr_id)
                 }
+                ast::Statement::Assignment(place, expr) => {
+                    let (place_expr_id, place_expr_arena) =
+                        self.translate_place(place, &locals);
+                    let (expr_id, rvalue_expr_arena) =
+                        self.translate_expr(expr, &locals, None);
+                    expr_arena =
+                        expr_arena.join(place_expr_arena).join(rvalue_expr_arena);
+                    Statement::Assignment(place_expr_id, expr_id)
+                }
             };
 
             statements.push(hir_stmt);
@@ -483,6 +491,51 @@ impl ASTTranslator {
         let block = Block { locals, statements };
 
         (block, expr_arena)
+    }
+
+    fn translate_place(
+        &mut self,
+        place: S<ast::Place>,
+        locals: &Vec<HIRLocal<OT>>,
+    ) -> (ExprId, ExprArena<OT>) {
+        let (place, span) = place.unwrap();
+        let expr_id = self.get_next_expr_id();
+        let mut expr_arena = ExprArena::<OT>::default();
+        match place {
+            ast::Place::Variable(name) => {
+                // Look up local_id
+                // TODO: Change Vec to HashMap or BiHashMap for efficiency
+                let local_id = locals
+                    .iter()
+                    .find(|local| local.name == name)
+                    .map(|local| local.id);
+
+                if let Some(local_id) = local_id {
+                    let hir_expr = Expr::<OT> {
+                        ty: None,
+                        kind: ExprKind::Local(local_id),
+                    };
+                    expr_arena.insert(expr_id, S::new(hir_expr, span));
+                } else {
+                    let err = Error::UnknownVariable { name: name.node };
+                    self.errors.push(S::new(err, name.span));
+                }
+            }
+            ast::Place::Field { base, field_name } => {
+                let (base_expr_id, base_expr_arena) =
+                    self.translate_place(*base, locals);
+                expr_arena = expr_arena.join(base_expr_arena);
+                let hir_expr = Expr::<OT> {
+                    ty: None,
+                    kind: ExprKind::FieldAccess(FieldAccess {
+                        base: base_expr_id,
+                        field_name,
+                    }),
+                };
+                expr_arena.insert(expr_id, S::new(hir_expr, span));
+            }
+        }
+        (expr_id, expr_arena)
     }
 
     fn translate_expr(
@@ -659,7 +712,7 @@ impl ASTTranslator {
 //             id: func_id,
 //             name: S::zero(name),
 //             args: vec![S::zero(left_arg), S::zero(right_arg)],
-//             ret_ty: MaybeS::new(ret_ty),
+//             ret_ty: MS::new(ret_ty),
 //         };
 
 //         self.funcs.insert((op, ty), func_id);
@@ -996,6 +1049,38 @@ mod tests {
                 }
                 let x: I32 = a.x
                 let y: I32 = a.y
+                return Void
+            }
+        "};
+        check_by_display(code, expected_hir_display);
+    }
+
+    #[test]
+    fn nested_field_access_assignment() {
+        let code = indoc! {"
+            fn main() {
+                let a = { b: { c: { d: 10 } } }
+                a.b.c.d = 20
+                let x = a.b.c.d
+            }
+        "};
+        let expected_hir_display = indoc! {"
+            fn main() -> Void {
+                let a: struct {
+                    b: struct {
+                        c: struct {
+                            d: I32,
+                        },
+                    },
+                } = {
+                    b: {
+                        c: {
+                            d: 10,
+                        },
+                    },
+                }
+                a.b.c.d = 20
+                let x: I32 = a.b.c.d
                 return Void
             }
         "};

@@ -12,9 +12,8 @@ utils = { path = "../utils" }
 
 serde.workspace = true
 bimap.workspace = true
-
-strum = "0.28.0"
-strum_macros = "0.28.0"
+strum.workspace = true
+strum_macros.workspace = true
 
 [dev-dependencies]
 indoc.workspace = true

@@ -107,7 +107,11 @@ pub enum RValue {
     /// load %ptr in llvm ir
     Load(MIRTypeId, ValueId),
     /// get pointer ()
-    GetElementPtr(ValueId),
+    GetElementPtr {
+        type_id: MIRTypeId,
+        ptr: ValueId,
+        index: usize,
+    },
     /// Function call
     Call(Call),
     /// Binary operations only for primitive types,

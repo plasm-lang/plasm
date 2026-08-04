@@ -57,13 +57,23 @@ impl WorkList {
         &mut self,
         union_find: &mut UnionFind,
     ) -> Option<Constraint> {
-        let roots: Vec<TypeVarId> = self.freezed.keys().copied().collect();
-        for root in roots {
-            let mut visited = HashSet::new();
-            if let Some(constraint) =
-                self.pop_leaf_from(root, &mut visited, union_find)
-            {
-                return Some(constraint);
+        // The frozen forest is scheduled in two tiers.
+        //
+        // 1. Generators (`StructShape`, `InClass`) first: only they can bind a type
+        //    (fallback).
+        // 2. Inspectors (`HasField`) only once no generator can make progress.
+        for generators_only in [true, false] {
+            let roots: Vec<TypeVarId> = self.freezed.keys().copied().collect();
+            for root in roots {
+                let mut visited = HashSet::new();
+                if let Some(constraint) = self.pop_leaf_from(
+                    root,
+                    &mut visited,
+                    union_find,
+                    generators_only,
+                ) {
+                    return Some(constraint);
+                }
             }
         }
         None
@@ -74,6 +84,7 @@ impl WorkList {
         type_var_id: TypeVarId,
         visited: &mut HashSet<TypeVarId>,
         union_find: &mut UnionFind,
+        generators_only: bool,
     ) -> Option<Constraint> {
         // Already visited on this path = a cycle, nothing to extract here.
         if !visited.insert(type_var_id) {
@@ -93,18 +104,27 @@ impl WorkList {
         // If there is a dependency on another frozen root, we descend into it
         if let Some(dep_var) = external_dep {
             let dep_root = union_find.find(dep_var);
-            return self.pop_leaf_from(dep_root, visited, union_find);
+            return self.pop_leaf_from(
+                dep_root,
+                visited,
+                union_find,
+                generators_only,
+            );
         }
 
         // If there are no external frozen dependencies, the node type_var_id is a
         // leaf. We give priority to type generators (StructShape, InClass)
         // over inspectors (HasField).
-        let pos = constraints
-            .iter()
-            .position(|c| {
-                matches!(c, Constraint::StructShape(..) | Constraint::InClass(..))
-            })
-            .unwrap_or(0);
+        let generator_pos = constraints.iter().position(|c| {
+            matches!(c, Constraint::StructShape(..) | Constraint::InClass(..))
+        });
+        let pos = match generator_pos {
+            Some(pos) => pos,
+            // In the generators-only tier a pure-inspector leaf is skipped so
+            // the search moves on to a root that can still make progress.
+            None if generators_only => return None,
+            None => 0,
+        };
 
         let constraints = self.freezed.get_mut(&type_var_id).unwrap();
         let constraint = constraints.swap_remove(pos);

@@ -210,25 +210,21 @@ impl<'a> FunctionTypeSolver<'a> {
                 base,
                 field_name,
                 field_type,
-            } => {
-                match base.node {
-                    InferType::Known(type_id) => {
+            } => match base.node {
+                InferType::Known(type_id) => {
+                    self.validate_has_field(type_id, field_name, field_type);
+                }
+                InferType::Var(type_var_id) => {
+                    if let Some(type_id) = self.union_find.binding_of(type_var_id) {
                         self.validate_has_field(type_id, field_name, field_type);
-                    }
-                    InferType::Var(type_var_id) => {
-                        if let Some(type_id) =
-                            self.union_find.binding_of(type_var_id)
-                        {
-                            self.validate_has_field(type_id, field_name, field_type);
-                        } else {
-                            let error = TypeInferenceError::FieldOnUnknownType {
-                                field_name: field_name.node,
-                            };
-                            self.errors.push(S::new(error, field_name.span));
-                        }
+                    } else {
+                        let error = TypeInferenceError::FieldOnUnknownType {
+                            field_name: field_name.node,
+                        };
+                        self.errors.push(S::new(error, field_name.span));
                     }
                 }
-            }
+            },
         }
     }
 
@@ -345,7 +341,8 @@ impl<'a> FunctionTypeSolver<'a> {
                     struct_type: ty.format(self.arena),
                     field_name: name.node.clone(),
                 };
-                self.errors.push(S::new(error, name.span.join(infer_type.span)));
+                self.errors
+                    .push(S::new(error, name.span.join(infer_type.span)));
             }
         }
 

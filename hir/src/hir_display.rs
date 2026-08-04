@@ -223,6 +223,12 @@ fn format_block<'a>(block: &'a Block<Typed>, ctx: &FnCtx<'a>, lvl: usize) -> Str
                 out.push_str(&format_expr_id(v.expr_id, &ctx, inner));
                 out.push('\n');
             }
+            Statement::Assignment(lhs, rhs) => {
+                out.push_str(&format_expr_id(*lhs, &ctx, inner));
+                out.push_str(" = ");
+                out.push_str(&format_expr_id(*rhs, &ctx, inner));
+                out.push('\n');
+            }
             Statement::Expr(eid) => {
                 out.push_str(&format_expr_id(*eid, &ctx, inner));
                 out.push('\n');

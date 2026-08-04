@@ -1,24 +1,10 @@
 // Actually, this is not a example - It's a code for internal
 // development testing of new functionality.
 
-type Transform = struct {
-    pos: struct {
-        x: I32,
-        y: I32,
-    },
-}
-
-fn print_I32(x: I32)
-
-fn print_transform(t: Transform) {
-    print_I32(t.pos.x)
-    print_I32(t.pos.y)
-}
-
-fn get_transform() -> Transform {
-    return { pos: { x: 5, z: 15 } }
-}
-
 fn main() {
-    print_transform(get_transform())
+    let x = 0
+    x = 5
+
+    let a = { b: { c: { d: 10 } } }
+    a.b.c.d = 20
 }
