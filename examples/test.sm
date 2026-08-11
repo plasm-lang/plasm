@@ -1,10 +1,42 @@
 // Actually, this is not a example - It's a code for internal
 // development testing of new functionality.
 
-fn main() {
-    let x = 0
-    x = 5
+type Pos = struct {
+    x: I32,
+    y: I32,
+}
 
-    let a = { b: { c: { d: 10 } } }
-    a.b.c.d = 20
+fn make() -> Pos {
+    return { x: 1, y: 2 }
+}
+
+fn main() {
+    let pos = { x: 1, y: 2 }
+    pos.y = pos.x
+}
+
+fn take(p: Pos) -> I32
+
+fn nested() {
+    let line = { a: { x: 1, y: 2 }, b: { x: 3, y: 4 } }
+}
+
+fn call_arg() {
+    let v = take({ x: 5, y: 6 })
+}
+
+fn call_in_field() {
+    let p = { x: take({ x: 1, y: 2 }), y: 3 }
+}
+
+fn field_of_temp() {
+    let v = { x: 1, y: 2 }.x
+}
+
+fn field_of_call() {
+    let v = make().y
+}
+
+fn void_stmt() {
+    take({ x: 1, y: 2 })
 }

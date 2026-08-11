@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::collections::HashMap;
 
 use bimap::BiHashMap;
 use diagnostic::Spanned;
@@ -25,6 +26,22 @@ pub struct Module {
 pub enum Function {
     External(ExternalFunction),
     Internal(InternalFunction),
+}
+
+impl Function {
+    pub fn signature(&self) -> &FunctionSignature {
+        match self {
+            Function::Internal(func) => &func.signature,
+            Function::External(func) => &func.signature,
+        }
+    }
+
+    pub fn metainfo(&self) -> &MetaInfo {
+        match self {
+            Function::Internal(func) => &func.metainfo,
+            Function::External(func) => &func.metainfo,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -174,17 +191,27 @@ pub enum ConstantValue {
 
 #[derive(Debug, Serialize, Default)]
 pub struct MetaInfo {
-    pub variable_names: BiHashMap<String, ValueId>,
+    pub variable_names: BiHashMap<(String, usize), ValueId>,
+    #[serde(skip)]
+    name_counters: HashMap<String, usize>,
 }
 
 impl MetaInfo {
     pub fn add_variable_name(&mut self, name: String, value_id: ValueId) {
-        self.variable_names.insert(name, value_id);
+        let index = self.name_counters.entry(name.clone()).or_insert(0);
+        self.variable_names.insert((name, *index), value_id);
+        *index += 1;
     }
 
     pub fn get_variable_name(&self, value_id: ValueId) -> Cow<'_, str> {
         match self.variable_names.get_by_right(&value_id) {
-            Some(name) => Cow::Borrowed(name),
+            Some((name, index)) => {
+                if index == &0 {
+                    Cow::Borrowed(name)
+                } else {
+                    Cow::Owned(format!("{}_{}", name, index))
+                }
+            }
             None => Cow::Owned(value_id.to_string()),
         }
     }

@@ -1,5 +1,7 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
+use utils::primitive_types::PrimitiveType;
+
 use super::mir::{
     Call, Constant, ConstantValue, Function, FunctionSignature, Global, Instruction,
     MIR, MetaInfo, Module, Operand, RValue, Terminator,
@@ -19,8 +21,16 @@ fn format_module(module: &Module) -> String {
     let mut result = String::new();
 
     for (name, ty) in module.type_arena.iter_named_types() {
-        result.push_str(&format!("type {} = {}\n\n", name, ty));
+        result.push_str(&format!("type {} = {}\n", name, ty));
     }
+
+    let named_types_count = module.type_arena.iter_named_types().count();
+    let next_block_exists =
+        !module.functions.is_empty() || !module.globals.is_empty();
+    if named_types_count > 0 && next_block_exists {
+        result.push('\n');
+    }
+
     for global in &module.globals {
         if let Some(global_string) = format_global(global, &module.type_arena) {
             result.push_str(global_string.as_str());
@@ -48,16 +58,23 @@ impl Display for MIRType {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             MIRType::Primitive(p) => write!(f, "{p}"),
-            MIRType::Tuple(TupleType(fields)) => {
-                let fields_str = fields
-                    .iter()
-                    .map(|field| format!("{}", field))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                write!(f, "({fields_str})")
+            MIRType::Tuple(tuple_type) => {
+                write!(f, "{tuple_type}")
             }
             MIRType::Named(name, _tuple) => write!(f, "%{name}"),
         }
+    }
+}
+
+impl Display for TupleType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let fields_str = self
+            .0
+            .iter()
+            .map(|field| field.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        write!(f, "({fields_str})")
     }
 }
 
@@ -217,7 +234,10 @@ fn format_operand(
         }
         Operand::Constant(constant) => {
             let ty = module.type_arena.get_by_id(constant.type_id).unwrap();
-            format!("{} {}", ty, constant)
+            match ty {
+                MIRType::Primitive(PrimitiveType::Void) => format!("{}", constant),
+                _ => format!("{} {}", ty, constant),
+            }
         }
     }
 }
@@ -227,7 +247,7 @@ impl Display for Constant {
         match &self.value {
             ConstantValue::Int(v) => write!(f, "{}", v),
             ConstantValue::Float(v) => write!(f, "{}", v),
-            ConstantValue::Void => write!(f, "void"),
+            ConstantValue::Void => write!(f, "Void"),
         }
     }
 }

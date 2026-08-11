@@ -11,13 +11,14 @@ pub use ast_translator::ast_to_hir;
 use diagnostic::MaybeSpanned;
 pub use hir::{
     Block, Expr, ExprKind, ExternalFunction, FunctionSignature, Item, Statement,
-    THIR,
+    StructLiteral, THIR,
 };
 use hir::{ExprArena, Function, InternalFunction, Typed};
-pub use types::{HIRType, HIRTypeArena};
+pub use types::{HIRType, HIRTypeArena, StructType};
 use utils::ids::HIRTypeId;
 
 pub type TypedFunction = Function<Typed>;
 pub type TypedInternalFunction = InternalFunction<Typed>;
 pub type TypedExprArena = ExprArena<MaybeSpanned<HIRTypeId>>;
 pub type TypedExprKind = ExprKind<Typed>;
+pub type TypedExpr = Expr<Typed>;

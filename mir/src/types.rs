@@ -1,5 +1,6 @@
 use bimap::BiHashMap;
 use hir::{HIRType, HIRTypeArena};
+use indexmap::IndexMap;
 use serde::Serialize;
 use utils::ids::MIRTypeId;
 use utils::primitive_types::PrimitiveType;
@@ -47,7 +48,7 @@ impl MIRType {
 pub struct MIRTypeArena {
     next_type_id: MIRTypeId,
     types: BiHashMap<MIRTypeId, MIRType>,
-    named_type_defs: BiHashMap<String, MIRTypeId>,
+    named_type_defs: IndexMap<String, TupleType>,
 }
 
 impl MIRTypeArena {
@@ -55,7 +56,7 @@ impl MIRTypeArena {
         Self {
             next_type_id: MIRTypeId::one(),
             types: BiHashMap::new(),
-            named_type_defs: BiHashMap::new(),
+            named_type_defs: IndexMap::new(),
         }
     }
 
@@ -71,16 +72,6 @@ impl MIRTypeArena {
         id
     }
 
-    pub fn insert_named(&mut self, name: String, ty: MIRType) -> MIRTypeId {
-        let id = self.insert(ty);
-        self.named_type_defs.insert(name, id);
-        id
-    }
-
-    pub fn get_by_id(&self, id: MIRTypeId) -> Option<&MIRType> {
-        self.types.get_by_left(&id)
-    }
-
     pub fn get_or_insert(&mut self, ty: MIRType) -> MIRTypeId {
         if let Some(id) = self.types.get_by_right(&ty) {
             *id
@@ -89,10 +80,29 @@ impl MIRTypeArena {
         }
     }
 
-    pub fn iter_named_types(&self) -> impl Iterator<Item = (&str, &MIRType)> {
-        self.named_type_defs.iter().map(|(name, type_id)| {
-            (name.as_str(), self.types.get_by_left(type_id).unwrap())
-        })
+    pub fn insert_named(
+        &mut self,
+        name: String,
+        tuple_type: TupleType,
+    ) -> MIRTypeId {
+        let id =
+            self.get_or_insert(MIRType::Named(name.clone(), tuple_type.clone()));
+        self.named_type_defs.insert(name, tuple_type);
+        id
+    }
+
+    pub fn get_by_id(&self, id: MIRTypeId) -> Option<&MIRType> {
+        self.types.get_by_left(&id)
+    }
+
+    pub fn iter_named_types(&self) -> impl Iterator<Item = (&str, &TupleType)> {
+        self.named_type_defs
+            .iter()
+            .map(|(name, tuple_type)| (name.as_str(), tuple_type))
+    }
+
+    pub fn named_types_count(&self) -> usize {
+        self.named_type_defs.len()
     }
 }
 

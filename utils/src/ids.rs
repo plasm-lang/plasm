@@ -174,6 +174,6 @@ impl Display for TypeVarMarker {
 
 impl Display for ValueMarker {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "V")
+        write!(f, "vreg")
     }
 }

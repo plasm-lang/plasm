@@ -85,11 +85,16 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
     }
 
     fn translate(self) -> Module<'ctx> {
-        // First pass: register functions (LLVM declare)
+        // First pass: register types
+        for (name, tuple_type) in self.mir_module.type_arena.iter_named_types() {
+            self.register_type_definition(name, tuple_type);
+        }
+
+        // Second pass: register functions (LLVM declare)
         for func in self.mir_module.functions.iter() {
             self.register_function(func);
         }
-        // Second pass: translate function bodies
+        // Third pass: translate function bodies
         for func in self.mir_module.functions.iter() {
             self.translate_function(func);
         }
@@ -97,15 +102,8 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
     }
 
     fn register_function(&self, func: &mir::Function) {
-        let signature = match func {
-            mir::Function::External(ext_func) => &ext_func.signature,
-            mir::Function::Internal(int_func) => &int_func.signature,
-        };
-
-        let metainfo = match func {
-            mir::Function::External(ext_func) => &ext_func.metainfo,
-            mir::Function::Internal(int_func) => &int_func.metainfo,
-        };
+        let signature = func.signature();
+        let metainfo = func.metainfo();
 
         let ret_ty = self
             .mir_module
@@ -146,8 +144,8 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
             mir::Function::Internal(int_func) => {
                 self.translate_internal_function(int_func)
             }
-            mir::Function::External(_ext_func) => {} /* No body to translate for
-                                                      * external functions */
+            // No body to translate for external functions
+            mir::Function::External(_ext_func) => {}
         }
     }
 
@@ -285,10 +283,18 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
                 self.builder.build_load(llvm_ty, ptr_val, name).unwrap()
             }
             mir::RValue::GetElementPtr {
-                type_id: _,
-                ptr: _,
-                index: _,
-            } => todo!(),
+                type_id,
+                ptr: ptr_id,
+                index,
+            } => {
+                let ptr_val = value_map.get(ptr_id).unwrap().into_pointer_value();
+                let mir_ty = self.mir_module.type_arena.get_by_id(*type_id).unwrap();
+                let llvm_ty = self.get_llvm_type(mir_ty).unwrap();
+                self.builder
+                    .build_struct_gep(llvm_ty, ptr_val, *index as u32, name)
+                    .unwrap()
+                    .into()
+            }
             mir::RValue::Call(call) => {
                 let call_site = self.translate_call(call, value_map);
                 call_site.try_as_basic_value().unwrap_basic()
@@ -349,6 +355,17 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
         }
     }
 
+    fn register_type_definition(&self, name: &str, tuple_type: &mir::TupleType) {
+        let struct_type = self.context.opaque_struct_type(name);
+        let field_types: Vec<BasicTypeEnum> = tuple_type
+            .0
+            .iter()
+            .map(|field_ty| self.get_llvm_type(field_ty).unwrap())
+            .collect();
+        let packed = false;
+        struct_type.set_body(&field_types, packed);
+    }
+
     fn get_llvm_type(&self, ty: &mir::MIRType) -> Option<BasicTypeEnum<'ctx>> {
         use PrimitiveType::*;
         match ty {
@@ -370,8 +387,22 @@ impl<'ctx> MIRModuleTranslator<'ctx> {
                 F64 => Some(self.context.f64_type().into()),
                 F128 => Some(self.context.f128_type().into()),
             },
-            mir::MIRType::Tuple(_) => unimplemented!(),
-            mir::MIRType::Named(_, _) => unimplemented!(),
+            mir::MIRType::Tuple(tuple_type) => {
+                let field_types: Vec<BasicTypeEnum> = tuple_type
+                    .0
+                    .iter()
+                    .map(|field_ty| self.get_llvm_type(field_ty).unwrap())
+                    .collect();
+                Some(
+                    self.context
+                        .struct_type(field_types.as_slice(), false)
+                        .into(),
+                )
+            }
+            mir::MIRType::Named(name, _) => self
+                .context
+                .get_struct_type(name.as_str())
+                .map(|ty| ty.into()),
         }
     }
 }

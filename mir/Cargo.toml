@@ -8,5 +8,12 @@ diagnostic = { path = "../diagnostic" }
 hir = { path = "../hir" }
 utils = { path = "../utils" }
 
+indexmap = { version = "2.14.0", features = ["serde"] }
+
 serde.workspace = true
 bimap.workspace = true
+
+[dev-dependencies]
+indoc.workspace = true
+tokenizer = { path = "../tokenizer" }
+ast = { path = "../ast" }

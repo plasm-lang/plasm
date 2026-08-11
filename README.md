@@ -161,7 +161,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <th>Binary & Unary Operations</th>
       <td>✅</td>
       <td>✅</td>
-      <td>✅</td>
+      <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td><code>let y = x + 2</code></td>
@@ -230,7 +230,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>✅</td>
       <td>✅</td>
-      <td><code>Bool, U8, I32, I1024, F64<code></td>
+      <td><code>Bool, U8, I32, I1024, F64</code></td>
     </tr>
     <tr>
       <th>Tuples</th>
@@ -255,8 +255,8 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>✅</td>
       <td>✅</td>
-      <td>⬜</td>
-      <td>⬜</td>
+      <td>✅</td>
+      <td>✅</td>
       <td><code>struct {...}</code></td>
     </tr>
     <tr>
@@ -264,8 +264,8 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>✅</td>
       <td>✅</td>
-      <td>⬜</td>
-      <td>⬜</td>
+      <td>✅</td>
+      <td>✅</td>
       <td><code>struct { field: I32 }</code></td>
     </tr>
     <tr>
@@ -273,8 +273,8 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>✅</td>
       <td>✅</td>
-      <td>⬜</td>
-      <td>⬜</td>
+      <td>✅</td>
+      <td>✅</td>
       <td><code>a.b.c.d = 42</code></td>
     </tr>
     <tr>
@@ -282,8 +282,8 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>✅</td>
       <td>✅</td>
-      <td>⬜</td>
-      <td>⬜</td>
+      <td>✅</td>
+      <td>✅</td>
       <td><code>type MyType = struct {...}</code></td>
     </tr>
     <tr>
@@ -514,6 +514,15 @@ This is the roadmap for implementing a minimal working framework that will serve
     </tr>
     <tr>
       <th colspan="7" align="center">Memory Regions</th>
+    </tr>
+    <tr>
+      <th>Reference Capabilities</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>&raw x, &const x, &mut x, &view x, &own x, &peek x, &tag x</code></td>
     </tr>
     <tr>
       <th colspan="7" align="center">Standard Library</th>

@@ -24,4 +24,4 @@ pub use mir::{
     FunctionSignature, Instruction, InternalFunction, MIR, MetaInfo, Module,
     Operand, RValue, Terminator,
 };
-pub use types::{MIRType, MIRTypeArena};
+pub use types::{MIRType, MIRTypeArena, TupleType};
