@@ -266,7 +266,9 @@ impl<'a> HIRFunctionTranslator<'a> {
                 Operand::Use(value_id)
             }
             hir::TypedExprKind::StructLiteral(_)
-            | hir::TypedExprKind::FieldAccess(_) => {
+            | hir::TypedExprKind::TupleLiteral(_)
+            | hir::TypedExprKind::FieldAccess(_)
+            | hir::TypedExprKind::IndexAccess(_) => {
                 let ptr = self.lower_expr_place(expr_id, expr_arena);
                 let res = self.next_vreg();
                 let metainfo_name =
@@ -295,6 +297,14 @@ impl<'a> HIRFunctionTranslator<'a> {
         match &expr.kind {
             hir::TypedExprKind::StructLiteral(lit) => {
                 self.lower_struct_literal_into_place(
+                    expr.ty.node,
+                    lit,
+                    destination,
+                    expr_arena,
+                );
+            }
+            hir::TypedExprKind::TupleLiteral(lit) => {
+                self.lower_tuple_literal_into_place(
                     expr.ty.node,
                     lit,
                     destination,
@@ -351,6 +361,31 @@ impl<'a> HIRFunctionTranslator<'a> {
         }
     }
 
+    fn lower_tuple_literal_into_place(
+        &mut self,
+        hir_type_id: HIRTypeId,
+        literal: &hir::TupleLiteral,
+        destination_ptr: ValueId,
+        expr_arena: &hir::TypedExprArena,
+    ) {
+        let mir_type_id = self.lower_hir_type_id(hir_type_id);
+        let tuple_type = self.hir_tuple_type(hir_type_id).clone();
+
+        for index in 0..tuple_type.0.len() {
+            let field_ptr = self.emit_gep(
+                mir_type_id,
+                destination_ptr,
+                index,
+                format!(
+                    "{}.{}_ptr",
+                    self.metainfo.get_variable_name(destination_ptr),
+                    index,
+                ),
+            );
+            self.lower_expr_into_place(literal.0[index], field_ptr, expr_arena);
+        }
+    }
+
     fn lower_expr_place(
         &mut self,
         expr_id: ExprId,
@@ -378,12 +413,31 @@ impl<'a> HIRFunctionTranslator<'a> {
                     ),
                 )
             }
+            hir::TypedExprKind::IndexAccess(access) => {
+                let base_ptr = self.lower_expr_place(access.base, expr_arena);
+                let base_expr = expr_arena.get(access.base).unwrap().as_ref();
+                let base_type_id = self.lower_hir_type_id(base_expr.ty.node);
+                let index = access.index.node;
+                self.emit_gep(
+                    base_type_id,
+                    base_ptr,
+                    index,
+                    format!(
+                        "{}.{}_ptr",
+                        self.metainfo.get_variable_name(base_ptr),
+                        index,
+                    ),
+                )
+            }
             _ => {
                 let type_id = self.lower_hir_type_id(expr.ty.node);
                 let tmp_ptr = self.alloca(type_id);
                 let hint = match &expr.kind {
                     hir::TypedExprKind::StructLiteral(_) => {
-                        "literal_tmp_ptr".to_string()
+                        "struct_lit_tmp_ptr".to_string()
+                    }
+                    hir::TypedExprKind::TupleLiteral(_) => {
+                        "tuple_lit_tmp_ptr".to_string()
                     }
                     hir::TypedExprKind::FunctionCall(_) => {
                         "call_tmp_ptr".to_string()
@@ -415,6 +469,20 @@ impl<'a> HIRFunctionTranslator<'a> {
             hir::HIRType::Struct(s) => s,
             other => {
                 unreachable!("InternalError: Expected struct type, got {:?}", other)
+            }
+        }
+    }
+
+    fn hir_tuple_type(&self, hir_type_id: HIRTypeId) -> &hir::TupleType {
+        match self
+            .hir_type_arena
+            .get_by_id(hir_type_id)
+            .unwrap()
+            .peel_named()
+        {
+            hir::HIRType::Tuple(t) => t,
+            other => {
+                unreachable!("InternalError: Expected tuple type, got {:?}", other)
             }
         }
     }
@@ -716,6 +784,44 @@ mod tests {
                     %pos_ptr.x_ptr_1 = getelementptr (I32, I32), ptr %pos_ptr, index 0
                     %pos_ptr.x = load I32, ptr %pos_ptr.x_ptr_1
                     store %pos_ptr.x, ptr %pos_ptr.y_ptr_1
+                    return Void
+                }
+            }
+        "};
+        check_by_display(code, expected);
+    }
+
+    #[test]
+    fn test_index_access() {
+        let code = indoc! {"
+            fn main() {
+                let a = (1, (2, (3,), (4,)))
+                a.1.1.0 = a.1.2.0
+            }
+        "};
+        let expected = indoc! {"
+            fn main() -> Void {
+                entry {
+                    %a_ptr = alloca (I32, (I32, (I32), (I32)))
+                    %a_ptr.0_ptr = getelementptr (I32, (I32, (I32), (I32))), ptr %a_ptr, index 0
+                    store I32 1, ptr %a_ptr.0_ptr
+                    %a_ptr.1_ptr = getelementptr (I32, (I32, (I32), (I32))), ptr %a_ptr, index 1
+                    %a_ptr.1_ptr.0_ptr = getelementptr (I32, (I32), (I32)), ptr %a_ptr.1_ptr, index 0
+                    store I32 2, ptr %a_ptr.1_ptr.0_ptr
+                    %a_ptr.1_ptr.1_ptr = getelementptr (I32, (I32), (I32)), ptr %a_ptr.1_ptr, index 1
+                    %a_ptr.1_ptr.1_ptr.0_ptr = getelementptr (I32), ptr %a_ptr.1_ptr.1_ptr, index 0
+                    store I32 3, ptr %a_ptr.1_ptr.1_ptr.0_ptr
+                    %a_ptr.1_ptr.2_ptr = getelementptr (I32, (I32), (I32)), ptr %a_ptr.1_ptr, index 2
+                    %a_ptr.1_ptr.2_ptr.0_ptr = getelementptr (I32), ptr %a_ptr.1_ptr.2_ptr, index 0
+                    store I32 4, ptr %a_ptr.1_ptr.2_ptr.0_ptr
+                    %a_ptr.1_ptr_1 = getelementptr (I32, (I32, (I32), (I32))), ptr %a_ptr, index 1
+                    %a_ptr.1_ptr_1.1_ptr = getelementptr (I32, (I32), (I32)), ptr %a_ptr.1_ptr_1, index 1
+                    %a_ptr.1_ptr_1.1_ptr.0_ptr = getelementptr (I32), ptr %a_ptr.1_ptr_1.1_ptr, index 0
+                    %a_ptr.1_ptr_2 = getelementptr (I32, (I32, (I32), (I32))), ptr %a_ptr, index 1
+                    %a_ptr.1_ptr_2.2_ptr = getelementptr (I32, (I32), (I32)), ptr %a_ptr.1_ptr_2, index 2
+                    %a_ptr.1_ptr_2.2_ptr.0_ptr = getelementptr (I32), ptr %a_ptr.1_ptr_2.2_ptr, index 0
+                    %a_ptr.1_ptr_2.2_ptr.0 = load I32, ptr %a_ptr.1_ptr_2.2_ptr.0_ptr
+                    store %a_ptr.1_ptr_2.2_ptr.0, ptr %a_ptr.1_ptr_1.1_ptr.0_ptr
                     return Void
                 }
             }

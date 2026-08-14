@@ -22,6 +22,7 @@ fn format_hir_type_at(
     match ty {
         HIRType::Primitive(p) => format!("{p}"),
         HIRType::Struct(s) => format_struct(s, lvl + 1, type_arena),
+        HIRType::Tuple(t) => format_tuple(t, lvl + 1, type_arena),
         HIRType::Named(name, _sub_ty) => name.to_string(),
     }
 }
@@ -102,6 +103,9 @@ fn format_type_definition(
 }
 
 fn format_struct(s: &StructType, lvl: usize, type_arena: &HIRTypeArena) -> String {
+    if s.fields.is_empty() {
+        return "struct {}".to_string();
+    }
     let mut out = String::from("struct {\n");
     for field in &s.fields {
         let name = &field.name.node;
@@ -115,6 +119,26 @@ fn format_struct(s: &StructType, lvl: usize, type_arena: &HIRTypeArena) -> Strin
     }
     out.push_str(&indent(lvl.saturating_sub(1)));
     out.push('}');
+    out
+}
+
+fn format_tuple(
+    t: &super::types::TupleType,
+    lvl: usize,
+    type_arena: &HIRTypeArena,
+) -> String {
+    if t.0.is_empty() {
+        return "()".to_string();
+    }
+    let mut out = String::from("(");
+    for (i, ty_id) in t.0.iter().enumerate() {
+        let ty = type_arena.get_by_id(ty_id.node).unwrap();
+        if i > 0 {
+            out.push_str(", ");
+        }
+        out.push_str(&format_hir_type_at(ty, lvl, type_arena));
+    }
+    out.push(')');
     out
 }
 
@@ -274,10 +298,40 @@ fn format_expr<'a>(e: &'a Expr<Typed>, ctx: &FnCtx<'a>, lvl: usize) -> String {
             out.push('}');
             out
         }
+        ExprKind::TupleLiteral(lit) => {
+            let mut out = String::from("(");
+
+            if lit.0.is_empty() {
+                out.push(')');
+                return out;
+            }
+
+            if lit.0.len() == 1 {
+                let value = format_expr_id(lit.0[0], ctx, lvl);
+                out.push_str(&value);
+                out.push_str(",)");
+                return out;
+            }
+
+            for (i, elem) in lit.0.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                let value = format_expr_id(*elem, ctx, lvl);
+                out.push_str(&value);
+            }
+            out.push(')');
+            out
+        }
         ExprKind::FieldAccess(access) => {
             let struct_expr = format_expr_id(access.base, ctx, lvl);
             let field_name = &access.field_name.node;
             format!("{struct_expr}.{field_name}")
+        }
+        ExprKind::IndexAccess(access) => {
+            let base_expr = format_expr_id(access.base, ctx, lvl);
+            let index = access.index;
+            format!("{base_expr}.{index}")
         }
     }
 }

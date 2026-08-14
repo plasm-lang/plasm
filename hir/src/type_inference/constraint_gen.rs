@@ -32,10 +32,16 @@ pub enum Constraint {
     /// names. The order of fields doesn't matter for the obligation
     /// checking, but matters in fallback case.
     StructShape(S<InferType>, Vec<(S<String>, S<InferType>)>),
+    TupleShape(S<InferType>, Vec<S<InferType>>),
     HasField {
         base: S<InferType>,
         field_name: S<String>,
         field_type: S<InferType>,
+    },
+    HasIndex {
+        base: S<InferType>,
+        index: S<usize>,
+        element_type: S<InferType>,
     },
 }
 
@@ -52,6 +58,14 @@ impl std::fmt::Debug for Constraint {
                     .join(", ");
                 write!(f, "{:?} === {{ {} }}", base.node, fields_str,)
             }
+            Constraint::TupleShape(base, elements) => {
+                let elements_str: String = elements
+                    .iter()
+                    .map(|ty| format!("{:?}", ty.node))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "{:?} === ({})", base.node, elements_str,)
+            }
             Constraint::HasField {
                 base,
                 field_name,
@@ -60,6 +74,15 @@ impl std::fmt::Debug for Constraint {
                 f,
                 "{:?} must have field {:?} of type {:?}",
                 base.node, field_name.node, field_type.node
+            ),
+            Constraint::HasIndex {
+                base,
+                index,
+                element_type,
+            } => write!(
+                f,
+                "{:?} must have index {:?} of type {:?}",
+                base.node, index.node, element_type.node
             ),
         }
     }
@@ -185,7 +208,8 @@ impl<'a> FunctionConstraintGen<'a> {
                 self.result.constraints.push(eq);
             }
             StructLiteral(struct_literal) => {
-                let mut infer_type_fields = Vec::new();
+                let mut infer_type_fields =
+                    Vec::with_capacity(struct_literal.fields.len());
                 for field in struct_literal.fields.iter() {
                     let field_infer_type = self.process_expr(field.value);
                     infer_type_fields.push((field.name.clone(), field_infer_type));
@@ -194,12 +218,32 @@ impl<'a> FunctionConstraintGen<'a> {
                     Constraint::StructShape(infer_type, infer_type_fields);
                 self.result.constraints.push(constraint);
             }
+            TupleLiteral(tuple_literal) => {
+                let mut infer_type_elements =
+                    Vec::with_capacity(tuple_literal.0.len());
+                for element_expr_id in tuple_literal.0.iter() {
+                    let element_infer_type = self.process_expr(*element_expr_id);
+                    infer_type_elements.push(element_infer_type);
+                }
+                let constraint =
+                    Constraint::TupleShape(infer_type, infer_type_elements);
+                self.result.constraints.push(constraint);
+            }
             FieldAccess(field_access) => {
                 let base_infer_type = self.process_expr(field_access.base);
                 let constraint = Constraint::HasField {
                     base: base_infer_type,
                     field_name: field_access.field_name.clone(),
                     field_type: infer_type,
+                };
+                self.result.constraints.push(constraint);
+            }
+            IndexAccess(index_access) => {
+                let base_infer_type = self.process_expr(index_access.base);
+                let constraint = Constraint::HasIndex {
+                    base: base_infer_type,
+                    index: index_access.index,
+                    element_type: infer_type,
                 };
                 self.result.constraints.push(constraint);
             }

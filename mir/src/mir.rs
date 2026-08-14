@@ -191,7 +191,7 @@ pub enum ConstantValue {
 
 #[derive(Debug, Serialize, Default)]
 pub struct MetaInfo {
-    pub variable_names: BiHashMap<(String, usize), ValueId>,
+    variable_names: BiHashMap<(String, usize), ValueId>,
     #[serde(skip)]
     name_counters: HashMap<String, usize>,
 }

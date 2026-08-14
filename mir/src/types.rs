@@ -31,6 +31,17 @@ impl MIRType {
                     .collect();
                 MIRType::Tuple(TupleType(fields))
             }
+            HIRType::Tuple(t) => {
+                let elements =
+                    t.0.iter()
+                        .map(|element| {
+                            let elem_hir_type =
+                                type_arena.get_by_id(element.node).unwrap();
+                            MIRType::from_hir(elem_hir_type, type_arena)
+                        })
+                        .collect();
+                MIRType::Tuple(TupleType(elements))
+            }
             hir::HIRType::Named(name, sub_ty) => {
                 let sub_mir_type =
                     MIRType::from_hir(sub_ty.peel_named(), type_arena);

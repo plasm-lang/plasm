@@ -1,0 +1,6 @@
+type Pos = (I32, I32)
+
+fn main() {
+    let pos: Pos = (5, 15)
+    pos.0 = pos.1
+}

@@ -11,6 +11,7 @@ pub enum ParseError {
     UnexpectedToken { token: Token, expected: String },
     UnexpectedEOF { expected: String },
     InvalidLeftValue,
+    InvalidIndexAccess { index: String },
 }
 
 impl Display for ParseError {
@@ -24,6 +25,9 @@ impl Display for ParseError {
             }
             ParseError::InvalidLeftValue => {
                 write!(f, "Invalid left value for assignment")
+            }
+            ParseError::InvalidIndexAccess { index } => {
+                write!(f, "Invalid access by `{index}` index")
             }
         }
     }

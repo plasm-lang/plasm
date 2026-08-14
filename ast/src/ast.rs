@@ -106,7 +106,9 @@ pub enum Expr {
     Unary(UnaryExpr),
     Binary(BinaryExpr),
     StructLiteral(StructLiteralExpr),
+    TupleLiteral(TupleLiteralExpr),
     FieldAccess(FieldAccess),
+    IndexAccess(IndexAccess),
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -119,6 +121,9 @@ pub struct StructLiteralField {
     pub name: S<String>,
     pub value: S<Expr>,
 }
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct TupleLiteralExpr(pub Vec<S<Expr>>);
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct UnaryExpr {
@@ -179,6 +184,7 @@ pub struct TypeDefinition {
 pub enum Type {
     Primitive(PrimitiveType),
     Struct(StructType),
+    Tuple(TupleType),
     Named(String),
     // String, // TODO
     // Path,   // TODO
@@ -211,14 +217,28 @@ pub struct FieldAccess {
     pub field_name: S<String>,
 }
 
-// `Place` and `FieldAccess` are similar, but `Place` is for assignment target,
-// `FieldAccess` is for expression. It's not unified to avoid expression
-// assignment like `3 = 5` or `"string1" = "string2"`.
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct IndexAccess {
+    pub base: Box<S<Expr>>,
+    pub index: S<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TupleType(pub Vec<S<Type>>);
+
+// `Place` and `FieldAccess`/`IndexAccess` are similar, but `Place` is for
+// assignment target only, `FieldAccess`/`IndexAccess` is for expression. It's
+// not unified to avoid expression assignment like `3 = 5` or `"string1" =
+// "string2"`.
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum Place {
     Variable(S<String>),
     Field {
         base: Box<S<Place>>,
         field_name: S<String>,
+    },
+    Index {
+        base: Box<S<Place>>,
+        index: S<usize>,
     },
 }

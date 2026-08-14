@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Keyword {
     Fn,
     Let,
@@ -22,7 +22,7 @@ impl Number {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpecialSymbol {
     // 1-character symbols
     /// :
@@ -81,7 +81,7 @@ pub enum SpecialSymbol {
     DoubleGreaterThan,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Bracket {
     /// (
     RoundOpen,

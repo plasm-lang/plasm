@@ -2,9 +2,10 @@ use std::fmt::{Display, Formatter, Result};
 
 use super::ast::{
     AST, Argument, BinaryExpr, CallArgument, Expr, ExternalFunction, FieldAccess,
-    Function, FunctionCall, FunctionSignature, InternalFunction, Item, Literal,
-    Place, Statement, StructField, StructLiteralExpr, StructLiteralField,
-    StructType, Type, TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
+    Function, FunctionCall, FunctionSignature, IndexAccess, InternalFunction, Item,
+    Literal, Place, Statement, StructField, StructLiteralExpr, StructLiteralField,
+    StructType, TupleLiteralExpr, TupleType, Type, TypeDefinition, UnaryExpr,
+    UnaryOp, VariableDeclaration,
 };
 
 impl Display for AST {
@@ -96,6 +97,9 @@ impl Display for Type {
             Type::Struct(struct_type) => {
                 write!(f, "{}", Indent::new(struct_type).with_indent(0))
             }
+            Type::Tuple(tuple_type) => {
+                write!(f, "{}", Indent::new(tuple_type).with_indent(0))
+            }
             Type::Named(name) => write!(f, "{name}"),
         }
     }
@@ -137,6 +141,21 @@ fn write_indent(f: &mut Formatter<'_>, depth: usize) -> Result {
 
 // Nodes with indentation (always have indent)
 
+impl<'a> Display for Indent<'a, Type> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self.node {
+            Type::Primitive(p) => write!(f, "{p}"),
+            Type::Struct(s) => {
+                write!(f, "{}", Indent::new(s).with_indent(self.indent))
+            }
+            Type::Tuple(t) => {
+                write!(f, "{}", Indent::new(t).with_indent(self.indent))
+            }
+            Type::Named(name) => write!(f, "{name}"),
+        }
+    }
+}
+
 impl<'a> Display for Indent<'a, StructType> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if self.node.fields.is_empty() {
@@ -156,15 +175,16 @@ impl<'a> Display for Indent<'a, StructType> {
     }
 }
 
-impl<'a> Display for Indent<'a, Type> {
+impl<'a> Display for Indent<'a, TupleType> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self.node {
-            Type::Primitive(p) => write!(f, "{p}"),
-            Type::Struct(s) => {
-                write!(f, "{}", Indent::new(s).with_indent(self.indent))
+        write!(f, "(")?;
+        for (i, ty) in self.node.0.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
             }
-            Type::Named(name) => write!(f, "{name}"),
+            write!(f, "{}", Indent::new(&ty.node).with_indent(self.indent))?;
         }
+        write!(f, ")")
     }
 }
 
@@ -305,8 +325,14 @@ impl<'a> Display for Indent<'a, Expr> {
             StructLiteral(lit) => {
                 write!(f, "{}", Indent::new(lit).with_indent(self.indent))
             }
+            TupleLiteral(lit) => {
+                write!(f, "{}", Indent::new(lit).with_indent(self.indent))
+            }
             FieldAccess(fa) => {
                 write!(f, "{}", Indent::new(fa).with_indent(self.indent))
+            }
+            IndexAccess(ia) => {
+                write!(f, "{}", Indent::new(ia).with_indent(self.indent))
             }
         }
     }
@@ -340,6 +366,32 @@ impl<'a> Display for Indent<'a, StructLiteralField> {
             self.node.name,
             Indent::new(&self.node.value.node).with_indent(self.indent)
         )
+    }
+}
+
+impl<'a> Display for Indent<'a, TupleLiteralExpr> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "(")?;
+
+        if self.node.0.is_empty() {
+            return write!(f, ")");
+        }
+
+        if self.node.0.len() == 1 {
+            return write!(
+                f,
+                "{},)",
+                Indent::new(&self.node.0[0].node).with_indent(self.indent)
+            );
+        }
+
+        for (i, expr) in self.node.0.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", Indent::new(&expr.node).with_indent(self.indent))?;
+        }
+        write!(f, ")")
     }
 }
 
@@ -382,6 +434,17 @@ impl<'a> Display for Indent<'a, FieldAccess> {
     }
 }
 
+impl<'a> Display for Indent<'a, IndexAccess> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}.{}",
+            Indent::new(&self.node.base.node).with_indent(self.indent),
+            self.node.index,
+        )
+    }
+}
+
 impl<'a> Display for Indent<'a, Place> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self.node {
@@ -392,6 +455,14 @@ impl<'a> Display for Indent<'a, Place> {
                     "{}.{}",
                     Indent::new(&base.node).with_indent(self.indent),
                     field_name
+                )
+            }
+            Place::Index { base, index } => {
+                write!(
+                    f,
+                    "{}.{}",
+                    Indent::new(&base.node).with_indent(self.indent),
+                    index
                 )
             }
         }

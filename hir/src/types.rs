@@ -10,6 +10,7 @@ type S<T> = Spanned<T>;
 pub enum HIRType {
     Primitive(PrimitiveType),
     Struct(StructType),
+    Tuple(TupleType),
     Named(String, Box<HIRType>),
 }
 
@@ -33,6 +34,7 @@ impl HIRType {
         match self {
             HIRType::Primitive(p) => format!("{p}"),
             HIRType::Struct(s) => s.format(arena),
+            HIRType::Tuple(t) => t.format(arena),
             HIRType::Named(name, _sub_ty) => name.to_string(),
         }
     }
@@ -65,6 +67,21 @@ impl StructType {
 pub struct StructField {
     pub name: S<String>,
     pub ty_id: S<HIRTypeId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+pub struct TupleType(pub Vec<S<HIRTypeId>>);
+
+impl TupleType {
+    pub fn format(&self, arena: &HIRTypeArena) -> String {
+        let fields_str = self
+            .0
+            .iter()
+            .map(|ty_id| arena.get_by_id(ty_id.node).unwrap().format(arena))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("({fields_str})")
+    }
 }
 
 #[derive(Debug, Default, Serialize)]

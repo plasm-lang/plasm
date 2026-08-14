@@ -155,7 +155,9 @@ pub enum ExprKind<T> {
     Block(Block<T>),
     // Binary(Binary<T>),
     StructLiteral(StructLiteral),
+    TupleLiteral(TupleLiteral),
     FieldAccess(FieldAccess),
+    IndexAccess(IndexAccess),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -181,7 +183,16 @@ pub struct StructLiteralField {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct TupleLiteral(pub Vec<ExprId>);
+
+#[derive(Debug, Clone, Serialize)]
 pub struct FieldAccess {
     pub base: ExprId,
     pub field_name: S<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IndexAccess {
+    pub base: ExprId,
+    pub index: S<usize>,
 }

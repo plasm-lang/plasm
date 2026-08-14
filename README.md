@@ -235,10 +235,10 @@ This is the roadmap for implementing a minimal working framework that will serve
     <tr>
       <th>Tuples</th>
       <td>✅</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
       <td><code>(I32, I32, I32)</code></td>
     </tr>
     <tr>
@@ -571,15 +571,6 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td><code>let v: Int = 9999999999999</code></td>
-    </tr>
-    <tr>
-      <th>Float (bit unlimited, heap allocated)</th>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td><code>let v: Float = 0.9999999999999</code></td>
     </tr>
     <tr>
       <th>Decimal</th>

@@ -59,7 +59,11 @@ impl FunctionAnnotator {
                 ExprKind::Local(id) => ExprKind::Local(id),
                 ExprKind::FunctionCall(call) => ExprKind::FunctionCall(call),
                 ExprKind::StructLiteral(lit) => ExprKind::StructLiteral(lit),
+                ExprKind::TupleLiteral(lit) => ExprKind::TupleLiteral(lit),
                 ExprKind::FieldAccess(field) => ExprKind::FieldAccess(field),
+                ExprKind::IndexAccess(index_access) => {
+                    ExprKind::IndexAccess(index_access)
+                }
             };
             out_exprs.insert(expr_id, S::new(Expr { ty, kind }, span));
         }

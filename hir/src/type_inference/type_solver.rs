@@ -9,7 +9,7 @@ use super::type_class::TypeClass;
 use super::type_var::InferType;
 use super::union_find::{TypesConflictError, UnificationOutcome, UnionFind};
 use super::work_list::WorkList;
-use crate::types::{HIRType, HIRTypeArena, StructField, StructType};
+use crate::types::{HIRType, HIRTypeArena, StructField, StructType, TupleType};
 
 // For brevity
 type S<T> = Spanned<T>;
@@ -79,46 +79,39 @@ impl<'a> FunctionTypeSolver<'a> {
             }
             Constraint::InClass(spanned, type_class) => {
                 let (infer_type, span) = spanned.unwrap();
-                match infer_type {
-                    InferType::Known(type_id) => {
-                        self.validate_type_class(type_id, type_class, span);
-                    }
-                    InferType::Var(type_var_id) => {
-                        if let Some(type_id) =
-                            self.union_find.binding_of(type_var_id)
-                        {
-                            self.validate_type_class(type_id, type_class, span);
-                        } else {
-                            self.work_list.freeze(
-                                constraint,
-                                self.union_find.find(type_var_id),
-                            );
-                        }
-                    }
+                if let Some(type_id) = self.infer_type_to_type_id(infer_type) {
+                    self.validate_type_class(type_id, type_class, span);
+                } else {
+                    self.work_list.freeze(
+                        constraint,
+                        self.union_find.find(infer_type.type_var_id_unchecked()),
+                    );
                 }
             }
             Constraint::StructShape(spanned, items) => {
                 let (infer_type, span) = spanned.unwrap();
-                match infer_type {
-                    InferType::Known(type_id) => {
-                        self.validate_struct_shape(type_id, items, span);
-                    }
-                    InferType::Var(type_var_id) => {
-                        if let Some(type_id) =
-                            self.union_find.binding_of(type_var_id)
-                        {
-                            self.validate_struct_shape(type_id, items, span);
-                        } else {
-                            let constraint = Constraint::StructShape(
-                                S::new(infer_type, span),
-                                items,
-                            );
-                            self.work_list.freeze(
-                                constraint,
-                                self.union_find.find(type_var_id),
-                            );
-                        }
-                    }
+                if let Some(type_id) = self.infer_type_to_type_id(infer_type) {
+                    self.validate_struct_shape(type_id, items, span);
+                } else {
+                    let constraint =
+                        Constraint::StructShape(S::new(infer_type, span), items);
+                    self.work_list.freeze(
+                        constraint,
+                        self.union_find.find(infer_type.type_var_id_unchecked()),
+                    );
+                }
+            }
+            Constraint::TupleShape(spanned, elements) => {
+                let (infer_type, span) = spanned.unwrap();
+                if let Some(type_id) = self.infer_type_to_type_id(infer_type) {
+                    self.validate_tuple_shape(type_id, elements, span);
+                } else {
+                    let constraint =
+                        Constraint::TupleShape(S::new(infer_type, span), elements);
+                    self.work_list.freeze(
+                        constraint,
+                        self.union_find.find(infer_type.type_var_id_unchecked()),
+                    );
                 }
             }
             Constraint::HasField {
@@ -127,27 +120,40 @@ impl<'a> FunctionTypeSolver<'a> {
                 field_type,
             } => {
                 let (base_infer_type, base_span) = base.unwrap();
-                match base_infer_type {
-                    InferType::Known(type_id) => {
-                        self.validate_has_field(type_id, field_name, field_type);
-                    }
-                    InferType::Var(type_var_id) => {
-                        if let Some(type_id) =
-                            self.union_find.binding_of(type_var_id)
-                        {
-                            self.validate_has_field(type_id, field_name, field_type);
-                        } else {
-                            let constraint = Constraint::HasField {
-                                base: S::new(base_infer_type, base_span),
-                                field_name,
-                                field_type,
-                            };
-                            self.work_list.freeze(
-                                constraint,
-                                self.union_find.find(type_var_id),
-                            );
-                        }
-                    }
+                if let Some(type_id) = self.infer_type_to_type_id(base_infer_type) {
+                    self.validate_has_field(type_id, field_name, field_type);
+                } else {
+                    let constraint = Constraint::HasField {
+                        base: S::new(base_infer_type, base_span),
+                        field_name,
+                        field_type,
+                    };
+                    self.work_list.freeze(
+                        constraint,
+                        self.union_find
+                            .find(base_infer_type.type_var_id_unchecked()),
+                    );
+                }
+            }
+            Constraint::HasIndex {
+                base,
+                index,
+                element_type,
+            } => {
+                let (base_infer_type, base_span) = base.unwrap();
+                if let Some(type_id) = self.infer_type_to_type_id(base_infer_type) {
+                    self.validate_has_index(type_id, index, element_type);
+                } else {
+                    let constraint = Constraint::HasIndex {
+                        base: S::new(base_infer_type, base_span),
+                        index,
+                        element_type,
+                    };
+                    self.work_list.freeze(
+                        constraint,
+                        self.union_find
+                            .find(base_infer_type.type_var_id_unchecked()),
+                    );
                 }
             }
         }
@@ -158,73 +164,86 @@ impl<'a> FunctionTypeSolver<'a> {
             Constraint::Equality(..) => self.process_constraint(constraint),
             Constraint::InClass(spanned, type_class) => {
                 let (infer_type, span) = spanned.unwrap();
-                match infer_type {
-                    InferType::Known(type_id) => {
-                        self.validate_type_class(type_id, type_class, span);
-                    }
-                    InferType::Var(type_var_id) => {
-                        if let Some(type_id) =
-                            self.union_find.binding_of(type_var_id)
-                        {
-                            self.validate_type_class(type_id, type_class, span);
-                        } else {
-                            let fallback_type = type_class.fallback_type();
-                            let fallback_type_id =
-                                self.arena.get_or_insert(fallback_type);
-                            let new_constraint = Constraint::Equality(
-                                S::new(infer_type, span),
-                                S::new(InferType::Known(fallback_type_id), span),
-                            );
-                            self.work_list.push(new_constraint);
-                        }
-                    }
+                if let Some(type_id) = self.infer_type_to_type_id(infer_type) {
+                    self.validate_type_class(type_id, type_class, span);
+                } else {
+                    let fallback_type = type_class.fallback_type();
+                    let fallback_type_id = self.arena.get_or_insert(fallback_type);
+                    let new_constraint = Constraint::Equality(
+                        S::new(infer_type, span),
+                        S::new(InferType::Known(fallback_type_id), span),
+                    );
+                    self.work_list.push(new_constraint);
                 }
             }
             Constraint::StructShape(spanned, items) => {
                 let (infer_type, span) = spanned.unwrap();
-                match infer_type {
-                    InferType::Known(type_id) => {
-                        self.validate_struct_shape(type_id, items, span);
-                    }
-                    InferType::Var(type_var_id) => {
-                        if let Some(type_id) =
-                            self.union_find.binding_of(type_var_id)
-                        {
-                            self.validate_struct_shape(type_id, items, span);
-                        } else {
-                            let Some(fallback_type_id) =
-                                self.materialize_struct_shape(&items)
-                            else {
-                                return;
-                            };
-                            let new_constraint = Constraint::Equality(
-                                S::new(infer_type, span),
-                                S::new(InferType::Known(fallback_type_id), span),
-                            );
-                            self.work_list.push(new_constraint);
-                        }
-                    }
+                if let Some(type_id) = self.infer_type_to_type_id(infer_type) {
+                    self.validate_struct_shape(type_id, items, span);
+                } else {
+                    let Some(fallback_type_id) =
+                        self.materialize_struct_shape(&items)
+                    else {
+                        return;
+                    };
+                    let new_constraint = Constraint::Equality(
+                        S::new(infer_type, span),
+                        S::new(InferType::Known(fallback_type_id), span),
+                    );
+                    self.work_list.push(new_constraint);
+                }
+            }
+            Constraint::TupleShape(spanned, elements) => {
+                let (infer_type, span) = spanned.unwrap();
+                if let Some(type_id) = self.infer_type_to_type_id(infer_type) {
+                    self.validate_tuple_shape(type_id, elements, span);
+                } else {
+                    let Some(fallback_type_id) =
+                        self.materialize_tuple_shape(&elements)
+                    else {
+                        return;
+                    };
+                    let new_constraint = Constraint::Equality(
+                        S::new(infer_type, span),
+                        S::new(InferType::Known(fallback_type_id), span),
+                    );
+                    self.work_list.push(new_constraint);
                 }
             }
             Constraint::HasField {
                 base,
                 field_name,
                 field_type,
-            } => match base.node {
-                InferType::Known(type_id) => {
+            } => {
+                if let Some(type_id) = self.infer_type_to_type_id(base.node) {
                     self.validate_has_field(type_id, field_name, field_type);
+                } else {
+                    let error = TypeInferenceError::FieldOnUnknownType {
+                        field_name: field_name.node,
+                    };
+                    self.errors.push(S::new(error, field_name.span));
                 }
-                InferType::Var(type_var_id) => {
-                    if let Some(type_id) = self.union_find.binding_of(type_var_id) {
-                        self.validate_has_field(type_id, field_name, field_type);
-                    } else {
-                        let error = TypeInferenceError::FieldOnUnknownType {
-                            field_name: field_name.node,
-                        };
-                        self.errors.push(S::new(error, field_name.span));
-                    }
+            }
+            Constraint::HasIndex {
+                base,
+                index,
+                element_type,
+            } => {
+                if let Some(type_id) = self.infer_type_to_type_id(base.node) {
+                    self.validate_has_index(type_id, index, element_type);
+                } else {
+                    let error =
+                        TypeInferenceError::IndexOnUnknownType { index: index.node };
+                    self.errors.push(S::new(error, index.span));
                 }
-            },
+            }
+        }
+    }
+
+    fn infer_type_to_type_id(&mut self, infer_type: InferType) -> Option<HIRTypeId> {
+        match infer_type {
+            InferType::Known(type_id) => Some(type_id),
+            InferType::Var(type_var_id) => self.union_find.binding_of(type_var_id),
         }
     }
 
@@ -294,6 +313,48 @@ impl<'a> FunctionTypeSolver<'a> {
         );
     }
 
+    fn validate_tuple_shape(
+        &mut self,
+        type_id: HIRTypeId,
+        shape_elements: Vec<S<InferType>>,
+        type_span: Span,
+    ) {
+        let ty = self.arena.get_by_id(type_id).unwrap();
+
+        let HIRType::Tuple(TupleType(type_elements)) = ty.peel_named() else {
+            let error = TypeInferenceError::ShapeOnNonTupleType {
+                ty: ty.format(self.arena),
+            };
+            self.errors.push(S::new(error, type_span));
+            return;
+        };
+
+        if shape_elements.len() != type_elements.len() {
+            let span = shape_elements
+                .iter()
+                .map(|e| e.span)
+                .reduce(|s1, s2| s1.join(s2))
+                .unwrap_or(type_span);
+            let error = TypeInferenceError::TupleShapeLengthMismatch {
+                ty: ty.format(self.arena),
+                expected: type_elements.len(),
+                actual: shape_elements.len(),
+            };
+            self.errors.push(S::new(error, span));
+            return;
+        }
+
+        for (shape_element, type_element) in
+            shape_elements.iter().zip(type_elements.iter())
+        {
+            let new_constraint = Constraint::Equality(
+                *shape_element,
+                type_element.map(InferType::Known),
+            );
+            self.work_list.push(new_constraint);
+        }
+    }
+
     fn validate_has_field(
         &mut self,
         base_type_id: HIRTypeId,
@@ -326,6 +387,37 @@ impl<'a> FunctionTypeSolver<'a> {
             field_name: field_name.node.clone(),
         };
         self.errors.push(S::new(error, field_name.span));
+    }
+
+    fn validate_has_index(
+        &mut self,
+        base_type_id: HIRTypeId,
+        index: S<usize>,
+        element_type: S<InferType>,
+    ) {
+        let base_type = self.arena.get_by_id(base_type_id).unwrap();
+        let HIRType::Tuple(tuple_type) = base_type.peel_named() else {
+            let error = TypeInferenceError::IndexOnNonTupleType {
+                ty: base_type.format(self.arena),
+                index: index.node,
+            };
+            self.errors.push(S::new(error, index.span));
+            return;
+        };
+
+        if index.node >= tuple_type.0.len() {
+            let error = TypeInferenceError::ImpossibleTupleIndex {
+                tuple_type: base_type.format(self.arena),
+                index: index.node,
+            };
+            self.errors.push(S::new(error, index.span));
+            return;
+        }
+
+        let element = tuple_type.0.get(index.node).unwrap();
+        let new_constraint =
+            Constraint::Equality(element_type, element.map(InferType::Known));
+        self.work_list.push(new_constraint);
     }
 
     fn validate_struct_shapes_compatibility(
@@ -369,7 +461,7 @@ impl<'a> FunctionTypeSolver<'a> {
         &mut self,
         fields: &[(S<String>, S<InferType>)],
     ) -> Option<HIRTypeId> {
-        let mut struct_fields = Vec::new();
+        let mut struct_fields = Vec::with_capacity(fields.len());
         for (name, field_infer_type) in fields {
             let Some(field_type_id) =
                 Self::get_type_id(&mut self.union_find, field_infer_type.node)
@@ -390,6 +482,29 @@ impl<'a> FunctionTypeSolver<'a> {
         let hir_type = HIRType::Struct(StructType {
             fields: struct_fields,
         });
+        let type_id = self.arena.get_or_insert(hir_type);
+        Some(type_id)
+    }
+
+    fn materialize_tuple_shape(
+        &mut self,
+        elements: &[S<InferType>],
+    ) -> Option<HIRTypeId> {
+        let mut tuple_elements = Vec::with_capacity(elements.len());
+        for element_infer_type in elements {
+            let Some(element_type_id) =
+                Self::get_type_id(&mut self.union_find, element_infer_type.node)
+            else {
+                let err = S::new(
+                    TypeInferenceError::CantResolveType,
+                    element_infer_type.span,
+                );
+                self.errors.push(err);
+                return None;
+            };
+            tuple_elements.push(S::new(element_type_id, element_infer_type.span));
+        }
+        let hir_type = HIRType::Tuple(TupleType(tuple_elements));
         let type_id = self.arena.get_or_insert(hir_type);
         Some(type_id)
     }

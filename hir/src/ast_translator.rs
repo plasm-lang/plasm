@@ -8,12 +8,12 @@ use utils::primitive_types::PrimitiveType;
 use super::error::Error;
 use super::hir::{
     Argument, Block, Expr, ExprArena, ExprKind, ExternalFunction, FieldAccess,
-    Function, FunctionCall, FunctionSignature, HIRLocal, InternalFunction, Item,
-    OptHIR, Statement, StructLiteral, StructLiteralField, THIR, TypeDefinition,
-    VariableDeclaration,
+    Function, FunctionCall, FunctionSignature, HIRLocal, IndexAccess,
+    InternalFunction, Item, OptHIR, Statement, StructLiteral, StructLiteralField,
+    THIR, TupleLiteral, TypeDefinition, VariableDeclaration,
 };
 use super::type_inference::{TypeInferenceError, opt_hir_to_t_hir};
-use super::types::{HIRType, StructField, StructType};
+use super::types::{HIRType, StructField, StructType, TupleType};
 
 /// For brevity
 type OT = Option<S<HIRTypeId>>;
@@ -309,6 +309,16 @@ impl ASTTranslator {
                 }
                 HIRType::Struct(StructType { fields })
             }
+            ast::Type::Tuple(t) => {
+                let mut elements = Vec::new();
+                for ast_elem in t.0.into_iter() {
+                    let (ast_elem_ty, elem_ty_span) = ast_elem.unwrap();
+                    let (elem_ty_id, _elem_ty) =
+                        self.translate_type(ast_elem_ty, elem_ty_span, resolving)?;
+                    elements.push(S::new(elem_ty_id, elem_ty_span));
+                }
+                HIRType::Tuple(TupleType(elements))
+            }
             ast::Type::Named(name) => {
                 // Check resolution cache first
                 if let Some(cached) = self.resolved_cache.get(&name).copied() {
@@ -534,6 +544,19 @@ impl ASTTranslator {
                 };
                 expr_arena.insert(expr_id, S::new(hir_expr, span));
             }
+            ast::Place::Index { base, index } => {
+                let (base_expr_id, base_expr_arena) =
+                    self.translate_place(*base, locals);
+                expr_arena = expr_arena.join(base_expr_arena);
+                let hir_expr = Expr::<OT> {
+                    ty: None,
+                    kind: ExprKind::IndexAccess(IndexAccess {
+                        base: base_expr_id,
+                        index,
+                    }),
+                };
+                expr_arena.insert(expr_id, S::new(hir_expr, span));
+            }
         }
         (expr_id, expr_arena)
     }
@@ -635,7 +658,7 @@ impl ASTTranslator {
                 todo!()
             }
             ast::Expr::StructLiteral(struct_lit) => {
-                let mut fields = Vec::new();
+                let mut fields = Vec::with_capacity(struct_lit.fields.len());
                 for ast_field in struct_lit.fields.into_iter() {
                     let (ast_field, field_span) = ast_field.unwrap();
                     let (ast_field_expr_id, local_expr_arena) =
@@ -654,6 +677,21 @@ impl ASTTranslator {
                 };
                 expr_arena.insert(expr_id, S::new(hir_expr, expr.span));
             }
+            ast::Expr::TupleLiteral(tuple_lit) => {
+                let mut elements = Vec::with_capacity(tuple_lit.0.len());
+                for ast_elem in tuple_lit.0.into_iter() {
+                    let (ast_elem_expr_id, local_expr_arena) =
+                        self.translate_expr(ast_elem, locals, None);
+                    expr_arena = expr_arena.join(local_expr_arena);
+                    elements.push(ast_elem_expr_id);
+                }
+                let tuple_lit = TupleLiteral(elements);
+                let hir_expr = Expr::<OT> {
+                    ty: opt_ty,
+                    kind: ExprKind::TupleLiteral(tuple_lit),
+                };
+                expr_arena.insert(expr_id, S::new(hir_expr, expr.span));
+            }
             ast::Expr::FieldAccess(field_access) => {
                 let (struct_expr_id, struct_expr_arena) =
                     self.translate_expr(*field_access.base, locals, None);
@@ -665,6 +703,20 @@ impl ASTTranslator {
                 let hir_expr = Expr::<OT> {
                     ty: opt_ty,
                     kind: ExprKind::FieldAccess(field_access),
+                };
+                expr_arena.insert(expr_id, S::new(hir_expr, expr.span));
+            }
+            ast::Expr::IndexAccess(index_access) => {
+                let (tuple_expr_id, tuple_expr_arena) =
+                    self.translate_expr(*index_access.base, locals, None);
+                expr_arena = expr_arena.join(tuple_expr_arena);
+                let index_access = IndexAccess {
+                    base: tuple_expr_id,
+                    index: index_access.index,
+                };
+                let hir_expr = Expr::<OT> {
+                    ty: opt_ty,
+                    kind: ExprKind::IndexAccess(index_access),
                 };
                 expr_arena.insert(expr_id, S::new(hir_expr, expr.span));
             }
@@ -733,7 +785,7 @@ mod tests {
         let (ast, errors) = parse(&mut tokenize(code.char_indices()));
         assert!(errors.is_empty());
         let (hir, errors) = ast_to_hir(ast);
-        assert!(errors.is_empty());
+        assert!(errors.is_empty(), "errors: {errors:?}");
         assert_eq!(hir.to_string(), expected_display);
     }
 
@@ -1100,5 +1152,27 @@ mod tests {
             }
         "};
         check_errors(code, &["IncompatibleTypeClass"]);
+    }
+
+    #[test]
+    fn tuple_shape_and_index_access() {
+        let code = indoc! {"
+            fn main() {
+                let a = (1, (42, true, (3.14,)), 3)
+                let x = a.0
+                let y = a.1.1
+                let z = a.1.2.0
+            }
+        "};
+        let expected_hir_display = indoc! {"
+            fn main() -> Void {
+                let a: (I32, (I32, Bool, (F32)), I32) = (1, (42, true, (3.14,)), 3)
+                let x: I32 = a.0
+                let y: Bool = a.1.1
+                let z: F32 = a.1.2.0
+                return Void
+            }
+        "};
+        check_by_display(code, expected_hir_display);
     }
 }

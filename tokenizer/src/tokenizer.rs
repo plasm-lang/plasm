@@ -1,5 +1,4 @@
 use std::iter::Peekable;
-use std::mem::take;
 
 use diagnostic::{LinesTable, Span};
 
@@ -8,16 +7,34 @@ use super::token::{Bracket, Comment, Keyword, Number, SpecialSymbol, Token};
 pub fn tokenize<I: Iterator<Item = (usize, char)>>(chars: I) -> TokenIter<I> {
     TokenIter {
         chars: chars.peekable(),
-        state: State::Default,
+        state: State::default(),
         accumulated: String::new(),
         lines_table: LinesTable::new(),
     }
 }
 
 enum State {
-    Default,
+    Default { number_strategy: NumberStrategy },
     InSingleComment,
     InMultiComment,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        State::Default {
+            number_strategy: NumberStrategy::default(),
+        }
+    }
+}
+
+#[derive(Default)]
+enum NumberStrategy {
+    /// ".1.0" will be tokenized as a [SpecialSymbol::Dot, Number::Float("1.0")]
+    #[default]
+    FloatAllowed,
+    /// ".1.0" will be tokenized as a [SpecialSymbol::Dot, Number::Integer("1"),
+    /// SpecialSymbol::Dot, Number::Integer("0")]
+    IntegerOnly,
 }
 
 pub struct TokenIter<I: Iterator<Item = (usize, char)>> {
@@ -62,6 +79,46 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
         start_i: usize,
         first_ch: char,
     ) -> Option<(Token, Span)> {
+        match self.state {
+            State::Default {
+                number_strategy: NumberStrategy::FloatAllowed,
+            } => self.lex_number_as_float_allowed_from(start_i, first_ch),
+            State::Default {
+                number_strategy: NumberStrategy::IntegerOnly,
+            } => self.lex_number_as_integer_only_from(start_i, first_ch),
+            _ => unreachable!(),
+        }
+    }
+
+    fn lex_number_as_integer_only_from(
+        &mut self,
+        start_i: usize,
+        first_ch: char,
+    ) -> Option<(Token, Span)> {
+        self.accumulated.clear();
+        self.accumulated.push(first_ch);
+        let mut end_i = start_i + first_ch.len_utf8();
+
+        while let Some(&(i, ch)) = self.chars.peek() {
+            if ch.is_ascii_digit() || ch == '_' {
+                end_i = i + ch.len_utf8();
+                self.accumulated.push(ch);
+                self.chars.next();
+            } else {
+                break;
+            }
+        }
+
+        let span = Span::new(start_i, end_i);
+        let number = Number::Integer(self.release_accumulated());
+        Some((Token::Number(number), span))
+    }
+
+    fn lex_number_as_float_allowed_from(
+        &mut self,
+        start_i: usize,
+        first_ch: char,
+    ) -> Option<(Token, Span)> {
         self.accumulated.clear();
         self.accumulated.push(first_ch);
         let mut end_i = start_i + first_ch.len_utf8();
@@ -78,11 +135,15 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
 
         let span = Span::new(start_i, end_i);
         let number = if self.accumulated.contains('.') {
-            Number::Float(std::mem::take(&mut self.accumulated))
+            Number::Float(self.release_accumulated())
         } else {
-            Number::Integer(std::mem::take(&mut self.accumulated))
+            Number::Integer(self.release_accumulated())
         };
         Some((Token::Number(number), span))
+    }
+
+    fn release_accumulated(&mut self) -> String {
+        std::mem::take(&mut self.accumulated)
     }
 
     fn lex_alphanumeric_from(
@@ -134,8 +195,8 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
         }
 
         let span = Span::new(start_i, end_i);
-        let comment_text = take(&mut self.accumulated);
-        self.state = State::Default;
+        let comment_text = self.release_accumulated();
+        self.state = State::default();
         Some((Token::Comment(Comment::SingleLine(comment_text)), span))
     }
 
@@ -150,8 +211,8 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
             if ch == '*' && self.chars.peek().map(|(_, ch)| ch) == Some(&'/') {
                 self.chars.next(); // consume the '/'
                 let span = Span::new(start_i, i);
-                let comment_text = take(&mut self.accumulated);
-                self.state = State::Default;
+                let comment_text = self.release_accumulated();
+                self.state = State::default();
                 return Some((
                     Token::Comment(Comment::MultiLine(comment_text)),
                     span,
@@ -167,194 +228,65 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
         None
     }
 
+    fn peek_check(&mut self, expected: char) -> bool {
+        self.chars.peek().map(|&(_, ch)| ch) == Some(expected)
+    }
+
     fn lex_default(&mut self) -> Option<(Token, Span)> {
         let (i, ch) = self.chars.next()?;
-        match ch {
-            '/' if self.chars.peek().map(|(_, ch)| ch) == Some(&'/') => {
-                self.state = State::InSingleComment;
-                self.chars.next(); // consume the second '/'
-                self.lex_single_comment()
-            }
-            '/' if self.chars.peek().map(|(_, ch)| ch) == Some(&'*') => {
-                self.state = State::InMultiComment;
-                self.chars.next(); // consume the '*'
-                self.lex_multiline_comment()
-            }
+        let ch_span = || Span::new(i, i + ch.len_utf8());
 
-            // 2-character symbols
-            '*' if self.chars.peek().map(|(_, ch)| ch) == Some(&'*') => {
-                let (_, ch2) = self.chars.next()?; // consume the second '*'
-                Some((
-                    Token::SpecialSymbol(SpecialSymbol::DoubleAsterisk),
-                    Span::new(i, i + ch.len_utf8() + ch2.len_utf8()),
-                ))
-            }
-            '&' if self.chars.peek().map(|(_, ch)| ch) == Some(&'&') => {
-                let (_, ch2) = self.chars.next()?; // consume the second '&'
-                Some((
-                    Token::SpecialSymbol(SpecialSymbol::DoubleAmpersand),
-                    Span::new(i, i + ch.len_utf8() + ch2.len_utf8()),
-                ))
-            }
-            '|' if self.chars.peek().map(|(_, ch)| ch) == Some(&'|') => {
-                let (_, ch2) = self.chars.next()?; // consume the second '|'
-                Some((
-                    Token::SpecialSymbol(SpecialSymbol::DoublePipe),
-                    Span::new(i, i + ch.len_utf8() + ch2.len_utf8()),
-                ))
-            }
-            '=' if self.chars.peek().map(|(_, ch)| ch) == Some(&'=') => {
-                let (_, ch2) = self.chars.next()?; // consume the second '='
-                Some((
-                    Token::SpecialSymbol(SpecialSymbol::DoubleEquals),
-                    Span::new(i, i + ch.len_utf8() + ch2.len_utf8()),
-                ))
-            }
-            '!' if self.chars.peek().map(|(_, ch)| ch) == Some(&'=') => {
-                let (_, ch2) = self.chars.next()?; // consume the '='
-                Some((
-                    Token::SpecialSymbol(SpecialSymbol::ExclamationEquals),
-                    Span::new(i, i + ch.len_utf8() + ch2.len_utf8()),
-                ))
-            }
-            '<' if self.chars.peek().map(|(_, ch)| ch) == Some(&'=') => {
-                let (_, ch2) = self.chars.next()?; // consume the '='
-                Some((
-                    Token::SpecialSymbol(SpecialSymbol::LessThanEquals),
-                    Span::new(i, i + ch.len_utf8() + ch2.len_utf8()),
-                ))
-            }
-            '>' if self.chars.peek().map(|(_, ch)| ch) == Some(&'=') => {
-                let (_, ch2) = self.chars.next()?; // consume the '='
-                Some((
-                    Token::SpecialSymbol(SpecialSymbol::GreaterThanEquals),
-                    Span::new(i, i + ch.len_utf8() + ch2.len_utf8()),
-                ))
-            }
-            '<' if self.chars.peek().map(|(_, ch)| ch) == Some(&'<') => {
-                let (_, ch2) = self.chars.next()?; // consume the second '<'
-                Some((
-                    Token::SpecialSymbol(SpecialSymbol::DoubleLessThan),
-                    Span::new(i, i + ch.len_utf8() + ch2.len_utf8()),
-                ))
-            }
-            '>' if self.chars.peek().map(|(_, ch)| ch) == Some(&'>') => {
-                let (_, ch2) = self.chars.next()?; // consume the second '>'
-                Some((
-                    Token::SpecialSymbol(SpecialSymbol::DoubleGreaterThan),
-                    Span::new(i, i + ch.len_utf8() + ch2.len_utf8()),
-                ))
-            }
+        // Comments
 
+        if ch == '/' && self.peek_check('/') {
+            self.state = State::InSingleComment;
+            self.chars.next(); // consume the second '/'
+            return self.lex_single_comment();
+        }
+        if ch == '/' && self.peek_check('*') {
+            self.state = State::InMultiComment;
+            self.chars.next(); // consume the '*'
+            return self.lex_multiline_comment();
+        }
+
+        // 2-character symbols
+
+        if let Some(&(_, ch2)) = self.chars.peek()
+            && let Some(token) = double_token(ch, ch2)
+        {
+            let (end_i, ch2) = self.chars.next()?; // consume the second character
+            let span = Span::new(i, end_i + ch2.len_utf8());
+            return Some((token, span));
+        }
+
+        // 1-character symbols and brackets
+
+        if let Some(token) = single_token(ch) {
+            return Some((token, ch_span()));
+        }
+
+        let res = match ch {
             '\n' => {
-                let char_len = ch.len_utf8();
-                self.lines_table.add_line(i + char_len);
-                Some((Token::NewLine, Span::new(i, i + char_len)))
+                self.lines_table.add_line(i + ch.len_utf8());
+                (Token::NewLine, ch_span())
             }
-            ch if ch.is_whitespace() => self.lex_whitespace_from(i, ch),
-            ch if ch.is_ascii_digit() => self.lex_number_from(i, ch),
-
-            // 1-character symbols
-            '{' => Some((
-                Token::Bracket(Bracket::CurlyOpen),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            '}' => Some((
-                Token::Bracket(Bracket::CurlyClose),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            '(' => Some((
-                Token::Bracket(Bracket::RoundOpen),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            ')' => Some((
-                Token::Bracket(Bracket::RoundClose),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            '[' => Some((
-                Token::Bracket(Bracket::SquareOpen),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            ']' => Some((
-                Token::Bracket(Bracket::SquareClose),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            ':' => Some((
-                Token::SpecialSymbol(SpecialSymbol::Colon),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            '=' => Some((
-                Token::SpecialSymbol(SpecialSymbol::Equals),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            ',' => Some((
-                Token::SpecialSymbol(SpecialSymbol::Comma),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            '>' => Some((
-                Token::SpecialSymbol(SpecialSymbol::GreaterThan),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            '<' => Some((
-                Token::SpecialSymbol(SpecialSymbol::LessThan),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            '-' => Some((
-                Token::SpecialSymbol(SpecialSymbol::Minus),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            '+' => Some((
-                Token::SpecialSymbol(SpecialSymbol::Plus),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            '*' => Some((
-                Token::SpecialSymbol(SpecialSymbol::Asterisk),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            '/' => Some((
-                Token::SpecialSymbol(SpecialSymbol::Slash),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            '%' => Some((
-                Token::SpecialSymbol(SpecialSymbol::Percent),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            '\\' => Some((
-                Token::SpecialSymbol(SpecialSymbol::Backslash),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            '!' => Some((
-                Token::SpecialSymbol(SpecialSymbol::Exclamation),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            '&' => Some((
-                Token::SpecialSymbol(SpecialSymbol::Ampersand),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            '|' => Some((
-                Token::SpecialSymbol(SpecialSymbol::Pipe),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            '^' => Some((
-                Token::SpecialSymbol(SpecialSymbol::Caret),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            '~' => Some((
-                Token::SpecialSymbol(SpecialSymbol::Tilde),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-            '.' => Some((
-                Token::SpecialSymbol(SpecialSymbol::Dot),
-                Span::new(i, i + ch.len_utf8()),
-            )),
-
+            ch if ch.is_whitespace() => self.lex_whitespace_from(i, ch)?,
+            ch if ch.is_ascii_digit() => self.lex_number_from(i, ch)?,
             ch if ch.is_alphanumeric() || ch == '_' => {
-                self.lex_alphanumeric_from(i, ch)
+                self.lex_alphanumeric_from(i, ch)?
             }
-            ch => Some((
-                Token::Impossible(ch.to_string()),
-                Span::new(i, i + ch.len_utf8()),
-            )),
+            ch => (Token::Impossible(ch.to_string()), ch_span()),
+        };
+        Some(res)
+    }
+
+    fn reconsider_number_strategy(&mut self, token: Option<&Token>) {
+        if let Some(token) = token
+            && let Some(strategy) = choose_number_strategy(token)
+        {
+            self.state = State::Default {
+                number_strategy: strategy,
+            };
         }
     }
 }
@@ -363,11 +295,86 @@ impl<I: Iterator<Item = (usize, char)>> Iterator for TokenIter<I> {
     type Item = (Token, Span);
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.state {
-            State::Default => self.lex_default(),
+        let res = match self.state {
+            State::Default { .. } => self.lex_default(),
             State::InSingleComment => self.lex_single_comment(),
             State::InMultiComment => self.lex_multiline_comment(),
+        };
+        self.reconsider_number_strategy(res.as_ref().map(|(token, _)| token));
+        res
+    }
+}
+
+const fn double_token(first: char, second: char) -> Option<Token> {
+    use SpecialSymbol::*;
+    let symbol = match (first, second) {
+        ('*', '*') => DoubleAsterisk,
+        ('&', '&') => DoubleAmpersand,
+        ('|', '|') => DoublePipe,
+        ('=', '=') => DoubleEquals,
+        ('!', '=') => ExclamationEquals,
+        ('<', '=') => LessThanEquals,
+        ('>', '=') => GreaterThanEquals,
+        ('<', '<') => DoubleLessThan,
+        ('>', '>') => DoubleGreaterThan,
+        _ => return None,
+    };
+    Some(Token::SpecialSymbol(symbol))
+}
+const fn single_token(ch: char) -> Option<Token> {
+    use Bracket::*;
+    use SpecialSymbol::*;
+    Some(match ch {
+        ':' => Token::SpecialSymbol(Colon),
+        '=' => Token::SpecialSymbol(Equals),
+        ',' => Token::SpecialSymbol(Comma),
+        '>' => Token::SpecialSymbol(GreaterThan),
+        '<' => Token::SpecialSymbol(LessThan),
+        '-' => Token::SpecialSymbol(Minus),
+        '+' => Token::SpecialSymbol(Plus),
+        '*' => Token::SpecialSymbol(Asterisk),
+        '/' => Token::SpecialSymbol(Slash),
+        '%' => Token::SpecialSymbol(Percent),
+        '\\' => Token::SpecialSymbol(Backslash),
+        '!' => Token::SpecialSymbol(Exclamation),
+        '&' => Token::SpecialSymbol(Ampersand),
+        '|' => Token::SpecialSymbol(Pipe),
+        '^' => Token::SpecialSymbol(Caret),
+        '~' => Token::SpecialSymbol(Tilde),
+        '.' => Token::SpecialSymbol(Dot),
+        '{' => Token::Bracket(CurlyOpen),
+        '}' => Token::Bracket(CurlyClose),
+        '(' => Token::Bracket(RoundOpen),
+        ')' => Token::Bracket(RoundClose),
+        '[' => Token::Bracket(SquareOpen),
+        ']' => Token::Bracket(SquareClose),
+        _ => return None,
+    })
+}
+
+const fn choose_number_strategy(last_token: &Token) -> Option<NumberStrategy> {
+    match last_token {
+        // After an identifier, a bracket, or a dot, we consider dots and numbers as
+        // an index access (e.g. `some_var.0.123`).
+        Token::Identifier(_)
+        | Token::Bracket(
+            Bracket::RoundClose | Bracket::SquareClose | Bracket::CurlyClose,
+        )
+        | Token::SpecialSymbol(SpecialSymbol::Dot) => {
+            Some(NumberStrategy::IntegerOnly)
         }
+        // Otherwise, we allow floats (e.g. `1.`, `0.5`, `3.14`, `(3.14,)`).
+        Token::Keyword(_)
+        | Token::SpecialSymbol(_)
+        | Token::Number(_)
+        | Token::Bracket(
+            Bracket::RoundOpen | Bracket::SquareOpen | Bracket::CurlyOpen,
+        ) => Some(NumberStrategy::FloatAllowed),
+        // However sometimes we follow previous token's strategy.
+        Token::Whitespace(_)
+        | Token::Comment(_)
+        | Token::NewLine
+        | Token::Impossible(_) => None, // Follow the previous token's strategy
     }
 }
 
@@ -601,6 +608,44 @@ mod tests {
             Token::SpecialSymbol(SpecialSymbol::Percent),
             Token::Whitespace(1),
             Token::SpecialSymbol(SpecialSymbol::Backslash),
+        ];
+        assert_eq!(tokens, expected);
+    }
+
+    #[test]
+    fn test_number_strategies() {
+        let code = indoc! {"
+            1.0
+            .5
+            3.14
+            some_var.0.123
+            func().456
+            "
+        };
+
+        let mut token_iter = tokenize(code.char_indices());
+        let tokens = token_iter.by_ref().map(|(t, _s)| t).collect::<Vec<_>>();
+
+        let expected = vec![
+            Token::Number(Number::Float("1.0".to_string())),
+            Token::NewLine,
+            Token::SpecialSymbol(SpecialSymbol::Dot),
+            Token::Number(Number::Integer("5".to_string())),
+            Token::NewLine,
+            Token::Number(Number::Float("3.14".to_string())),
+            Token::NewLine,
+            Token::Identifier("some_var".to_string()),
+            Token::SpecialSymbol(SpecialSymbol::Dot),
+            Token::Number(Number::Integer("0".to_string())),
+            Token::SpecialSymbol(SpecialSymbol::Dot),
+            Token::Number(Number::Integer("123".to_string())),
+            Token::NewLine,
+            Token::Identifier("func".to_string()),
+            Token::Bracket(Bracket::RoundOpen),
+            Token::Bracket(Bracket::RoundClose),
+            Token::SpecialSymbol(SpecialSymbol::Dot),
+            Token::Number(Number::Integer("456".to_string())),
+            Token::NewLine,
         ];
         assert_eq!(tokens, expected);
     }

@@ -7,15 +7,17 @@ use utils::bin_op::BinaryOp;
 
 use super::ast::{
     AST, Argument, BinaryExpr, Block, CallArgument, Expr, ExternalFunction,
-    FieldAccess, Function, FunctionCall, FunctionSignature, InternalFunction,
-    Literal, Place, Statement, StructField, StructLiteralExpr, StructLiteralField,
-    StructType, Type, TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
+    FieldAccess, Function, FunctionCall, FunctionSignature, IndexAccess,
+    InternalFunction, Literal, Place, Statement, StructField, StructLiteralExpr,
+    StructLiteralField, StructType, TupleLiteralExpr, TupleType, Type,
+    TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
 };
 use super::error::ParseError;
 use super::lookahead::Lookahead;
 
 // Const messages for expected tokens in error reporting
 const IDENTIFIER: &str = "identifier";
+const IDENTIFIER_OR_NUMBER: &str = "identifier or number";
 const NUMBER: &str = "number";
 const FUNCTION_OR_TYPE: &str = "function or type definition";
 const TYPE: &str = "type";
@@ -26,7 +28,6 @@ const ARG_OR_ROUND: &str = "function argument or `)`";
 const STATEMENT_OR_CURLY: &str = "statement or `}`";
 const STATEMENT: &str =
     "statement (function call, variable declaration, return, etc.)";
-const ROUND_OR_EQUAL: &str = "`(` or `=`";
 const EXPRESSION_OR_CURLY: &str = "expression or `}`";
 const COLON_OR_EQUAL: &str = "`:` or `=`";
 const EXPRESSION: &str = "expression";
@@ -290,8 +291,12 @@ where
                 Ok(S::new(ty, type_name_span))
             }
             Some((Token::Keyword(Keyword::Struct), _)) => {
-                let (struct_type, span) = self.parse_struct()?.unwrap();
+                let (struct_type, span) = self.parse_struct_type()?.unwrap();
                 Ok(S::new(Type::Struct(struct_type), span))
+            }
+            Some((Token::Bracket(Bracket::RoundOpen), _)) => {
+                let (tuple_type, span) = self.parse_tuple_type()?.unwrap();
+                Ok(S::new(Type::Tuple(tuple_type), span))
             }
             Some(_) => {
                 let (token, span) = self.take_next().unwrap();
@@ -301,7 +306,7 @@ where
         }
     }
 
-    fn parse_struct(&mut self) -> Result<S<StructType>, S<ParseError>> {
+    fn parse_struct_type(&mut self) -> Result<S<StructType>, S<ParseError>> {
         let start_span = self.expect(Token::Keyword(Keyword::Struct))?;
         self.expect(Token::Bracket(Bracket::CurlyOpen))?;
 
@@ -329,6 +334,21 @@ where
             },
             field_name_span.join(type_span),
         ))
+    }
+
+    fn parse_tuple_type(&mut self) -> Result<S<TupleType>, S<ParseError>> {
+        let start_span = self.expect(Token::Bracket(Bracket::RoundOpen))?;
+
+        let types = self.parse_comma_separated(
+            &Token::Bracket(Bracket::RoundClose),
+            TYPE,
+            COMMA_OR_ROUND,
+            Self::parse_type,
+        )?;
+
+        let tuple_type = TupleType(types);
+        let span = start_span.join(self.last_span);
+        Ok(S::new(tuple_type, span))
     }
 
     fn parse_function_arg(&mut self) -> Result<S<Argument>, S<ParseError>> {
@@ -496,6 +516,13 @@ where
                     field_name,
                 }
             }
+            Expr::IndexAccess(IndexAccess { base, index }) => {
+                let base_place = Self::expr_to_place(*base)?;
+                Place::Index {
+                    base: Box::new(base_place),
+                    index,
+                }
+            }
             _ => {
                 return Err(S::new(ParseError::InvalidLeftValue, span));
             }
@@ -574,16 +601,64 @@ where
                 self.iter.peek()
             {
                 self.take_next(); // consume '.'
-                let (field_name, field_span) = self.expect_ident()?;
-                let base_span = left_expr.span;
-                let span = base_span.join(field_span);
-                left_expr = S::new(
-                    Expr::FieldAccess(FieldAccess {
-                        base: Box::new(left_expr),
-                        field_name: S::new(field_name, field_span),
-                    }),
-                    span,
-                );
+                match self.iter.peek() {
+                    Some((Token::Identifier(_), _)) => {
+                        let (field_name, field_span) = self.expect_ident()?;
+                        let base_span = left_expr.span;
+                        let span = base_span.join(field_span);
+                        left_expr = S::new(
+                            Expr::FieldAccess(FieldAccess {
+                                base: Box::new(left_expr),
+                                field_name: S::new(field_name, field_span),
+                            }),
+                            span,
+                        );
+                    }
+                    Some((Token::Number(Number::Integer(_)), _)) => {
+                        let (index_num, index_span) = self.expect_number()?;
+                        let index = match index_num {
+                            Number::Integer(int_string) => {
+                                int_string.parse().map_err(|_| {
+                                    S::new(
+                                        ParseError::InvalidIndexAccess {
+                                            index: int_string,
+                                        },
+                                        index_span,
+                                    )
+                                })?
+                            }
+                            Number::Float(float_string) => {
+                                return Err(S::new(
+                                    ParseError::InvalidIndexAccess {
+                                        index: float_string,
+                                    },
+                                    index_span,
+                                ));
+                            }
+                        };
+
+                        let base_span = left_expr.span;
+                        let span = base_span.join(index_span);
+                        left_expr = S::new(
+                            Expr::IndexAccess(IndexAccess {
+                                base: Box::new(left_expr),
+                                index: S::new(index, index_span),
+                            }),
+                            span,
+                        );
+                    }
+                    Some(_) => {
+                        let (token, span) = self.take_next().unwrap();
+                        return Err(self.unexpected_token(
+                            token,
+                            span,
+                            IDENTIFIER_OR_NUMBER,
+                        ));
+                    }
+                    None => {
+                        return Err(self.unexpected_eof(IDENTIFIER_OR_NUMBER));
+                    }
+                }
                 continue;
             }
 
@@ -689,7 +764,7 @@ where
                                 span,
                             ));
                         }
-                        "void" => {
+                        "Void" => {
                             return Ok(S::new(Expr::Literal(Literal::Void), span));
                         }
                         _ => {}
@@ -710,10 +785,7 @@ where
                     .parse_number()
                     .map(|spanned_lit| spanned_lit.map(Expr::Literal)),
                 Token::Bracket(Bracket::RoundOpen) => {
-                    self.take_next(); // consume '('
-                    let expr = self.parse_expression(0)?;
-                    self.expect(Token::Bracket(Bracket::RoundClose))?;
-                    Ok(expr)
+                    self.parse_tuple_literal_or_grouping()
                 }
 
                 Token::Bracket(Bracket::CurlyOpen) => {
@@ -789,6 +861,52 @@ where
                 }
             },
             None => Err(self.unexpected_eof(EXPRESSION)),
+        }
+    }
+
+    fn parse_tuple_literal_or_grouping(&mut self) -> Result<S<Expr>, S<ParseError>> {
+        let Some((_, start_span)) = self.take_next() else {
+            unreachable!()
+        };
+
+        // Lookahead to check for empty tuple literal `()`
+        if matches!(
+            self.iter.peek(),
+            Some((Token::Bracket(Bracket::RoundClose), _))
+        ) {
+            let Some((_, end_span)) = self.take_next() else {
+                unreachable!()
+            };
+            let span = start_span.join(end_span);
+            return Ok(S::new(
+                Expr::TupleLiteral(TupleLiteralExpr(Vec::new())),
+                span,
+            ));
+        }
+
+        let expr = self.parse_expression(0)?;
+
+        match self.take_next() {
+            Some((Token::SpecialSymbol(SpecialSymbol::Comma), _)) => {
+                let remaining_exprs = self.parse_comma_separated(
+                    &Token::Bracket(Bracket::RoundClose),
+                    EXPRESSION,
+                    COMMA_OR_ROUND,
+                    |parser| parser.parse_expression(0),
+                )?;
+                let mut all_exprs = Vec::with_capacity(remaining_exprs.len() + 1);
+                all_exprs.push(expr);
+                all_exprs.extend(remaining_exprs);
+                Ok(S::new(
+                    Expr::TupleLiteral(TupleLiteralExpr(all_exprs)),
+                    start_span.join(self.last_span),
+                ))
+            }
+            Some((Token::Bracket(Bracket::RoundClose), _)) => Ok(expr),
+            Some((token, span)) => {
+                Err(self.unexpected_token(token, span, COMMA_OR_ROUND))
+            }
+            None => Err(self.unexpected_eof(COMMA_OR_ROUND)),
         }
     }
 
@@ -878,41 +996,41 @@ mod tests {
                 return
             }
 
-            fn one_arg(x: i32) {
+            fn one_arg(x: I32) {
                 return
             }
 
-            fn two_args(x: i32, y: f64) {
+            fn two_args(x: I32, y: F64) {
                 return
             }
 
-            fn voidf() -> void {
+            fn voidf() -> Void {
                 return
             }
 
-            fn intf() -> i32 {
+            fn intf() -> I32 {
                 return 5
             }
 
-            fn floatf() -> f64 {
+            fn floatf() -> F64 {
                 return 5.0
             }
 
-            fn boolf() -> bool {
+            fn boolf() -> Bool {
                 return true
             }
 
             fn ext_no_args()
 
-            fn ext_one_arg(x: i32)
+            fn ext_one_arg(x: I32)
 
-            fn ext_two_args(x: i32, y: f64) -> bool
+            fn ext_two_args(x: I32, y: F64) -> Bool
 
             fn multi_line(
-                x: i32,
-                y: f64,
-                z: bool,
-            ) -> void {
+                x: I32,
+                y: F64,
+                z: Bool,
+            ) -> Void {
                 return
             }
         "};
@@ -924,37 +1042,37 @@ mod tests {
                 return
             }
 
-            fn one_arg(x: i32) {
+            fn one_arg(x: I32) {
                 return
             }
 
-            fn two_args(x: i32, y: f64) {
+            fn two_args(x: I32, y: F64) {
                 return
             }
 
-            fn voidf() -> void {
+            fn voidf() -> Void {
                 return
             }
 
-            fn intf() -> i32 {
+            fn intf() -> I32 {
                 return 5
             }
 
-            fn floatf() -> f64 {
+            fn floatf() -> F64 {
                 return 5.0
             }
 
-            fn boolf() -> bool {
+            fn boolf() -> Bool {
                 return true
             }
 
             fn ext_no_args()
 
-            fn ext_one_arg(x: i32)
+            fn ext_one_arg(x: I32)
 
-            fn ext_two_args(x: i32, y: f64) -> bool
+            fn ext_two_args(x: I32, y: F64) -> Bool
 
-            fn multi_line(x: i32, y: f64, z: bool) -> void {
+            fn multi_line(x: I32, y: F64, z: Bool) -> Void {
                 return
             }
         "};
@@ -1098,16 +1216,16 @@ mod tests {
     fn test_struct_field_commas_valid() {
         let code = indoc! {"
             type Pos = struct {
-                x: i32,
-                y: i32,
+                x: I32,
+                y: I32,
             }
 
             type Pos2 = struct {
-                x: i32,
-                y: i32
+                x: I32,
+                y: I32
             }
 
-            type Pos3 = struct { x: i32, y: i32 }
+            type Pos3 = struct { x: I32, y: I32 }
         "};
 
         assert!(parse_and_get_errors(code).is_empty());
@@ -1118,8 +1236,8 @@ mod tests {
         assert_unexpected_token(
             indoc! {"
                 type Pos = struct {
-                    x: i32
-                    y: i32,
+                    x: I32
+                    y: I32,
                 }
             "},
             COMMA_OR_CURLY,
@@ -1128,8 +1246,8 @@ mod tests {
         assert_unexpected_token(
             indoc! {"
                 type Pos = struct {
-                    x: i32,,,,,
-                    y: i32,
+                    x: I32,,,,,
+                    y: I32,
                 }
             "},
             STRUCT_FIELD_OR_CURLY,
@@ -1137,7 +1255,7 @@ mod tests {
 
         assert_unexpected_token(
             indoc! {"
-                type Pos = struct { x: i32 y: i32 }
+                type Pos = struct { x: I32 y: I32 }
             "},
             COMMA_OR_CURLY,
         );
@@ -1145,8 +1263,8 @@ mod tests {
         assert_unexpected_token(
             indoc! {"
                 type Pos = struct {,
-                    x: i32,
-                    y: i32,
+                    x: I32,
+                    y: I32,
                 }
             "},
             STRUCT_FIELD_OR_CURLY,
@@ -1157,7 +1275,7 @@ mod tests {
     fn test_function_signature_commas_invalid() {
         assert_unexpected_token(
             indoc! {"
-                fn bad(x: i32 y: i32) {
+                fn bad(x: I32 y: I32) {
                     return
                 }
             "},
@@ -1166,7 +1284,7 @@ mod tests {
 
         assert_unexpected_token(
             indoc! {"
-                fn bad(x: i32,, y: i32) {
+                fn bad(x: I32,, y: I32) {
                     return
                 }
             "},
@@ -1175,7 +1293,7 @@ mod tests {
 
         assert_unexpected_token(
             indoc! {"
-                fn bad(, x: i32) {
+                fn bad(, x: I32) {
                     return
                 }
             "},
@@ -1230,14 +1348,14 @@ mod tests {
     fn test_struct_literal() {
         parse_and_check_by_display(
             indoc! {"
-                fn get_pos() -> struct { x: i32, y: i32 } {
+                fn get_pos() -> struct { x: I32, y: I32 } {
                     return { x: 10, y: 20 }
                 }
             "},
             indoc! {"
                 fn get_pos() -> struct {
-                    x: i32,
-                    y: i32,
+                    x: I32,
+                    y: I32,
                 } {
                     return {
                         x: 10,
@@ -1252,14 +1370,14 @@ mod tests {
     fn test_struct_literal_with_variable() {
         parse_and_check_by_display(
             indoc! {"
-                fn make_pos(a: i32, b: i32) -> struct { x: i32, y: i32 } {
+                fn make_pos(a: I32, b: I32) -> struct { x: I32, y: I32 } {
                     return { x: a, y: b }
                 }
             "},
             indoc! {"
-                fn make_pos(a: i32, b: i32) -> struct {
-                    x: i32,
-                    y: i32,
+                fn make_pos(a: I32, b: I32) -> struct {
+                    x: I32,
+                    y: I32,
                 } {
                     return {
                         x: a,
@@ -1274,15 +1392,15 @@ mod tests {
     fn test_nested_struct_literal() {
         parse_and_check_by_display(
             indoc! {"
-                fn get_transform() -> struct { pos: struct { x: i32, y: i32 } } {
+                fn get_transform() -> struct { pos: struct { x: I32, y: I32 } } {
                     return { pos: { x: 10, y: 20 } }
                 }
             "},
             indoc! {"
                 fn get_transform() -> struct {
                     pos: struct {
-                        x: i32,
-                        y: i32,
+                        x: I32,
+                        y: I32,
                     },
                 } {
                     return {
@@ -1341,16 +1459,16 @@ mod tests {
             indoc! {"
                 type Transform = struct {
                     pos: struct {
-                        x: i32,
-                        y: i32,
+                        x: I32,
+                        y: I32,
                     },
                 }
             "},
             indoc! {"
                 type Transform = struct {
                     pos: struct {
-                        x: i32,
-                        y: i32,
+                        x: I32,
+                        y: I32,
                     },
                 }
             "},
@@ -1361,12 +1479,12 @@ mod tests {
     fn test_struct_type_in_function_arg() {
         parse_and_check_by_display(
             indoc! {"
-                fn print_pos(pos: struct { x: i32, y: i32 }) {}
+                fn print_pos(pos: struct { x: I32, y: I32 }) {}
             "},
             indoc! {"
                 fn print_pos(pos: struct {
-                    x: i32,
-                    y: i32,
+                    x: I32,
+                    y: I32,
                 }) {}
             "},
         );
@@ -1413,6 +1531,54 @@ mod tests {
                         y: 2,
                     }
                     pos.x = 3
+                }
+            "},
+        );
+    }
+
+    #[test]
+    fn test_tuple_literal() {
+        parse_and_check_by_display(
+            indoc! {"
+                type Pos = (I32, I32)
+
+                fn main() {
+                    let p: Pos = (1, 2)
+                    let empty = ()
+                    let nested = (1, (2, 3), 4)
+                    let single = (5,)
+                    let non_single = (5)
+                }
+            "},
+            indoc! {"
+                type Pos = (I32, I32)
+
+                fn main() {
+                    let p: Pos = (1, 2)
+                    let empty = ()
+                    let nested = (1, (2, 3), 4)
+                    let single = (5,)
+                    let non_single = 5
+                }
+            "},
+        );
+    }
+
+    #[test]
+    fn test_index_access() {
+        parse_and_check_by_display(
+            indoc! {"
+                fn main() {
+                    let tuple = (1, 2, 3)
+                    let first = tuple.0
+                    let second = tuple.1
+                }
+            "},
+            indoc! {"
+                fn main() {
+                    let tuple = (1, 2, 3)
+                    let first = tuple.0
+                    let second = tuple.1
                 }
             "},
         );

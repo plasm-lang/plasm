@@ -116,7 +116,12 @@ impl WorkList {
         // leaf. We give priority to type generators (StructShape, InClass)
         // over inspectors (HasField).
         let generator_pos = constraints.iter().position(|c| {
-            matches!(c, Constraint::StructShape(..) | Constraint::InClass(..))
+            matches!(
+                c,
+                Constraint::StructShape(..)
+                    | Constraint::TupleShape(..)
+                    | Constraint::InClass(..)
+            )
         });
         let pos = match generator_pos {
             Some(pos) => pos,
@@ -154,6 +159,11 @@ fn constraint_deps(constraint: &Constraint) -> Vec<TypeVarId> {
             .into_iter()
             .chain(fields.iter().filter_map(|(_, ty)| var(&ty.node)))
             .collect(),
+        Constraint::TupleShape(base, elements) => var(&base.node)
+            .into_iter()
+            .chain(elements.iter().filter_map(|ty| var(&ty.node)))
+            .collect(),
         Constraint::HasField { base, .. } => var(&base.node).into_iter().collect(),
+        Constraint::HasIndex { base, .. } => var(&base.node).into_iter().collect(),
     }
 }
