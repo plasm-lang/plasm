@@ -1175,4 +1175,23 @@ mod tests {
         "};
         check_by_display(code, expected_hir_display);
     }
+
+    #[test]
+    fn field_access_result_inside_tuple_shape() {
+        let code = indoc! {"
+            fn main() {
+                let a = (({ x: 1, y: 2 }.x, 2.0, true), Void).0.0
+            }
+        "};
+        let expected_hir_display = indoc! {"
+            fn main() -> Void {
+                let a: I32 = (({
+                    x: 1,
+                    y: 2,
+                }.x, 2.0, true), Void).0.0
+                return Void
+            }
+        "};
+        check_by_display(code, expected_hir_display);
+    }
 }

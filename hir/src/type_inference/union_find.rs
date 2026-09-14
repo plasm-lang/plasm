@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use utils::ids::{HIRTypeId, TypeVarId};
+use utils::ids::HIRTypeId;
 
-use super::type_var::InferType;
+use super::type_var::{InferType, TypeVarId};
 
 /// Union–find (disjoint-set) data structure to group type variables that must
 /// have the same type. Each group has at most one concrete type binding.

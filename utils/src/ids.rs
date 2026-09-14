@@ -99,81 +99,51 @@ impl<T: Display + Default> Serialize for Id<T> {
     }
 }
 
-// --- particular Id types --- //
+// --- Concrete Id types --- //
 
-// Marker structs
+#[macro_export]
+macro_rules! create_id_type {
+    (
+        $(#[$meta:meta])*
+        $type_name:ident, $marker_name:ident, $display:literal
+    ) => {
+        #[derive(Default, Clone, Copy)]
+        pub struct $marker_name;
 
-#[derive(Default, Clone, Copy)]
-pub struct FuncMarker;
+        $(#[$meta])*
+        pub type $type_name = $crate::ids::Id<$marker_name>;
 
-#[derive(Default, Clone, Copy)]
-pub struct LocalMarker;
-
-#[derive(Default, Clone, Copy)]
-pub struct ExprMarker;
-
-#[derive(Default, Clone, Copy)]
-pub struct HIRTypeMarker;
-
-#[derive(Default, Clone, Copy)]
-pub struct MIRTypeMarker;
-
-#[derive(Default, Clone, Copy)]
-pub struct TypeVarMarker;
-
-#[derive(Default, Clone, Copy)]
-pub struct ValueMarker;
-
-// Type aliases
-
-pub type FuncId = Id<FuncMarker>;
-pub type LocalId = Id<LocalMarker>;
-pub type ExprId = Id<ExprMarker>;
-pub type HIRTypeId = Id<HIRTypeMarker>;
-pub type MIRTypeId = Id<MIRTypeMarker>;
-pub type TypeVarId = Id<TypeVarMarker>;
-pub type ValueId = Id<ValueMarker>;
-
-// Display impls for marker structs
-
-impl Display for FuncMarker {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "FN")
-    }
+        impl std::fmt::Display for $marker_name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, $display)
+            }
+        }
+    };
 }
 
-impl Display for LocalMarker {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "LOCAL")
-    }
-}
+pub use create_id_type;
 
-impl Display for ExprMarker {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "EXPR")
-    }
-}
-
-impl Display for HIRTypeMarker {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "HIRT")
-    }
-}
-
-impl Display for MIRTypeMarker {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "MIRT")
-    }
-}
-
-impl Display for TypeVarMarker {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "TVAR")
-    }
-}
-
-impl Display for ValueMarker {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "vreg")
-    }
-}
+create_id_type!(
+    /// Function id, used by hir and mir crates
+    FuncId, FuncMarker, "FN"
+);
+create_id_type!(
+    /// Local variable id, used by hir and mir crates
+    LocalId, LocalMarker, "LOCAL"
+);
+create_id_type!(
+    /// Expression id, used by hir and mir crates
+    ExprId, ExprMarker, "EXPR"
+);
+create_id_type!(
+    /// HIR type id, used by hir and mir crates
+    HIRTypeId, HIRTypeMarker, "HIRT"
+);
+create_id_type!(
+    /// MIR type id, used by mir crate
+    MIRTypeId, MIRTypeMarker, "MIRT"
+);
+create_id_type!(
+    /// Value id, used by mir and codegen crates
+    ValueId, ValueMarker, "vreg"
+);

@@ -45,9 +45,7 @@ impl<'a> FunctionTypeSolver<'a> {
         loop {
             if let Some(constraint) = self.work_list.pop() {
                 self.process_constraint(constraint);
-            } else if let Some(constraint) =
-                self.work_list.pop_freezed_leaf(&mut self.union_find)
-            {
+            } else if let Some(constraint) = self.work_list.pop_freezed_leaf() {
                 self.process_freezed_constraint(constraint);
             } else {
                 break;
@@ -66,9 +64,12 @@ impl<'a> FunctionTypeSolver<'a> {
                 match res {
                     Ok(UnificationOutcome::Merged { absorbed, into }) => {
                         self.work_list.merge(absorbed, into);
+                        if self.union_find.binding_of(into).is_some() {
+                            self.work_list.unfreeze(into, &mut self.union_find);
+                        }
                     }
                     Ok(UnificationOutcome::Bound { root }) => {
-                        self.work_list.unfreeze(root);
+                        self.work_list.unfreeze(root, &mut self.union_find);
                     }
                     Ok(UnificationOutcome::NoOp) => {}
                     Err(error) => {
@@ -82,10 +83,7 @@ impl<'a> FunctionTypeSolver<'a> {
                 if let Some(type_id) = self.infer_type_to_type_id(infer_type) {
                     self.validate_type_class(type_id, type_class, span);
                 } else {
-                    self.work_list.freeze(
-                        constraint,
-                        self.union_find.find(infer_type.type_var_id_unchecked()),
-                    );
+                    self.work_list.freeze(constraint, &mut self.union_find);
                 }
             }
             Constraint::StructShape(spanned, items) => {
@@ -95,10 +93,7 @@ impl<'a> FunctionTypeSolver<'a> {
                 } else {
                     let constraint =
                         Constraint::StructShape(S::new(infer_type, span), items);
-                    self.work_list.freeze(
-                        constraint,
-                        self.union_find.find(infer_type.type_var_id_unchecked()),
-                    );
+                    self.work_list.freeze(constraint, &mut self.union_find);
                 }
             }
             Constraint::TupleShape(spanned, elements) => {
@@ -108,10 +103,7 @@ impl<'a> FunctionTypeSolver<'a> {
                 } else {
                     let constraint =
                         Constraint::TupleShape(S::new(infer_type, span), elements);
-                    self.work_list.freeze(
-                        constraint,
-                        self.union_find.find(infer_type.type_var_id_unchecked()),
-                    );
+                    self.work_list.freeze(constraint, &mut self.union_find);
                 }
             }
             Constraint::HasField {
@@ -128,11 +120,7 @@ impl<'a> FunctionTypeSolver<'a> {
                         field_name,
                         field_type,
                     };
-                    self.work_list.freeze(
-                        constraint,
-                        self.union_find
-                            .find(base_infer_type.type_var_id_unchecked()),
-                    );
+                    self.work_list.freeze(constraint, &mut self.union_find);
                 }
             }
             Constraint::HasIndex {
@@ -149,11 +137,7 @@ impl<'a> FunctionTypeSolver<'a> {
                         index,
                         element_type,
                     };
-                    self.work_list.freeze(
-                        constraint,
-                        self.union_find
-                            .find(base_infer_type.type_var_id_unchecked()),
-                    );
+                    self.work_list.freeze(constraint, &mut self.union_find);
                 }
             }
         }

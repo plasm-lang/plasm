@@ -296,13 +296,13 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td><code>&x</code>/<code>Ref[T]</code></td>
     </tr>
     <tr>
-      <th>Linked Functions</th>
+      <th>Linked Functions / Dot Notation</th>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>impl MyType {...}</code></td>
+      <td><code>fn my_method(self: MyType) -> I32 {...}</code></td>
     </tr>
     <tr>
       <th>String Literals</th>
@@ -366,27 +366,45 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td><code>alias Pos = (I32, I32, I32)</code></td>
+    </tr> 
+    <tr>
+      <th>Type Generics</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>type MyType[T] = struct { field: T }</code></td>
+    </tr>
+    <tr>
+      <th>Phantom Type Generics</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>type List[T] = struct { ptr: Ptr, len: UWord, cap: UWord }</code></td>
     </tr>
     <tr>
       <th colspan="7" align="center">Polymorphism</th>
     </tr>
     <tr>
-      <th>Interfaces/Traits</th>
+      <th>Concepts</th>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>trait Default { fn default() -> self }</code></td>
+      <td><code>concept default[T]()</code></td>
     </tr>
     <tr>
-      <th>Interface/Trait Generics</th>
+      <th>Generics</th>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>trait Add[R, O] { fn add(self, right: R) -> O }</code></td>
+      <td><code>concept add[L, R, O](left: L, right: R) -> O</code></td>
     </tr>
     <tr>
       <th>Implementations</th>
@@ -395,25 +413,16 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>impl Add[MyType, MyType] for MyType {...}</code></td>
+      <td><code>impl add(left: MyType, right: MyType) -> MyType {...}</code></td>
     </tr>
     <tr>
-      <th>Static Dispatch</th>
+      <th>Static Dispatch / <code>with</code> Bound</th>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>fn func(arg: T) where T: Any</code></td>
-    </tr>
-    <tr>
-      <th><code>where</code> Bounds</th>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td><code>fn sum3(a: T, b: T, c: T) -> T where T: Add[T, T] {...}</code></td>
+      <td><code>fn sum_list(l: List[T]) -> T with add[T, T, T]</code></td>
     </tr>
     <tr>
       <th>Dynamic Dispatch</th>
@@ -422,10 +431,19 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>fn sum_len(arg: List[T]) where T: vtable Len[usize] -> usize {...}</code></td>
+      <td>WIP</td>
     </tr>
     <tr>
-      <th>For (needs `Iter` trait)</th>
+      <th>Closure</th>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td>⬜</td>
+      <td><code>fn(x) return x + 1</code></td>
+    </tr>
+    <tr>
+      <th>For loop (needs `iter`&`next` concepts)</th>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
@@ -500,7 +518,7 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>fn map(seq: I, func: F) -> O where I: Iter[T], O: Iter[U], F: fn(T) -> U {}</code></td>
+      <td><code>fn map[I, F, O](iterator: I, func: F) -> O with next[I, O]</code></td>
     </tr>
     </tr>
     <tr>
@@ -528,13 +546,13 @@ This is the roadmap for implementing a minimal working framework that will serve
       <th colspan="7" align="center">Standard Library</th>
     </tr>
     <tr>
-      <th>Binary & Unary Operation Traits</th>
+      <th>Binary & Unary Operation Concepts</th>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>Add, Mul, Neg, And</code></td>
+      <td><code>add, mul, neg, and</code></td>
     </tr>
     <tr>
       <th>Strings</th>
@@ -582,13 +600,13 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td><code>let v: Decimal = 0.1 + 0.2</code></td>
     </tr>
     <tr>
-      <th>Iter traits</th>
+      <th>Iter Concept</th>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td><code>trait Iter[T] {...}</code></td>
+      <td><code>concept iter[T, I, V](self: T) -> I with next[I, V]</code></td>
     </tr>
   </tbody>
 </table>

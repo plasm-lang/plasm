@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
 use diagnostic::Spanned;
-use utils::ids::{ExprId, LocalId, TypeVarId};
+use utils::ids::{ExprId, LocalId};
 
 use super::engine::ModuleCtx;
 use super::type_class::TypeClass;
-use super::type_var::InferType;
+use super::type_var::{InferType, TypeVarId};
 use crate::hir::{Block, ExprKind, HIRLocal, InternalFunction, OptTyped, Statement};
+use crate::types::HIRTypeArena;
 
 // For brevity
 type S<T> = Spanned<T>;
@@ -18,7 +19,7 @@ pub fn generate_function_constraints(
     FunctionConstraintGen::new(func, module_ctx).generate_constraints()
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct ConstraintSet {
     pub constraints: Vec<Constraint>,
     pub maps: InferTypeMaps,
@@ -43,49 +44,6 @@ pub enum Constraint {
         index: S<usize>,
         element_type: S<InferType>,
     },
-}
-
-impl std::fmt::Debug for Constraint {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Constraint::Equality(a, b) => write!(f, "{:?} == {:?}", a.node, b.node),
-            Constraint::InClass(a, class) => write!(f, "{:?} ∈ {:?}", a.node, class),
-            Constraint::StructShape(base, fields) => {
-                let fields_str: String = fields
-                    .iter()
-                    .map(|(name, ty)| format!("{:?}: {:?}", name.node, ty.node))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                write!(f, "{:?} === {{ {} }}", base.node, fields_str,)
-            }
-            Constraint::TupleShape(base, elements) => {
-                let elements_str: String = elements
-                    .iter()
-                    .map(|ty| format!("{:?}", ty.node))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                write!(f, "{:?} === ({})", base.node, elements_str,)
-            }
-            Constraint::HasField {
-                base,
-                field_name,
-                field_type,
-            } => write!(
-                f,
-                "{:?} must have field {:?} of type {:?}",
-                base.node, field_name.node, field_type.node
-            ),
-            Constraint::HasIndex {
-                base,
-                index,
-                element_type,
-            } => write!(
-                f,
-                "{:?} must have index {:?} of type {:?}",
-                base.node, index.node, element_type.node
-            ),
-        }
-    }
 }
 
 #[derive(Debug, Default)]
@@ -310,5 +268,58 @@ impl<'a> FunctionConstraintGen<'a> {
 
     fn fresh_type_var(&mut self) -> InferType {
         InferType::Var(self.next_type_var_id())
+    }
+}
+
+// --- Debug Helpers --- //
+
+impl Constraint {
+    #[allow(dead_code)]
+    #[cfg(debug_assertions)]
+    pub fn format(&self, arena: &HIRTypeArena) -> String {
+        match self {
+            Constraint::Equality(a, b) => {
+                format!("{} == {}", a.node.format(arena), b.node.format(arena))
+            }
+            Constraint::InClass(a, class) => {
+                format!("{} ∈ {:?}", a.node.format(arena), class)
+            }
+            Constraint::StructShape(base, fields) => {
+                let fields_str: String = fields
+                    .iter()
+                    .map(|(name, ty)| format!("{}: {}", name, ty.node.format(arena)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{} === {{ {} }}", base.node.format(arena), fields_str,)
+            }
+            Constraint::TupleShape(base, elements) => {
+                let elements_str: String = elements
+                    .iter()
+                    .map(|ty| ty.node.format(arena).to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{} === ( {} )", base.node.format(arena), elements_str,)
+            }
+            Constraint::HasField {
+                base,
+                field_name,
+                field_type,
+            } => format!(
+                "{} must have field \"{}\" of type {}",
+                base.node.format(arena),
+                field_name,
+                field_type.node.format(arena)
+            ),
+            Constraint::HasIndex {
+                base,
+                index,
+                element_type,
+            } => format!(
+                "{} must have index {} of type {}",
+                base.node.format(arena),
+                index,
+                element_type.node.format(arena)
+            ),
+        }
     }
 }
