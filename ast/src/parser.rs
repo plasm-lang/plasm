@@ -8,9 +8,9 @@ use utils::bin_op::BinaryOp;
 use super::ast::{
     AST, Argument, BinaryExpr, Block, CallArgument, Expr, ExternalFunction,
     FieldAccess, Function, FunctionCall, FunctionSignature, IndexAccess,
-    InternalFunction, Literal, Place, Statement, StructField, StructLiteralExpr,
-    StructLiteralField, StructType, TupleLiteralExpr, TupleType, Type,
-    TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
+    InternalFunction, Literal, MethodCall, Place, Statement, StructField,
+    StructLiteralExpr, StructLiteralField, StructType, TupleLiteralExpr, TupleType,
+    Type, TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
 };
 use super::error::ParseError;
 use super::lookahead::Lookahead;
@@ -18,6 +18,7 @@ use super::lookahead::Lookahead;
 // Const messages for expected tokens in error reporting
 const IDENTIFIER: &str = "identifier";
 const IDENTIFIER_OR_NUMBER: &str = "identifier or number";
+const IDENTIFIER_WITH_ROUND_OR_DOT: &str = "identifier with `(` or `.`";
 const NUMBER: &str = "number";
 const FUNCTION_OR_TYPE: &str = "function or type definition";
 const TYPE: &str = "type";
@@ -365,7 +366,41 @@ where
 
     fn parse_function(&mut self) -> Result<Function, S<ParseError>> {
         self.expect(Token::Keyword(Keyword::Fn))?;
-        let (func_name, func_name_span) = self.expect_ident()?;
+
+        let (func_name, func_name_span, associated_type) =
+            match (self.iter.peek_nth(0), self.iter.peek_nth(1)) {
+                (
+                    Some((Token::Identifier(_), _)),
+                    Some((Token::Bracket(Bracket::RoundOpen), _)),
+                ) => {
+                    let (func_name, func_name_span) = self.expect_ident()?;
+                    (func_name, func_name_span, None)
+                }
+                (
+                    Some((Token::Identifier(_), _)),
+                    Some((Token::SpecialSymbol(SpecialSymbol::Dot), _)),
+                ) => {
+                    let (associated_type, associated_type_span) =
+                        self.expect_ident()?;
+                    self.expect(Token::SpecialSymbol(SpecialSymbol::Dot))?;
+                    let (func_name, func_name_span) = self.expect_ident()?;
+                    let ty = Type::from_ident(&associated_type);
+                    (
+                        func_name,
+                        func_name_span,
+                        Some(S::new(ty, associated_type_span)),
+                    )
+                }
+                _ => {
+                    let (token, span) = self.take_next().unwrap();
+                    return Err(self.unexpected_token(
+                        token,
+                        span,
+                        IDENTIFIER_WITH_ROUND_OR_DOT,
+                    ));
+                }
+            };
+
         self.expect(Token::Bracket(Bracket::RoundOpen))?;
 
         let args = self.parse_comma_separated(
@@ -388,6 +423,7 @@ where
             name: S::new(func_name, func_name_span),
             args,
             return_type,
+            associated_type,
         };
 
         match self.iter.peek() {
@@ -399,7 +435,15 @@ where
                 });
                 Ok(func)
             }
-            _ => Ok(Function::External(ExternalFunction { signature })),
+            _ => {
+                if let Some(associated_type) = signature.associated_type {
+                    return Err(S::new(
+                        ParseError::AssociatedTypeOnExternalFunction,
+                        associated_type.span,
+                    ));
+                }
+                Ok(Function::External(ExternalFunction { signature }))
+            }
         }
     }
 
@@ -568,19 +612,12 @@ where
         span: Span,
     ) -> Result<S<FunctionCall>, S<ParseError>> {
         self.expect(Token::Bracket(Bracket::RoundOpen))?;
-        let parse_call_arg = |parser: &mut Self| {
-            let expr = parser.parse_expression(0)?;
-            Ok(CallArgument {
-                name: None,
-                value: expr,
-            })
-        };
 
         let arguments = self.parse_comma_separated(
             &Token::Bracket(Bracket::RoundClose),
             ARG_OR_ROUND,
             COMMA_OR_ROUND,
-            parse_call_arg,
+            Self::parse_call_arg,
         )?;
 
         Ok(S::new(
@@ -590,6 +627,14 @@ where
             },
             span.join(self.last_span),
         ))
+    }
+
+    fn parse_call_arg(&mut self) -> Result<CallArgument, S<ParseError>> {
+        let expr = self.parse_expression(0)?;
+        Ok(CallArgument {
+            name: None,
+            value: expr,
+        })
     }
 
     fn parse_expression(&mut self, min_bp: u8) -> Result<S<Expr>, S<ParseError>> {
@@ -603,16 +648,39 @@ where
                 self.take_next(); // consume '.'
                 match self.iter.peek() {
                     Some((Token::Identifier(_), _)) => {
-                        let (field_name, field_span) = self.expect_ident()?;
+                        let (identifier, identifier_span) = self.expect_ident()?;
                         let base_span = left_expr.span;
-                        let span = base_span.join(field_span);
-                        left_expr = S::new(
-                            Expr::FieldAccess(FieldAccess {
-                                base: Box::new(left_expr),
-                                field_name: S::new(field_name, field_span),
-                            }),
-                            span,
-                        );
+                        let span = base_span.join(identifier_span);
+
+                        left_expr = match self.iter.peek() {
+                            // Parse as an associated function call
+                            Some((Token::Bracket(Bracket::RoundOpen), _)) => {
+                                self.take_next(); // consume '('
+                                let arguments = self.parse_comma_separated(
+                                    &Token::Bracket(Bracket::RoundClose),
+                                    ARG_OR_ROUND,
+                                    COMMA_OR_ROUND,
+                                    Self::parse_call_arg,
+                                )?;
+                                let method_call = MethodCall {
+                                    base: Box::new(left_expr),
+                                    method_name: S::new(identifier, identifier_span),
+                                    args: arguments,
+                                };
+                                S::new(
+                                    Expr::MethodCall(method_call),
+                                    span.join(self.last_span),
+                                )
+                            }
+                            // Parse as field access
+                            _ => S::new(
+                                Expr::FieldAccess(FieldAccess {
+                                    base: Box::new(left_expr),
+                                    field_name: S::new(identifier, identifier_span),
+                                }),
+                                span,
+                            ),
+                        };
                     }
                     Some((Token::Number(Number::Integer(_)), _)) => {
                         let (index_num, index_span) = self.expect_number()?;

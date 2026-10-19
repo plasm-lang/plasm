@@ -9,8 +9,8 @@ use super::error::Error;
 use super::hir::{
     Argument, Block, Expr, ExprArena, ExprKind, ExternalFunction, FieldAccess,
     Function, FunctionCall, FunctionSignature, HIRLocal, IndexAccess,
-    InternalFunction, Item, OptHIR, Statement, StructLiteral, StructLiteralField,
-    THIR, TupleLiteral, TypeDefinition, VariableDeclaration,
+    InternalFunction, OptHIR, OptTypedCallee, Statement, StructLiteral,
+    StructLiteralField, THIR, TupleLiteral, TypeDefinition, VariableDeclaration,
 };
 use super::type_inference::{TypeInferenceError, opt_hir_to_t_hir};
 use super::types::{HIRType, StructField, StructType, TupleType};
@@ -42,8 +42,8 @@ struct ASTTranslator {
     next_func_id: FuncId,
     next_local_id: LocalId,
     next_expr_id: ExprId,
-    /// Raw AST types collected in the first pass, keyed by type name.
-    type_defs_registry: HashMap<String, ast::Type>,
+    /// AST type definitions collected in the first pass, keyed by type name.
+    type_defs_registry: HashMap<String, ast::TypeDefinition>,
     /// Cache of Named type resolution results.
     /// Some(id) = successfully resolved, None = failed (circular or unknown).
     resolved_cache: HashMap<String, Option<HIRTypeId>>,
@@ -97,74 +97,83 @@ impl ASTTranslator {
     }
 
     pub fn translate(mut self, ast: ast::AST) -> (OptHIR, Vec<S<Error>>) {
-        // First pass: register root definitions
+        // First Pass: Register type definitions
         for item in ast.items.iter() {
-            match item {
-                ast::Item::Function(func) => {
-                    let id = self.get_next_func_id();
+            if let ast::Item::TypeDefinition(ty_def) = item {
+                // TODO: Check for duplicate type definitions
+                self.type_defs_registry
+                    .insert(ty_def.name.node.clone(), ty_def.clone());
+            }
+        }
 
-                    // Check for duplicate function definitions
-                    if let Some(prev) =
-                        self.hir.funcs_map.get_by_right(&func.signature().name)
-                    {
-                        let first = self
-                            .hir
-                            .funcs_map
-                            .get_by_left(prev)
-                            .cloned()
-                            .expect("BiHashMap invariant broken");
+        // Second pass: resolve type definitions
+        for item in ast.items.iter() {
+            if let ast::Item::TypeDefinition(ty_def) = item {
+                self.translate_type_definition(&ty_def.name);
+            }
+        }
 
-                        let error = Error::FunctionMultipleDefinitions {
-                            first,
-                            second: func.signature().name.clone(),
-                        };
-                        self.errors.push(S::new(error, func.signature().name.span));
-                        continue;
-                    }
+        // Third pass: register function definitions
+        for item in ast.items.iter() {
+            if let ast::Item::Function(func) = item {
+                let id = self.get_next_func_id();
 
-                    self.hir.funcs_map.insert(id, func.signature().name.clone());
-                }
-                ast::Item::TypeDefinition(ty_def) => {
-                    self.type_defs_registry
-                        .insert(ty_def.name.node.clone(), ty_def.ty.node.clone());
+                // Check for duplicate function definitions
+                let func_signature = func.signature();
+                let associated_type =
+                    func_signature.associated_type.as_ref().map(|ast_ty| {
+                        let ast_ty_span = ast_ty.span;
+                        let ast_ty = ast_ty.node.clone();
+                        let mut resolving = Vec::new();
+                        let ty_id = self
+                            .translate_type(ast_ty, ast_ty_span, &mut resolving)
+                            .unwrap()
+                            .0;
+                        Spanned::new(ty_id, ast_ty_span)
+                    });
+                if let Err(prev) = self.hir.funcs_map.insert(
+                    id,
+                    func_signature.name.clone(),
+                    associated_type,
+                ) {
+                    let first = self
+                        .hir
+                        .funcs_map
+                        .get_name(prev)
+                        .expect("FuncMap invariant broken")
+                        .map(str::to_string);
+
+                    let error = Error::FunctionMultipleDefinitions {
+                        first,
+                        second: func_signature.name.clone(),
+                    };
+                    self.errors.push(S::new(error, func_signature.name.span));
                 }
             }
         }
 
-        // Second pass: translate items
+        // Fourth pass: translate functions
         for item in ast.items {
-            match item {
-                ast::Item::Function(func) => {
-                    self.translate_function(func);
-                }
-                ast::Item::TypeDefinition(ty_def) => {
-                    self.translate_type_definition(ty_def);
-                }
+            if let ast::Item::Function(func) = item {
+                self.translate_function(func);
             }
         }
 
         (self.hir, self.errors)
     }
 
-    fn translate_type_definition(&mut self, ty_def: ast::TypeDefinition) {
-        let name = ty_def.name.node.clone();
-        // If already in cache (processed as a dependency of another type), skip to
-        // avoid duplicate errors.
-        if self.resolved_cache.contains_key(&name) {
+    /// HIR type definition is emitted by `translate_type` on first resolution.
+    fn translate_type_definition(&mut self, name: &S<String>) {
+        // Already resolved as a dependency of another type
+        if self.resolved_cache.contains_key(&name.node) {
             return;
         }
-        let (ast_type, ast_type_span) = ty_def.ty.unwrap();
         let mut resolving = Vec::new();
-        let Some((ty_id, _ty)) =
-            self.translate_type(ast_type, ast_type_span, &mut resolving)
-        else {
-            return;
-        };
-        let hir_ty_def = TypeDefinition {
-            name: ty_def.name,
-            ty: S::new(ty_id, ast_type_span),
-        };
-        self.hir.items.push(Item::TypeDefinition(hir_ty_def));
+        self.translate_type(
+            ast::Type::Named(name.node.clone()),
+            name.span,
+            &mut resolving,
+        );
     }
 
     fn translate_function(&mut self, func: ast::Function) {
@@ -178,11 +187,18 @@ impl ASTTranslator {
         &mut self,
         signature: ast::FunctionSignature,
     ) -> (FunctionSignature, Vec<HIRLocal<OT>>) {
+        let associated_type = signature.associated_type.map(|ty| {
+            let mut resolving = Vec::new();
+            let (type_id, _) = self
+                .translate_type(ty.node, ty.span, &mut resolving)
+                .unwrap();
+            S::new(type_id, ty.span)
+        });
+
         let func_id = self
             .hir
             .funcs_map
-            .get_by_right(&signature.name)
-            .cloned()
+            .get_func_id(&signature.name.node, associated_type.map(|ty| ty.node))
             .unwrap();
         let ret_ty_id = match signature.return_type {
             None => MS::new(self.hir.type_arena.void_id()),
@@ -215,6 +231,7 @@ impl ASTTranslator {
         let signature = FunctionSignature {
             id: func_id,
             name: signature.name,
+            associated_type,
             args,
             ret_ty: ret_ty_id,
         };
@@ -247,13 +264,17 @@ impl ASTTranslator {
             body: body_expr_id,
             expr_arena,
         });
-        self.hir.items.push(Item::Function(hir_func));
+        self.hir.funcs.push(hir_func);
     }
 
     fn translate_external_function(&mut self, func: ast::ExternalFunction) {
+        debug_assert!(
+            func.signature.associated_type.is_none(),
+            "External function must not have an associated type",
+        );
         let (signature, _) = self.translate_signature(func.signature);
         let hir_func = Function::External(ExternalFunction { signature });
-        self.hir.items.push(Item::Function(hir_func));
+        self.hir.funcs.push(hir_func);
     }
 
     fn translate_arg(
@@ -357,8 +378,8 @@ impl ASTTranslator {
                     return None;
                 }
 
+                // Cycle detection.
                 // TODO: Move cycle detection to a different structure or module.
-                // Cycle detection
                 if resolving.contains(&name) {
                     let start = resolving.iter().position(|n| n == &name).unwrap();
                     let cycle = resolving[start..].to_vec();
@@ -373,18 +394,23 @@ impl ASTTranslator {
                 }
 
                 // Resolve recursively
-                let ast_ty = self.type_defs_registry.get(&name).unwrap().clone();
+                let ty_def = self.type_defs_registry.get(&name).unwrap().clone();
+                let (ast_ty, ast_ty_span) = ty_def.ty.unwrap();
                 resolving.push(name.clone());
-                let result = self.translate_type(ast_ty, span, resolving);
+                let result = self.translate_type(ast_ty, ast_ty_span, resolving);
                 resolving.pop();
 
                 match result {
-                    Some((_, underlying_hir)) => {
+                    Some((underlying_id, underlying_hir)) => {
                         let hir_ty =
                             HIRType::Named(name.clone(), Box::new(underlying_hir));
                         let type_id =
                             self.hir.type_arena.get_or_insert(hir_ty.clone());
                         self.resolved_cache.insert(name, Some(type_id));
+                        self.hir.type_defs.push(TypeDefinition {
+                            name: ty_def.name,
+                            ty: S::new(underlying_id, ast_ty_span),
+                        });
                         hir_ty
                     }
                     None => {
@@ -597,8 +623,9 @@ impl ASTTranslator {
                 }
             }
             ast::Expr::FunctionCall(func_call) => {
-                let (name, span) = func_call.name.unwrap();
-                let func_id = self.hir.funcs_map.get_by_right(&name).cloned();
+                // let (name, span) = func_call.name.unwrap();
+                let func_id =
+                    self.hir.funcs_map.get_func_id(&func_call.name.node, None);
                 if let Some(func_id) = func_id {
                     // Translate arguments into ExprIds
                     let mut args = Vec::new();
@@ -610,15 +637,20 @@ impl ASTTranslator {
                     }
 
                     // Build FunctionCall and Expr
-                    let func_call = FunctionCall { func_id, args };
+                    let func_call = FunctionCall {
+                        callee: OptTypedCallee::Func(func_id),
+                        args,
+                    };
                     let hir_expr = Expr::<OT> {
                         ty: opt_ty,
                         kind: ExprKind::FunctionCall(func_call),
                     };
                     expr_arena.insert(expr_id, S::new(hir_expr, expr.span));
                 } else {
-                    let err = Error::UnknownFunction { name };
-                    self.errors.push(S::new(err, span));
+                    let err = Error::UnknownFunction {
+                        name: func_call.name.node,
+                    };
+                    self.errors.push(S::new(err, func_call.name.span));
                 }
             }
             ast::Expr::Block(block) => {
@@ -645,7 +677,7 @@ impl ASTTranslator {
                 let ty = PrimitiveType::I32; // TODO: Infer type properly
                 let func_id = self.get_binary_function(bi_expr.op, ty);
                 let func_call = FunctionCall {
-                    func_id,
+                    callee: OptTypedCallee::Func(func_id),
                     args: vec![left_expr_id, right_expr_id],
                 };
                 let hir_expr = Expr::<OT> {
@@ -719,6 +751,77 @@ impl ASTTranslator {
                     kind: ExprKind::IndexAccess(index_access),
                 };
                 expr_arena.insert(expr_id, S::new(hir_expr, expr.span));
+            }
+            ast::Expr::MethodCall(method_call) => {
+                // let base_expr = method_call.base.node;
+                match *method_call.base {
+                    // Base is a type
+                    S {
+                        node: ast::Expr::Variable(name),
+                        span: _,
+                    } if let Some(type_id) =
+                        self.hir.type_arena.get_by_name(&name) =>
+                    {
+                        let func_id = self
+                            .hir
+                            .funcs_map
+                            .get_func_id(&method_call.method_name, Some(type_id));
+
+                        if let Some(func_id) = func_id {
+                            // Translate arguments into ExprIds
+                            let mut args = Vec::new();
+                            for ast_arg in method_call.args.into_iter() {
+                                let (arg_expr_id, local_expr_arena) =
+                                    self.translate_expr(ast_arg.value, locals, None);
+                                expr_arena = expr_arena.join(local_expr_arena);
+                                args.push(arg_expr_id);
+                            }
+
+                            // Build FunctionCall and Expr
+                            let func_call = FunctionCall {
+                                callee: OptTypedCallee::Func(func_id),
+                                args,
+                            };
+                            let hir_expr = Expr::<OT> {
+                                ty: opt_ty,
+                                kind: ExprKind::FunctionCall(func_call),
+                            };
+                            expr_arena.insert(expr_id, S::new(hir_expr, expr.span));
+                        } else {
+                            let err = Error::UnknownFunction {
+                                name: method_call.method_name.node,
+                            };
+                            self.errors
+                                .push(S::new(err, method_call.method_name.span));
+                        }
+                    }
+
+                    // Base is an expression
+                    base_expr => {
+                        // Base expr is translated as the first argument
+                        let (arg_expr_id, local_expr_arena) =
+                            self.translate_expr(base_expr, locals, None);
+                        expr_arena = expr_arena.join(local_expr_arena);
+                        let mut args = vec![arg_expr_id];
+
+                        for ast_arg in method_call.args.into_iter() {
+                            let (arg_expr_id, local_expr_arena) =
+                                self.translate_expr(ast_arg.value, locals, None);
+                            expr_arena = expr_arena.join(local_expr_arena);
+                            args.push(arg_expr_id);
+                        }
+
+                        let func_call = FunctionCall {
+                            callee: OptTypedCallee::Method(method_call.method_name),
+                            args,
+                        };
+                        let hir_expr = Expr::<OT> {
+                            ty: opt_ty,
+                            kind: ExprKind::FunctionCall(func_call),
+                        };
+                        expr_arena.insert(expr_id, S::new(hir_expr, expr.span));
+                    }
+                }
             }
         }
         (expr_id, expr_arena)
@@ -1189,6 +1292,219 @@ mod tests {
                     x: 1,
                     y: 2,
                 }.x, 2.0, true), Void).0.0
+                return Void
+            }
+        "};
+        check_by_display(code, expected_hir_display);
+    }
+
+    #[test]
+    fn fallback_waits_for_field_access_result() {
+        let code = indoc! {"
+            type P = struct { x: I64 }
+            fn mk() -> P
+            fn main() {
+                let w = (mk(), 0)
+                let a = 5
+                a = w.0.x
+            }
+        "};
+        let expected_hir_display = indoc! {"
+            type P = struct {
+                x: I64,
+            }
+
+            fn mk() -> P
+
+            fn main() -> Void {
+                let w: (P, I32) = (mk(), 0)
+                let a: I64 = 5
+                a = w.0.x
+                return Void
+            }
+        "};
+        check_by_display(code, expected_hir_display);
+    }
+
+    #[test]
+    fn fallback_does_not_depend_on_declaration_order() {
+        let code = indoc! {"
+            type P = struct { x: I64 }
+            fn mk() -> P
+            fn main() {
+                let b = 0
+                let a = 5
+                a = (mk(), b).0.x
+            }
+        "};
+        let expected_hir_display = indoc! {"
+            type P = struct {
+                x: I64,
+            }
+
+            fn mk() -> P
+
+            fn main() -> Void {
+                let b: I32 = 0
+                let a: I64 = 5
+                a = (mk(), b).0.x
+                return Void
+            }
+        "};
+        check_by_display(code, expected_hir_display);
+
+        let code = indoc! {"
+            type P = struct { x: I64 }
+            fn mk() -> P
+            fn main() {
+                let a = 5
+                let b = 0
+                a = (mk(), b).0.x
+            }
+        "};
+        let expected_hir_display = indoc! {"
+            type P = struct {
+                x: I64,
+            }
+
+            fn mk() -> P
+
+            fn main() -> Void {
+                let a: I64 = 5
+                let b: I32 = 0
+                a = (mk(), b).0.x
+                return Void
+            }
+        "};
+        check_by_display(code, expected_hir_display);
+    }
+
+    #[test]
+    fn tuple_literal_infers_type_from_field_access() {
+        let code = indoc! {"
+            type Q = struct { pos: (F64, F64) }
+            fn mk() -> Q
+            fn main() {
+                let w = (mk(), 0)
+                let t = (1.0, 2.0)
+                t = w.0.pos
+            }
+        "};
+        let expected_hir_display = indoc! {"
+            type Q = struct {
+                pos: (F64, F64),
+            }
+
+            fn mk() -> Q
+
+            fn main() -> Void {
+                let w: (Q, I32) = (mk(), 0)
+                let t: (F64, F64) = (1.0, 2.0)
+                t = w.0.pos
+                return Void
+            }
+        "};
+        check_by_display(code, expected_hir_display);
+    }
+
+    #[test]
+    fn index_access_on_tuple_literal_before_fallback() {
+        let code = indoc! {"
+            fn main() {
+                let wrapped = (true, 0)
+                let n: I64 = wrapped.1
+            }
+        "};
+        let expected_hir_display = indoc! {"
+            fn main() -> Void {
+                let wrapped: (Bool, I64) = (true, 0)
+                let n: I64 = wrapped.1
+                return Void
+            }
+        "};
+        check_by_display(code, expected_hir_display);
+    }
+
+    #[test]
+    fn test_backward_definitions() {
+        let code = indoc! {"
+            fn Vec2.x(self: Vec2) -> F32 {
+                return self.0
+            }
+
+            type Vec2 = (F32, F32)
+        "};
+        let expected_hir_display = indoc! {"
+            type Vec2 = (F32, F32)
+
+            fn Vec2.x(self: Vec2) -> F32 {
+                return self.0
+            }
+        "};
+        check_by_display(code, expected_hir_display);
+    }
+
+    #[test]
+    fn test_chaining_and_method_calls() {
+        let code = indoc! {"
+            type Vec2 = (F32, F32)
+            type Vec3 = (F64, F64, F64)
+
+            fn Vec2.new(x: F32, y: F32) -> Vec2 {
+                return (x, y)
+            }
+
+            fn Vec2.x(self: Vec2) -> F32 {
+                return self.0
+            }
+
+            fn Vec3.new(x: F64, y: F64, z: F64) -> Vec3 {
+                return (x, y, z)
+            }
+
+            fn Vec3.x(self: Vec3) -> F64 {
+                return self.0
+            }
+
+            fn F64.print(self: F64) { }
+            fn F32.print(self: F32) { }
+
+            fn main() {
+                Vec2.new(3.0, 4.0).x().print()
+            }
+        "};
+
+        let expected_hir_display = indoc! {"
+            type Vec2 = (F32, F32)
+
+            type Vec3 = (F64, F64, F64)
+
+            fn Vec2.new(x: F32, y: F32) -> Vec2 {
+                return (x, y)
+            }
+
+            fn Vec2.x(self: Vec2) -> F32 {
+                return self.0
+            }
+
+            fn Vec3.new(x: F64, y: F64, z: F64) -> Vec3 {
+                return (x, y, z)
+            }
+
+            fn Vec3.x(self: Vec3) -> F64 {
+                return self.0
+            }
+
+            fn F64.print(self: F64) -> Void {
+                return Void
+            }
+
+            fn F32.print(self: F32) -> Void {
+                return Void
+            }
+
+            fn main() -> Void {
+                F32.print(Vec2.x(Vec2.new(3.0, 4.0)))
                 return Void
             }
         "};

@@ -4,6 +4,7 @@
         "allocas",
         "Asni",
         "bimap",
+        "callees",
         "clippy",
         "Codegen",
         "comptime",

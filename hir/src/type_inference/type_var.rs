@@ -1,6 +1,11 @@
+use diagnostic::Spanned;
 use utils::ids::{HIRTypeId, create_id_type};
 
+use super::type_class::TypeClass;
 use crate::types::HIRTypeArena;
+
+// For brevity
+type S<T> = Spanned<T>;
 
 create_id_type!(
     /// Type variable id, used by hir (type inference module)
@@ -13,9 +18,24 @@ pub enum InferType {
     Known(HIRTypeId),
 }
 
+/// Knowledge about the type of a group of type variables.
+#[derive(Debug, Clone)]
+pub enum Binding {
+    /// The type is fully known.
+    Known(HIRTypeId),
+    /// The type of a literal of the type class (e.g. `5` belongs to `Int`).
+    Class(TypeClass),
+    /// The type of a struct literal, it can be a named or an anonymous struct.
+    StructShape(Vec<(S<String>, S<InferType>)>),
+    /// The type of a tuple literal, it can be a named or an anonymous tuple.
+    TupleShape(Vec<S<InferType>>),
+}
+
+// --- Debug Helpers --- //
+
+#[allow(dead_code)]
+#[cfg(debug_assertions)]
 impl InferType {
-    #[allow(dead_code)]
-    #[cfg(debug_assertions)]
     pub fn format(&self, arena: &HIRTypeArena) -> String {
         match self {
             InferType::Var(type_var_id) => format!("{}", type_var_id),

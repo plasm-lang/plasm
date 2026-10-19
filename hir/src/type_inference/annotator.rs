@@ -4,7 +4,8 @@ use diagnostic::Spanned;
 
 use super::type_solver::Solution;
 use crate::hir::{
-    Block, Expr, ExprArena, ExprKind, HIRLocal, InternalFunction, OptTyped, Typed,
+    Block, Expr, ExprArena, ExprKind, FunctionCall, HIRLocal, InternalFunction,
+    OptTyped, OptTypedCallee, Typed,
 };
 
 // For brevity
@@ -57,7 +58,26 @@ impl FunctionAnnotator {
                 }
                 ExprKind::Literal(lit) => ExprKind::Literal(lit),
                 ExprKind::Local(id) => ExprKind::Local(id),
-                ExprKind::FunctionCall(call) => ExprKind::FunctionCall(call),
+                ExprKind::FunctionCall(FunctionCall {
+                    callee: OptTypedCallee::Func(func_id),
+                    args,
+                }) => {
+                    let call = FunctionCall {
+                        callee: func_id,
+                        args,
+                    };
+                    ExprKind::FunctionCall(call)
+                }
+                ExprKind::FunctionCall(FunctionCall {
+                    callee: OptTypedCallee::Method(_),
+                    args,
+                }) => {
+                    let call = FunctionCall {
+                        callee: *self.solution.callees.get(&expr_id).unwrap(),
+                        args,
+                    };
+                    ExprKind::FunctionCall(call)
+                }
                 ExprKind::StructLiteral(lit) => ExprKind::StructLiteral(lit),
                 ExprKind::TupleLiteral(lit) => ExprKind::TupleLiteral(lit),
                 ExprKind::FieldAccess(field) => ExprKind::FieldAccess(field),

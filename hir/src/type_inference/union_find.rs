@@ -1,42 +1,44 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
-use utils::ids::HIRTypeId;
-
-use super::type_var::{InferType, TypeVarId};
+use super::type_var::{Binding, TypeVarId};
 
 /// Union–find (disjoint-set) data structure to group type variables that must
-/// have the same type. Each group has at most one concrete type binding.
+/// have the same type. Each group has at most one binding.
 ///
 /// See also: <https://en.wikipedia.org/wiki/Disjoint-set_data_structure>
 pub struct UnionFind {
     parents: HashMap<TypeVarId, TypeVarId>,
-    bindings: HashMap<TypeVarId, HIRTypeId>,
+    /// Bindings of the roots. Ordered to keep fallback deterministic.
+    bindings: BTreeMap<TypeVarId, Binding>,
 }
 
-pub struct TypesConflictError(pub HIRTypeId, pub HIRTypeId);
-
-pub enum UnificationOutcome {
-    Merged {
-        absorbed: TypeVarId,
-        into: TypeVarId,
-    },
-    Bound {
-        root: TypeVarId,
-    },
-    NoOp,
+pub struct Merged {
+    pub absorbed: TypeVarId,
+    pub into: TypeVarId,
+    /// Binding of the absorbed root, it must be joined into the `into` root.
+    pub absorbed_binding: Option<Binding>,
 }
 
 impl UnionFind {
     pub fn new() -> Self {
         Self {
             parents: HashMap::new(),
-            bindings: HashMap::new(),
+            bindings: BTreeMap::new(),
         }
     }
 
-    pub fn binding_of(&mut self, type_var_id: TypeVarId) -> Option<HIRTypeId> {
+    pub fn binding_of(&mut self, type_var_id: TypeVarId) -> Option<&Binding> {
         let root = self.find(type_var_id);
-        self.bindings.get(&root).copied()
+        self.bindings.get(&root)
+    }
+
+    /// Bound roots in ascending order.
+    pub fn bindings(&self) -> impl Iterator<Item = (TypeVarId, &Binding)> {
+        self.bindings.iter().map(|(root, binding)| (*root, binding))
+    }
+
+    pub fn bind(&mut self, root: TypeVarId, binding: Binding) {
+        self.bindings.insert(root, binding);
     }
 
     pub fn find(&mut self, type_var_id: TypeVarId) -> TypeVarId {
@@ -50,78 +52,39 @@ impl UnionFind {
         }
     }
 
-    pub fn unify(
-        &mut self,
-        a: InferType,
-        b: InferType,
-    ) -> Result<UnificationOutcome, TypesConflictError> {
-        match (a, b) {
-            (InferType::Var(a_id), InferType::Var(b_id)) => self.union(a_id, b_id),
-            (InferType::Var(id), InferType::Known(type_id))
-            | (InferType::Known(type_id), InferType::Var(id)) => {
-                self.bind(id, type_id)
-            }
-            (InferType::Known(a_id), InferType::Known(b_id)) => {
-                if a_id != b_id {
-                    return Err(TypesConflictError(a_id, b_id));
-                }
-                Ok(UnificationOutcome::NoOp)
-            }
-        }
-    }
-
-    fn bind(
-        &mut self,
-        type_var_id: TypeVarId,
-        type_id: HIRTypeId,
-    ) -> Result<UnificationOutcome, TypesConflictError> {
-        let root = self.find(type_var_id);
-        let existing = self.bindings.get(&root);
-        match existing {
-            Some(existing) if *existing != type_id => {
-                Err(TypesConflictError(*existing, type_id))
-            }
-            Some(_) => Ok(UnificationOutcome::NoOp),
-            None => {
-                self.bindings.insert(root, type_id);
-                Ok(UnificationOutcome::Bound { root })
-            }
-        }
-    }
-
-    fn union(
-        &mut self,
-        a: TypeVarId,
-        b: TypeVarId,
-    ) -> Result<UnificationOutcome, TypesConflictError> {
+    /// The older type variable stays the root, so the binding that appeared
+    /// earlier in the code is treated as the expected one.
+    /// Returns `None` if the type variables are already in the same group.
+    pub fn union(&mut self, a: TypeVarId, b: TypeVarId) -> Option<Merged> {
         let root_a = self.find(a);
         let root_b = self.find(b);
 
         if root_a == root_b {
-            return Ok(UnificationOutcome::NoOp);
+            return None;
         }
 
-        self.parents.insert(root_a, root_b);
+        let (absorbed, into) = if root_a < root_b {
+            (root_b, root_a)
+        } else {
+            (root_a, root_b)
+        };
+        self.parents.insert(absorbed, into);
 
-        let binding_a = self.bindings.remove(&root_a);
-        let binding_b = self.bindings.remove(&root_b);
-
-        match (binding_a, binding_b) {
-            (Some(type_id_a), Some(type_id_b)) => {
-                if type_id_a != type_id_b {
-                    return Err(TypesConflictError(type_id_a, type_id_b));
-                }
-                self.bindings.insert(root_b, type_id_a);
-            }
-            (Some(type_id), None) | (None, Some(type_id)) => {
-                self.bindings.insert(root_b, type_id);
-            }
-            (None, None) => {}
-        }
-
-        Ok(UnificationOutcome::Merged {
-            absorbed: root_a,
-            into: root_b,
+        Some(Merged {
+            absorbed,
+            into,
+            absorbed_binding: self.bindings.remove(&absorbed),
         })
+    }
+}
+
+// --- Debug Helpers --- //
+
+#[allow(dead_code)]
+#[cfg(debug_assertions)]
+impl UnionFind {
+    /// Type variables that were merged or bound.
+    pub fn type_vars(&self) -> impl Iterator<Item = TypeVarId> {
+        self.parents.keys().chain(self.bindings.keys()).copied()
     }
 }

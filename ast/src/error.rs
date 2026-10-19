@@ -12,6 +12,7 @@ pub enum ParseError {
     UnexpectedEOF { expected: String },
     InvalidLeftValue,
     InvalidIndexAccess { index: String },
+    AssociatedTypeOnExternalFunction,
 }
 
 impl Display for ParseError {
@@ -28,6 +29,9 @@ impl Display for ParseError {
             }
             ParseError::InvalidIndexAccess { index } => {
                 write!(f, "Invalid access by `{index}` index")
+            }
+            ParseError::AssociatedTypeOnExternalFunction => {
+                write!(f, "External function can't be associated with a type")
             }
         }
     }

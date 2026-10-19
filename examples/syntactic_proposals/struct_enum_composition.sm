@@ -27,14 +27,14 @@ type Quaternion = struct {
 }
 
 type Orientation = enum {
-    Euler { x: F32, y: F32, z: F32 },
+    Euler: struct { x: F32, y: F32, z: F32 },
     use Quaternion,
 }
 
 // With `use` notation there is no need to write `Quaternion(Quaternion)`
 // to make a types composition.
 
-// I find this composition abbilities espessially useful for heavy DTO descriptions:
+// I find this composition abilities especially useful for heavy DTO descriptions:
 
 // A globally defined struct that we want to reuse
 type Transform = struct {

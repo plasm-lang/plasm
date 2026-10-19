@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use bimap::BiHashMap;
 use diagnostic::Spanned;
 use serde::Serialize;
@@ -87,6 +89,7 @@ impl TupleType {
 #[derive(Debug, Default, Serialize)]
 pub struct HIRTypeArena {
     pub types: BiHashMap<HIRTypeId, HIRType>,
+    names: BiHashMap<String, HIRTypeId>,
     next_type_id: HIRTypeId,
 }
 
@@ -94,6 +97,7 @@ impl HIRTypeArena {
     pub fn new() -> Self {
         Self {
             types: BiHashMap::new(),
+            names: BiHashMap::new(),
             next_type_id: HIRTypeId::one(),
         }
     }
@@ -106,7 +110,12 @@ impl HIRTypeArena {
 
     pub fn insert(&mut self, ty: HIRType) -> HIRTypeId {
         let id = self.next_id();
+
+        if let HIRType::Named(name, _sub_ty) = &ty {
+            self.names.insert(name.clone(), id);
+        }
         self.types.insert(id, ty);
+
         id
     }
 
@@ -116,6 +125,14 @@ impl HIRTypeArena {
 
     pub fn get_by_type(&self, ty: &HIRType) -> Option<&HIRTypeId> {
         self.types.get_by_right(ty)
+    }
+
+    pub fn get_by_name(&mut self, name: &str) -> Option<HIRTypeId> {
+        if let Ok(primitive_ty) = PrimitiveType::from_str(name) {
+            Some(self.get_or_insert(HIRType::Primitive(primitive_ty)))
+        } else {
+            self.names.get_by_left(name).cloned()
+        }
     }
 
     pub fn get_or_insert(&mut self, ty: HIRType) -> HIRTypeId {

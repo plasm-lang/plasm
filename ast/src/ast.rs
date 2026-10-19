@@ -65,6 +65,8 @@ pub struct FunctionSignature {
     pub name: S<String>,
     pub args: Vec<S<Argument>>,
     pub return_type: Option<S<Type>>,
+    /// Invariant: Only internal functions can have an associated type
+    pub associated_type: Option<S<Type>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -109,6 +111,7 @@ pub enum Expr {
     TupleLiteral(TupleLiteralExpr),
     FieldAccess(FieldAccess),
     IndexAccess(IndexAccess),
+    MethodCall(MethodCall),
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -174,7 +177,7 @@ pub struct CallArgument {
     pub value: S<Expr>,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TypeDefinition {
     pub name: S<String>,
     pub ty: S<Type>,
@@ -221,6 +224,13 @@ pub struct FieldAccess {
 pub struct IndexAccess {
     pub base: Box<S<Expr>>,
     pub index: S<usize>,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct MethodCall {
+    pub base: Box<S<Expr>>,
+    pub method_name: S<String>,
+    pub args: Vec<CallArgument>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

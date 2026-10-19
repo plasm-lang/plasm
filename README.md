@@ -58,25 +58,9 @@ For example, following command will parse `test.sm` file, analyse, stop on assem
 plasm emit test.sm --stage asm
 ```
 
-## Status
-
-### Early Stage Roadmap (MVP)
+## Features Status Matrix
 
 This is the roadmap for implementing a minimal working framework that will serve as the base for the proposed innovative features.
-
-- [x] Lexer & tokens stream
-- [x] AST definition
-- [x] AST parser
-- [x] HIR/OptHIR/THIR definitions
-- [x] AST to OptHIR translator
-- [x] OptHIR to THIR translator (type inference)
-- [x] MIR definition
-- [X] THIR to MIR lowering
-- [x] MIR to LLVM-IR lowering
-- [ ] LLVM-IR to object file compilation
-- [ ] Object files linking
-
-### Features Status Matrix
 
 <table>
   <thead>
@@ -296,13 +280,22 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td><code>&x</code>/<code>Ref[T]</code></td>
     </tr>
     <tr>
-      <th>Linked Functions / Dot Notation</th>
+      <th>Associated Functions</th>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
       <td>⬜</td>
       <td>⬜</td>
+      <td><code>fn MyType.my_method(self) -> I32 {...}</code></td>
+    </tr>
+    <tr>
+      <th>Chained Calls</th>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
       <td>⬜</td>
       <td>⬜</td>
-      <td>⬜</td>
-      <td><code>fn my_method(self: MyType) -> I32 {...}</code></td>
+      <td><code>Vec2.new(1, 2).len().to_string()</code></td>
     </tr>
     <tr>
       <th>String Literals</th>

@@ -5,8 +5,11 @@ use utils::ids::{ExprId, LocalId};
 
 use super::engine::ModuleCtx;
 use super::type_class::TypeClass;
-use super::type_var::{InferType, TypeVarId};
-use crate::hir::{Block, ExprKind, HIRLocal, InternalFunction, OptTyped, Statement};
+use super::type_var::{Binding, InferType, TypeVarId};
+use crate::hir::{
+    self, Block, ExprKind, FunctionSignature, HIRLocal, InternalFunction, OptTyped,
+    OptTypedCallee, Statement,
+};
 use crate::types::HIRTypeArena;
 
 // For brevity
@@ -27,23 +30,55 @@ pub struct ConstraintSet {
 
 pub enum Constraint {
     Equality(S<InferType>, S<InferType>),
-    InClass(S<InferType>, TypeClass),
-    /// Generated for struct literals. It means that `InferType` must be a
-    /// struct, must have the given fields with the given types wth the given
-    /// names. The order of fields doesn't matter for the obligation
-    /// checking, but matters in fallback case.
-    StructShape(S<InferType>, Vec<(S<String>, S<InferType>)>),
-    TupleShape(S<InferType>, Vec<S<InferType>>),
-    HasField {
+    /// Generated for literals, adds knowledge about the type.
+    Binding(S<InferType>, Binding),
+    Access(Access),
+}
+
+/// Field or index access. It's frozen until the binding of the base type is
+/// specific enough to find the accessed type.
+pub enum Access {
+    Field {
         base: S<InferType>,
         field_name: S<String>,
         field_type: S<InferType>,
     },
-    HasIndex {
+    Index {
         base: S<InferType>,
         index: S<usize>,
         element_type: S<InferType>,
     },
+    Method {
+        base: S<InferType>,
+        expr_id: ExprId,
+        method_name: S<String>,
+        args: Vec<S<InferType>>,
+        return_type: S<InferType>,
+    },
+}
+
+impl Access {
+    pub fn base(&self) -> S<InferType> {
+        match self {
+            Access::Field { base, .. }
+            | Access::Index { base, .. }
+            | Access::Method { base, .. } => *base,
+        }
+    }
+
+    pub fn accessed_types(&self) -> Vec<S<InferType>> {
+        match self {
+            Access::Field { field_type, .. } => vec![*field_type],
+            Access::Index { element_type, .. } => vec![*element_type],
+            Access::Method {
+                args, return_type, ..
+            } => {
+                let mut types = args.clone();
+                types.push(*return_type);
+                types
+            }
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -106,22 +141,17 @@ impl<'a> FunctionConstraintGen<'a> {
         use ExprKind::*;
         match &expr.kind {
             // Literal types must belong to their corresponding type classes.
-            Literal(ast::Literal::Void) => self
-                .result
-                .constraints
-                .push(Constraint::InClass(infer_type, TypeClass::Void)),
-            Literal(ast::Literal::Bool(_)) => self
-                .result
-                .constraints
-                .push(Constraint::InClass(infer_type, TypeClass::Bool)),
-            Literal(ast::Literal::Integer(_)) => self
-                .result
-                .constraints
-                .push(Constraint::InClass(infer_type, TypeClass::Int)),
-            Literal(ast::Literal::Float(_)) => self
-                .result
-                .constraints
-                .push(Constraint::InClass(infer_type, TypeClass::Float)),
+            Literal(literal) => {
+                let class = match literal {
+                    ast::Literal::Void => TypeClass::Void,
+                    ast::Literal::Bool(_) => TypeClass::Bool,
+                    ast::Literal::Integer(_) => TypeClass::Int,
+                    ast::Literal::Float(_) => TypeClass::Float,
+                };
+                let constraint =
+                    Constraint::Binding(infer_type, Binding::Class(class));
+                self.result.constraints.push(constraint);
+            }
 
             Local(local_id) => {
                 let local_infer_type =
@@ -129,35 +159,39 @@ impl<'a> FunctionConstraintGen<'a> {
                 let eq = Constraint::Equality(infer_type, local_infer_type);
                 self.result.constraints.push(eq);
             }
-            FunctionCall(func_call) => {
-                let signature = self
-                    .module_ctx
-                    .func_signatures
-                    .get(&func_call.func_id)
-                    .unwrap()
-                    .clone();
+            FunctionCall(hir::FunctionCall {
+                callee: OptTypedCallee::Func(func_id),
+                args,
+            }) => {
+                let signature =
+                    self.module_ctx.func_signatures.get(func_id).unwrap();
 
-                // Bind the return type with the type of current expression.
-                let return_infer_type = InferType::Known(signature.ret_ty.node);
-                let return_span =
-                    signature.ret_ty.span.unwrap_or(signature.name.span);
-                let eq = Constraint::Equality(
-                    infer_type,
-                    S::new(return_infer_type, return_span),
-                );
-                self.result.constraints.push(eq);
-
-                // Bind arguments.
-                for (arg_expr_id, arg) in
-                    func_call.args.iter().zip(signature.args.iter())
-                {
-                    let arg_expr_infer_type = self.process_expr(*arg_expr_id);
-
-                    let arg_infer_type = arg.ty.map(InferType::Known);
-                    let eq =
-                        Constraint::Equality(arg_expr_infer_type, arg_infer_type);
-                    self.result.constraints.push(eq);
-                }
+                let arg_infer_types = args
+                    .iter()
+                    .map(|arg_expr_id| self.process_expr(*arg_expr_id));
+                let constraints =
+                    signature_eq_constraints(signature, arg_infer_types, infer_type);
+                self.result.constraints.extend(constraints);
+            }
+            FunctionCall(hir::FunctionCall {
+                callee: OptTypedCallee::Method(name),
+                args,
+            }) => {
+                let base_infer_type = self.process_expr(args[0]);
+                let arg_infer_types = args[1..]
+                    .iter()
+                    .map(|&arg_expr_id| self.process_expr(arg_expr_id))
+                    .collect::<Vec<_>>();
+                let return_infer_type = infer_type;
+                let method_access = Access::Method {
+                    base: base_infer_type,
+                    expr_id,
+                    method_name: name.clone(),
+                    args: arg_infer_types,
+                    return_type: return_infer_type,
+                };
+                let constraint = Constraint::Access(method_access);
+                self.result.constraints.push(constraint);
             }
             Block(block) => {
                 let block_infer_type =
@@ -172,8 +206,10 @@ impl<'a> FunctionConstraintGen<'a> {
                     let field_infer_type = self.process_expr(field.value);
                     infer_type_fields.push((field.name.clone(), field_infer_type));
                 }
-                let constraint =
-                    Constraint::StructShape(infer_type, infer_type_fields);
+                let constraint = Constraint::Binding(
+                    infer_type,
+                    Binding::StructShape(infer_type_fields),
+                );
                 self.result.constraints.push(constraint);
             }
             TupleLiteral(tuple_literal) => {
@@ -183,26 +219,28 @@ impl<'a> FunctionConstraintGen<'a> {
                     let element_infer_type = self.process_expr(*element_expr_id);
                     infer_type_elements.push(element_infer_type);
                 }
-                let constraint =
-                    Constraint::TupleShape(infer_type, infer_type_elements);
+                let constraint = Constraint::Binding(
+                    infer_type,
+                    Binding::TupleShape(infer_type_elements),
+                );
                 self.result.constraints.push(constraint);
             }
             FieldAccess(field_access) => {
                 let base_infer_type = self.process_expr(field_access.base);
-                let constraint = Constraint::HasField {
+                let constraint = Constraint::Access(Access::Field {
                     base: base_infer_type,
                     field_name: field_access.field_name.clone(),
                     field_type: infer_type,
-                };
+                });
                 self.result.constraints.push(constraint);
             }
             IndexAccess(index_access) => {
                 let base_infer_type = self.process_expr(index_access.base);
-                let constraint = Constraint::HasIndex {
+                let constraint = Constraint::Access(Access::Index {
                     base: base_infer_type,
                     index: index_access.index,
                     element_type: infer_type,
-                };
+                });
                 self.result.constraints.push(constraint);
             }
         };
@@ -271,6 +309,31 @@ impl<'a> FunctionConstraintGen<'a> {
     }
 }
 
+pub fn signature_eq_constraints(
+    signature: &FunctionSignature,
+    arg_infer_types: impl Iterator<Item = S<InferType>>,
+    return_infer_type: S<InferType>,
+) -> Vec<Constraint> {
+    let mut constraints = Vec::new();
+
+    let eq = Constraint::Equality(
+        return_infer_type,
+        S::new(
+            InferType::Known(signature.ret_ty.node),
+            signature.ret_ty.span.unwrap_or(signature.name.span),
+        ),
+    );
+    constraints.push(eq);
+
+    // Bind arguments.
+    for (arg_infer_type, arg) in arg_infer_types.zip(signature.args.iter()) {
+        let eq = Constraint::Equality(arg_infer_type, arg.ty.map(InferType::Known));
+        constraints.push(eq);
+    }
+
+    constraints
+}
+
 // --- Debug Helpers --- //
 
 impl Constraint {
@@ -281,10 +344,14 @@ impl Constraint {
             Constraint::Equality(a, b) => {
                 format!("{} == {}", a.node.format(arena), b.node.format(arena))
             }
-            Constraint::InClass(a, class) => {
+            Constraint::Binding(a, Binding::Known(type_id)) => {
+                let ty = InferType::Known(*type_id);
+                format!("{} == {}", a.node.format(arena), ty.format(arena))
+            }
+            Constraint::Binding(a, Binding::Class(class)) => {
                 format!("{} ∈ {:?}", a.node.format(arena), class)
             }
-            Constraint::StructShape(base, fields) => {
+            Constraint::Binding(base, Binding::StructShape(fields)) => {
                 let fields_str: String = fields
                     .iter()
                     .map(|(name, ty)| format!("{}: {}", name, ty.node.format(arena)))
@@ -292,7 +359,7 @@ impl Constraint {
                     .join(", ");
                 format!("{} === {{ {} }}", base.node.format(arena), fields_str,)
             }
-            Constraint::TupleShape(base, elements) => {
+            Constraint::Binding(base, Binding::TupleShape(elements)) => {
                 let elements_str: String = elements
                     .iter()
                     .map(|ty| ty.node.format(arena).to_string())
@@ -300,25 +367,41 @@ impl Constraint {
                     .join(", ");
                 format!("{} === ( {} )", base.node.format(arena), elements_str,)
             }
-            Constraint::HasField {
+            Constraint::Access(Access::Field {
                 base,
                 field_name,
                 field_type,
-            } => format!(
+            }) => format!(
                 "{} must have field \"{}\" of type {}",
                 base.node.format(arena),
                 field_name,
                 field_type.node.format(arena)
             ),
-            Constraint::HasIndex {
+            Constraint::Access(Access::Index {
                 base,
                 index,
                 element_type,
-            } => format!(
+            }) => format!(
                 "{} must have index {} of type {}",
                 base.node.format(arena),
                 index,
                 element_type.node.format(arena)
+            ),
+            Constraint::Access(Access::Method {
+                base,
+                expr_id: _,
+                method_name,
+                args,
+                return_type,
+            }) => format!(
+                "{} must have method \"{}\" with args ({}) returning type {}",
+                base.node.format(arena),
+                method_name,
+                args.iter()
+                    .map(|arg| arg.node.format(arena))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                return_type.node.format(arena)
             ),
         }
     }

@@ -9,7 +9,7 @@ pub use ast::Literal;
 pub use ast_translator::ast_to_hir;
 use diagnostic::MaybeSpanned;
 pub use hir::{
-    Block, Expr, ExprKind, ExternalFunction, FunctionSignature, Item, Statement,
+    Block, Expr, ExprKind, ExternalFunction, FunctionSignature, Statement,
     StructLiteral, THIR, TupleLiteral,
 };
 use hir::{ExprArena, Function, InternalFunction, Typed};

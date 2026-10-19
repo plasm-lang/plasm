@@ -37,30 +37,34 @@ impl HIRTranslator {
     }
 
     fn translate(mut self, hir: THIR) -> MIR {
-        self.mir.modules[0].funcs_map = hir.funcs_map;
+        // TODO: associated type is dropped, names may collide
+        todo!();
+        self.mir.modules[0].funcs_map = hir
+            .funcs_map
+            .into_entries()
+            .map(|(id, name, _)| (id, name))
+            .collect();
         let hir_type_arena = hir.type_arena;
         self.register_types(&hir_type_arena);
-        for item in hir.items {
-            match item {
-                hir::Item::Function(func) => {
-                    let func = self.translate_function(func, &hir_type_arena);
-                    self.mir.modules[0].functions.push(func);
-                }
-                hir::Item::TypeDefinition(def) => {
-                    let name = def.name.node;
-                    let hir_ty =
-                        hir_type_arena.get_by_id(def.ty.node).unwrap().clone();
-                    let mir_ty = MIRType::from_hir(&hir_ty, &hir_type_arena);
 
-                    match mir_ty {
-                        MIRType::Named(_, tuple) | MIRType::Tuple(tuple) => {
-                            self.mir.modules[0].type_arena.insert_named(name, tuple);
-                        }
-                        _ => {}
-                    }
+        for def in hir.type_defs {
+            let name = def.name.node;
+            let hir_ty = hir_type_arena.get_by_id(def.ty.node).unwrap().clone();
+            let mir_ty = MIRType::from_hir(&hir_ty, &hir_type_arena);
+
+            match mir_ty {
+                MIRType::Named(_, tuple) | MIRType::Tuple(tuple) => {
+                    self.mir.modules[0].type_arena.insert_named(name, tuple);
                 }
+                _ => {}
             }
         }
+
+        for func in hir.funcs {
+            let func = self.translate_function(func, &hir_type_arena);
+            self.mir.modules[0].functions.push(func);
+        }
+
         self.mir
     }
 
@@ -236,7 +240,7 @@ impl<'a> HIRFunctionTranslator<'a> {
                     .collect();
 
                 let rvalue = RValue::Call(Call {
-                    function: hir_call.func_id,
+                    function: hir_call.callee,
                     args,
                 });
 
@@ -244,7 +248,7 @@ impl<'a> HIRFunctionTranslator<'a> {
                 let func_name = self
                     .module
                     .funcs_map
-                    .get_by_left(&hir_call.func_id)
+                    .get_by_left(&hir_call.callee)
                     .unwrap()
                     .node
                     .clone();
@@ -505,7 +509,7 @@ impl<'a> HIRFunctionTranslator<'a> {
                     .collect();
 
                 self.emit_instruction(Instruction::Call(Call {
-                    function: hir_call.func_id,
+                    function: hir_call.callee,
                     args,
                 }));
             }

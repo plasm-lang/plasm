@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-use utils::ids::{ExprId, FuncId, LocalId};
+use utils::ids::{ExprId, HIRTypeId, LocalId};
 
 use super::hir::{
-    Block, Expr, ExprArena, ExprKind, ExternalFunction, Function, FunctionCall,
-    FunctionSignature, HIRLocal, InternalFunction, Item, Statement, THIR,
+    Block, Expr, ExprArena, ExprKind, ExternalFunction, FuncMap, Function,
+    FunctionCall, FunctionSignature, HIRLocal, InternalFunction, Statement, THIR,
     TypeDefinition, Typed,
 };
 use super::types::{HIRType, HIRTypeArena, StructType};
@@ -31,7 +31,7 @@ fn format_hir_type_at(
 struct FnCtx<'a> {
     expr_arena: &'a ExprArena<Typed>,
     type_arena: &'a HIRTypeArena,
-    func_names: &'a HashMap<FuncId, String>,
+    func_map: &'a FuncMap,
     locals: HashMap<LocalId, &'a HIRLocal<Typed>>,
 }
 
@@ -39,12 +39,12 @@ impl<'a> FnCtx<'a> {
     fn new(
         expr_arena: &'a ExprArena<Typed>,
         type_arena: &'a HIRTypeArena,
-        func_names: &'a HashMap<FuncId, String>,
+        func_map: &'a FuncMap,
     ) -> Self {
         Self {
             expr_arena,
             type_arena,
-            func_names,
+            func_map,
             locals: HashMap::new(),
         }
     }
@@ -55,7 +55,7 @@ impl<'a> FnCtx<'a> {
         Self {
             expr_arena: self.expr_arena,
             type_arena: self.type_arena,
-            func_names: self.func_names,
+            func_map: self.func_map,
             locals,
         }
     }
@@ -63,28 +63,20 @@ impl<'a> FnCtx<'a> {
 
 impl Display for THIR {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let mut func_names = HashMap::<FuncId, String>::new();
-        for item in &self.items {
-            if let Item::Function(func) = item {
-                let signature = func.signature();
-                func_names.insert(signature.id, signature.name.node.clone());
-            }
-        }
-
-        for (i, item) in self.items.iter().enumerate() {
+        for (i, ty) in self.type_defs.iter().enumerate() {
             if i > 0 {
                 writeln!(f)?;
             }
-            match item {
-                Item::Function(fun) => {
-                    let s = format_function(fun, &func_names, &self.type_arena);
-                    f.write_str(&s)?;
-                }
-                Item::TypeDefinition(def) => {
-                    let s = format_type_definition(def, &self.type_arena);
-                    f.write_str(&s)?;
-                }
+            let s = format_type_definition(ty, &self.type_arena);
+            f.write_str(&s)?;
+        }
+
+        for (i, func) in self.funcs.iter().enumerate() {
+            if !self.type_defs.is_empty() || i > 0 {
+                writeln!(f)?;
             }
+            let s = format_function(func, &self.funcs_map, &self.type_arena);
+            f.write_str(&s)?;
         }
         Ok(())
     }
@@ -144,12 +136,12 @@ fn format_tuple(
 
 fn format_function(
     func: &Function<Typed>,
-    func_names: &HashMap<FuncId, String>,
+    func_map: &FuncMap,
     type_arena: &HIRTypeArena,
 ) -> String {
     match func {
         Function::Internal(internal) => {
-            format_internal_function(internal, func_names, type_arena)
+            format_internal_function(internal, func_map, type_arena)
         }
         Function::External(external) => {
             format_external_function(external, type_arena)
@@ -159,10 +151,10 @@ fn format_function(
 
 fn format_internal_function(
     func: &InternalFunction<Typed>,
-    func_names: &HashMap<FuncId, String>,
+    func_map: &FuncMap,
     type_arena: &HIRTypeArena,
 ) -> String {
-    let ctx = FnCtx::new(&func.expr_arena, type_arena, func_names);
+    let ctx = FnCtx::new(&func.expr_arena, type_arena, func_map);
 
     let mut out = format_function_signature(&func.signature, type_arena);
     out.push(' ');
@@ -196,7 +188,12 @@ fn format_function_signature(
 ) -> String {
     let mut out = String::new();
     out.push_str("fn ");
-    out.push_str(&signature.name.node);
+    out.push_str(&format_func_name(
+        &signature.name,
+        signature.associated_type.map(|t| t.node),
+        type_arena,
+    ));
+
     out.push('(');
     for (i, a) in signature.args.iter().enumerate() {
         if i > 0 {
@@ -336,12 +333,13 @@ fn format_expr<'a>(e: &'a Expr<Typed>, ctx: &FnCtx<'a>, lvl: usize) -> String {
     }
 }
 
-fn format_call<'a>(call: &FunctionCall, ctx: &FnCtx<'a>, lvl: usize) -> String {
-    let mut out = ctx
-        .func_names
-        .get(&call.func_id)
-        .cloned()
-        .unwrap_or_else(|| "/*unknown_fn*/".into());
+fn format_call<'a>(
+    call: &FunctionCall<Typed>,
+    ctx: &FnCtx<'a>,
+    lvl: usize,
+) -> String {
+    let (name, associated_type) = ctx.func_map.get_by_id(call.callee).unwrap();
+    let mut out = format_func_name(name, associated_type, ctx.type_arena);
     out.push('(');
     for (i, arg) in call.args.iter().enumerate() {
         if i > 0 {
@@ -351,4 +349,18 @@ fn format_call<'a>(call: &FunctionCall, ctx: &FnCtx<'a>, lvl: usize) -> String {
     }
     out.push(')');
     out
+}
+
+fn format_func_name(
+    name: &str,
+    associated_type: Option<HIRTypeId>,
+    type_arena: &HIRTypeArena,
+) -> String {
+    match associated_type {
+        Some(type_id) => {
+            let ty = type_arena.get_by_id(type_id).unwrap();
+            format!("{}.{name}", format_hir_type(ty, type_arena))
+        }
+        None => name.to_string(),
+    }
 }

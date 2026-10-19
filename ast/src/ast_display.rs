@@ -3,9 +3,9 @@ use std::fmt::{Display, Formatter, Result};
 use super::ast::{
     AST, Argument, BinaryExpr, CallArgument, Expr, ExternalFunction, FieldAccess,
     Function, FunctionCall, FunctionSignature, IndexAccess, InternalFunction, Item,
-    Literal, Place, Statement, StructField, StructLiteralExpr, StructLiteralField,
-    StructType, TupleLiteralExpr, TupleType, Type, TypeDefinition, UnaryExpr,
-    UnaryOp, VariableDeclaration,
+    Literal, MethodCall, Place, Statement, StructField, StructLiteralExpr,
+    StructLiteralField, StructType, TupleLiteralExpr, TupleType, Type,
+    TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
 };
 
 impl Display for AST {
@@ -69,7 +69,12 @@ impl Display for InternalFunction {
 
 impl Display for FunctionSignature {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "fn {}(", self.name)?;
+        write!(f, "fn ")?;
+        if let Some(associated_type) = &self.associated_type {
+            write!(f, "{}.{}(", associated_type, self.name)?;
+        } else {
+            write!(f, "{}(", self.name)?;
+        }
         for (i, arg) in self.args.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
@@ -334,6 +339,9 @@ impl<'a> Display for Indent<'a, Expr> {
             IndexAccess(ia) => {
                 write!(f, "{}", Indent::new(ia).with_indent(self.indent))
             }
+            MethodCall(mc) => {
+                write!(f, "{}", Indent::new(mc).with_indent(self.indent))
+            }
         }
     }
 }
@@ -442,6 +450,28 @@ impl<'a> Display for Indent<'a, IndexAccess> {
             Indent::new(&self.node.base.node).with_indent(self.indent),
             self.node.index,
         )
+    }
+}
+
+impl<'a> Display for Indent<'a, MethodCall> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}.{}(",
+            Indent::new(&self.node.base.node).with_indent(self.indent),
+            self.node.method_name,
+        )?;
+        for (i, arg) in self.node.args.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(
+                f,
+                "{}",
+                Indent::new(&arg.value.node).with_indent(self.indent)
+            )?;
+        }
+        write!(f, ")")
     }
 }
 

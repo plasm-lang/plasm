@@ -65,6 +65,18 @@ pub enum TypeInferenceError {
     IndexOnUnknownType {
         index: usize,
     },
+    MethodOnUnknownType {
+        method_name: String,
+    },
+    UnknownMethod {
+        ty: String,
+        method_name: String,
+    },
+    ArgumentsCountMismatch {
+        function: String,
+        expected: usize,
+        actual: usize,
+    },
 }
 
 impl Display for TypeInferenceError {
@@ -170,6 +182,25 @@ impl Display for TypeInferenceError {
                 write!(
                     f,
                     "Cannot determine the type of element by index `{index}` because the base type is unknown."
+                )
+            }
+            MethodOnUnknownType { method_name } => {
+                write!(
+                    f,
+                    "Cannot determine the type of method `{method_name}` because the base type is unknown."
+                )
+            }
+            UnknownMethod { ty, method_name } => {
+                write!(f, "Type `{ty}` doesn't have method `{method_name}`.")
+            }
+            ArgumentsCountMismatch {
+                function,
+                expected,
+                actual,
+            } => {
+                write!(
+                    f,
+                    "Function `{function}` takes {expected} arguments, but {actual} were given."
                 )
             }
         }

@@ -1,0 +1,29 @@
+type Vec2 = (F32, F32)
+type Vec3 = (F64, F64, F64)
+
+fn Vec2.new(x: F32, y: F32) -> Vec2 {
+    return (x, y)
+}
+
+fn Vec2.x(self: Vec2) -> F32 {
+    return self.0
+}
+
+fn Vec3.new(x: F64, y: F64, z: F64) -> Vec3 {
+    return (x, y, z)
+}
+
+fn Vec3.x(self: Vec3) -> F64 {
+    return self.0
+}
+
+fn F64.print(self: F64) { }
+fn F32.print(self: F32) { }
+
+// fn (I32, I32).new(x: I32, y: I32) -> (I32, I32) {
+//     return (x, y)
+// }
+
+fn main() {
+    Vec2.new(3.0, 4.0).x().print()
+}
