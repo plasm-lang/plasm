@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 
 use bimap::BiHashMap;
+use diagnostic::Spanned;
 use hir::{HIRTypeArena, THIR};
 use utils::ids::{ExprId, HIRTypeId, LocalId, MIRTypeId, ValueId};
 use utils::primitive_types::PrimitiveType;
@@ -12,6 +13,9 @@ use super::mir::{
     Operand, RValue, Terminator,
 };
 use super::types::{MIRType, MIRTypeArena};
+
+/// For brevity
+type S<T> = Spanned<T>;
 
 pub fn hir_to_mir(hir: THIR) -> MIR {
     let translator = HIRTranslator::new();
@@ -37,12 +41,23 @@ impl HIRTranslator {
     }
 
     fn translate(mut self, hir: THIR) -> MIR {
-        // TODO: associated type is dropped, names may collide
-        todo!();
         self.mir.modules[0].funcs_map = hir
             .funcs_map
             .into_entries()
-            .map(|(id, name, _)| (id, name))
+            .map(|(func_id, func_name, opt_type_id)| {
+                if let Some(type_id) = opt_type_id {
+                    let type_str = hir
+                        .type_arena
+                        .get_by_id(type_id.node)
+                        .unwrap()
+                        .format(&hir.type_arena);
+                    let span = type_id.span.join(func_name.span);
+                    let name = format!("{}.{}", type_str, func_name);
+                    (func_id, S::new(name, span))
+                } else {
+                    (func_id, func_name)
+                }
+            })
             .collect();
         let hir_type_arena = hir.type_arena;
         self.register_types(&hir_type_arena);
@@ -572,6 +587,14 @@ impl<'a> HIRFunctionTranslator<'a> {
         &mut self,
         signature: hir::FunctionSignature,
     ) -> FunctionSignature {
+        let name = self
+            .module
+            .funcs_map
+            .get_by_left(&signature.id)
+            .unwrap()
+            .node
+            .clone();
+
         let return_type_id = self.lower_hir_type_id(signature.ret_ty.node);
 
         let args = signature
@@ -588,7 +611,7 @@ impl<'a> HIRFunctionTranslator<'a> {
 
         FunctionSignature {
             id: signature.id,
-            name: signature.name.node,
+            name,
             ret_ty: return_type_id,
             args,
         }

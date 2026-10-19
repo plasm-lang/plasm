@@ -284,8 +284,8 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>✅</td>
       <td>✅</td>
-      <td>⬜</td>
-      <td>⬜</td>
+      <td>✅</td>
+      <td>✅</td>
       <td><code>fn MyType.my_method(self) -> I32 {...}</code></td>
     </tr>
     <tr>
@@ -293,8 +293,8 @@ This is the roadmap for implementing a minimal working framework that will serve
       <td>✅</td>
       <td>✅</td>
       <td>✅</td>
-      <td>⬜</td>
-      <td>⬜</td>
+      <td>✅</td>
+      <td>✅</td>
       <td><code>Vec2.new(1, 2).len().to_string()</code></td>
     </tr>
     <tr>
