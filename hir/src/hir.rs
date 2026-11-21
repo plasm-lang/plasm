@@ -57,25 +57,17 @@ impl FuncMap {
         }
     }
 
-    /// On collision returns the id of the already registered function
     pub fn insert(
         &mut self,
         id: FuncId,
         name: S<String>,
         associated_type: Option<S<HIRTypeId>>,
-    ) -> Result<(), FuncId> {
+    ) {
         let (name, name_span) = name.unwrap();
         let ty = associated_type.map(|ty| ty.node);
         let ty_span = associated_type.map(|ty| ty.span);
-        match self.map.insert_no_overwrite(id, (name, ty)) {
-            Ok(()) => {
-                self.spans.insert(id, (name_span, ty_span));
-                Ok(())
-            }
-            Err((_, key)) => {
-                Err(*self.map.get_by_right(&key).expect("FuncId must be unique"))
-            }
-        }
+        self.map.insert(id, (name, ty));
+        self.spans.insert(id, (name_span, ty_span));
     }
 
     pub fn get_func_id(
@@ -110,6 +102,21 @@ impl FuncMap {
             let ty = ty.zip(ty_span).map(|(ty, span)| S::new(ty, span));
             (id, S::new(name, name_span), ty)
         })
+    }
+
+    /// Doesn't check for associated type funcs.
+    pub fn contains_name(&self, name: &str) -> bool {
+        self.map.get_by_right(&(name.to_string(), None)).is_some()
+    }
+
+    pub fn contains_name_with_associated_type(
+        &self,
+        name: &str,
+        associated_type: HIRTypeId,
+    ) -> bool {
+        self.map
+            .get_by_right(&(name.to_string(), Some(associated_type)))
+            .is_some()
     }
 }
 

@@ -353,11 +353,11 @@ This is the roadmap for implementing a minimal working framework that will serve
     </tr>
     <tr>
       <th>Type Aliasing</th>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
-      <td>⬜</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
       <td><code>alias Pos = (I32, I32, I32)</code></td>
     </tr> 
     <tr>

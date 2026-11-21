@@ -1,27 +1,17 @@
 use std::fmt::{Display, Formatter};
 
-use diagnostic::{ErrorType, Spanned};
+use diagnostic::ErrorType;
 use strum_macros::IntoStaticStr;
 
 use super::type_inference::TypeInferenceError;
 
 #[derive(Debug, IntoStaticStr)]
 pub enum Error {
-    FunctionMultipleDefinitions {
-        first: Spanned<String>,
-        second: Spanned<String>,
-    },
-    UnknownVariable {
-        name: String,
-    },
-    UnknownFunction {
-        name: String,
-    },
-    ArgumentCountMismatch {
-        found: usize,
-        expected: usize,
-    },
+    UnknownVariable { name: String },
+    UnknownFunction { name: String },
+    ArgumentCountMismatch { found: usize, expected: usize },
     TypeInferenceError(TypeInferenceError),
+    NameAlreadyDefined { name: String },
 }
 
 impl Display for Error {
@@ -29,14 +19,6 @@ impl Display for Error {
         use Error::*;
 
         match self {
-            FunctionMultipleDefinitions { first, second } => {
-                write!(
-                    f,
-                    "Function `{}` is defined multiple times: first at {}, then at \
-                     {}",
-                    first.node, first.span, second.span
-                )
-            }
             UnknownVariable { name } => {
                 write!(f, "Unknown variable `{name}`",)
             }
@@ -52,6 +34,9 @@ impl Display for Error {
             }
             TypeInferenceError(type_inference_error) => {
                 write!(f, "{type_inference_error}")
+            }
+            NameAlreadyDefined { name } => {
+                write!(f, "Name `{name}` is already used")
             }
         }
     }
@@ -74,10 +59,10 @@ impl ErrorType for Error {
         const SEMANTIC_ERROR: &str = "SemanticError";
 
         match self {
-            FunctionMultipleDefinitions { .. }
-            | UnknownVariable { .. }
+            UnknownVariable { .. }
             | UnknownFunction { .. }
-            | ArgumentCountMismatch { .. } => SEMANTIC_ERROR,
+            | ArgumentCountMismatch { .. }
+            | NameAlreadyDefined { .. } => SEMANTIC_ERROR,
 
             TypeInferenceError(error) => error.error_type(),
         }

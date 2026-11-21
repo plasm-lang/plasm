@@ -44,9 +44,11 @@ struct ASTTranslator {
     next_expr_id: ExprId,
     /// AST type definitions collected in the first pass, keyed by type name.
     type_defs_registry: HashMap<String, ast::TypeDefinition>,
+    aliases_registry: HashMap<String, ast::Alias>,
     /// Cache of Named type resolution results.
     /// Some(id) = successfully resolved, None = failed (circular or unknown).
-    resolved_cache: HashMap<String, Option<HIRTypeId>>,
+    resolved_named_types: HashMap<String, Option<HIRTypeId>>,
+    resolved_aliases: HashMap<String, HIRTypeId>,
     // binary_functions: HardcodedBinaryFunctions,
 }
 
@@ -59,7 +61,9 @@ impl ASTTranslator {
             next_local_id: LocalId::one(),
             next_expr_id: ExprId::one(),
             type_defs_registry: HashMap::new(),
-            resolved_cache: HashMap::new(),
+            aliases_registry: HashMap::new(),
+            resolved_aliases: HashMap::new(),
+            resolved_named_types: HashMap::new(),
             // binary_functions: HardcodedBinaryFunctions::new(),
         }
     }
@@ -97,24 +101,45 @@ impl ASTTranslator {
     }
 
     pub fn translate(mut self, ast: ast::AST) -> (OptHIR, Vec<S<Error>>) {
-        // First Pass: Register type definitions
+        // First pass: register type definitions and aliases
         for item in ast.items.iter() {
-            if let ast::Item::TypeDefinition(ty_def) = item {
-                // TODO: Check for duplicate type definitions
-                self.type_defs_registry
-                    .insert(ty_def.name.node.clone(), ty_def.clone());
+            match item {
+                ast::Item::TypeDefinition(ty_def) => {
+                    if self.check_for_uniqueness(&ty_def.name.node) {
+                        self.type_defs_registry
+                            .insert(ty_def.name.node.clone(), ty_def.clone());
+                    } else {
+                        self.uniqueness_error(ty_def.name.clone());
+                    }
+                }
+                ast::Item::Alias(alias) => {
+                    if self.check_for_uniqueness(&alias.name.node) {
+                        self.aliases_registry
+                            .insert(alias.name.node.clone(), alias.clone());
+                    } else {
+                        self.uniqueness_error(alias.name.clone());
+                    }
+                }
+                _ => {}
             }
         }
 
-        // Second pass: resolve type definitions
+        // Second pass: resolve type definitions and aliases
         for item in ast.items.iter() {
             if let ast::Item::TypeDefinition(ty_def) = item {
                 self.translate_type_definition(&ty_def.name);
             }
+            if let ast::Item::Alias(alias) = item
+                && let Some(type_id) = self.translate_alias(alias.clone())
+            {
+                self.resolved_aliases
+                    .insert(alias.name.node.clone(), type_id);
+            }
         }
 
         // Third pass: register function definitions
-        for item in ast.items.iter() {
+        let mut functions_to_process: Vec<ast::Function> = Vec::new();
+        for item in ast.items.into_iter() {
             if let ast::Item::Function(func) = item {
                 let id = self.get_next_func_id();
 
@@ -131,32 +156,40 @@ impl ASTTranslator {
                             .0;
                         Spanned::new(ty_id, ast_ty_span)
                     });
-                if let Err(prev) = self.hir.funcs_map.insert(
-                    id,
-                    func_signature.name.clone(),
-                    associated_type,
-                ) {
-                    let first = self
-                        .hir
-                        .funcs_map
-                        .get_name(prev)
-                        .expect("FuncMap invariant broken")
-                        .map(str::to_string);
 
-                    let error = Error::FunctionMultipleDefinitions {
-                        first,
-                        second: func_signature.name.clone(),
-                    };
-                    self.errors.push(S::new(error, func_signature.name.span));
+                // Check for uniqueness and insert into funcs_map and functions_to_process
+                if let Some(a) = associated_type {
+                    if self.hir.funcs_map.contains_name_with_associated_type(
+                        &func_signature.name.node,
+                        a.node,
+                    ) {
+                        self.uniqueness_error(func_signature.name.clone());
+                    } else {
+                        self.hir.funcs_map.insert(
+                            id,
+                            func_signature.name.clone(),
+                            Some(a),
+                        );
+                        functions_to_process.push(func);
+                    }
+                } else {
+                    if self.check_for_uniqueness(&func_signature.name.node) {
+                        self.hir.funcs_map.insert(
+                            id,
+                            func_signature.name.clone(),
+                            None,
+                        );
+                        functions_to_process.push(func);
+                    } else {
+                        self.uniqueness_error(func_signature.name.clone());
+                    }
                 }
             }
         }
 
         // Fourth pass: translate functions
-        for item in ast.items {
-            if let ast::Item::Function(func) = item {
-                self.translate_function(func);
-            }
+        for func in functions_to_process {
+            self.translate_function(func);
         }
 
         (self.hir, self.errors)
@@ -165,7 +198,7 @@ impl ASTTranslator {
     /// HIR type definition is emitted by `translate_type` on first resolution.
     fn translate_type_definition(&mut self, name: &S<String>) {
         // Already resolved as a dependency of another type
-        if self.resolved_cache.contains_key(&name.node) {
+        if self.resolved_named_types.contains_key(&name.node) {
             return;
         }
         let mut resolving = Vec::new();
@@ -174,6 +207,19 @@ impl ASTTranslator {
             name.span,
             &mut resolving,
         );
+    }
+
+    fn translate_alias(&mut self, alias: ast::Alias) -> Option<HIRTypeId> {
+        // Check for re-aliasing of an existing alias
+        if let ast::Type::Named(name) = &alias.ty.node
+            && let Some(re_alias) = self.aliases_registry.get(name).cloned()
+        {
+            return self.translate_alias(re_alias);
+        }
+
+        let mut resolving = Vec::new();
+        self.translate_type(alias.ty.node, alias.ty.span, &mut resolving)
+            .map(|(type_id, _ty)| type_id)
     }
 
     fn translate_function(&mut self, func: ast::Function) {
@@ -342,7 +388,7 @@ impl ASTTranslator {
             }
             ast::Type::Named(name) => {
                 // Check resolution cache first
-                if let Some(cached) = self.resolved_cache.get(&name).copied() {
+                if let Some(cached) = self.resolved_named_types.get(&name).copied() {
                     return match cached {
                         Some(type_id) => {
                             let hir_ty = self
@@ -366,9 +412,16 @@ impl ASTTranslator {
                     };
                 }
 
+                // Check if it's an alias
+                if let Some(type_id) = self.resolved_aliases.get(&name).copied() {
+                    let hir_ty =
+                        self.hir.type_arena.get_by_id(type_id).unwrap().clone();
+                    return Some((type_id, hir_ty));
+                }
+
                 // Not defined at all
                 if !self.type_defs_registry.contains_key(&name) {
-                    self.resolved_cache.insert(name.clone(), None);
+                    self.resolved_named_types.insert(name.clone(), None);
                     self.errors.push(S::new(
                         Error::TypeInferenceError(
                             TypeInferenceError::UnknownTypeName { name },
@@ -383,7 +436,7 @@ impl ASTTranslator {
                 if resolving.contains(&name) {
                     let start = resolving.iter().position(|n| n == &name).unwrap();
                     let cycle = resolving[start..].to_vec();
-                    self.resolved_cache.insert(name, None);
+                    self.resolved_named_types.insert(name, None);
                     self.errors.push(S::new(
                         Error::TypeInferenceError(
                             TypeInferenceError::CircularTypeDefinition { cycle },
@@ -406,7 +459,7 @@ impl ASTTranslator {
                             HIRType::Named(name.clone(), Box::new(underlying_hir));
                         let type_id =
                             self.hir.type_arena.get_or_insert(hir_ty.clone());
-                        self.resolved_cache.insert(name, Some(type_id));
+                        self.resolved_named_types.insert(name, Some(type_id));
                         self.hir.type_defs.push(TypeDefinition {
                             name: ty_def.name,
                             ty: S::new(underlying_id, ast_ty_span),
@@ -414,7 +467,7 @@ impl ASTTranslator {
                         hir_ty
                     }
                     None => {
-                        self.resolved_cache.insert(name, None);
+                        self.resolved_named_types.insert(name, None);
                         return None;
                     }
                 }
@@ -825,6 +878,17 @@ impl ASTTranslator {
             }
         }
         (expr_id, expr_arena)
+    }
+
+    fn uniqueness_error(&mut self, name: S<String>) {
+        let error = Error::NameAlreadyDefined { name: name.node };
+        self.errors.push(S::new(error, name.span));
+    }
+
+    fn check_for_uniqueness(&self, name: &str) -> bool {
+        !(self.hir.funcs_map.contains_name(name)
+            || self.type_defs_registry.contains_key(name)
+            || self.aliases_registry.contains_key(name))
     }
 }
 
@@ -1509,5 +1573,55 @@ mod tests {
             }
         "};
         check_by_display(code, expected_hir_display);
+    }
+
+    #[test]
+    fn test_alias_resolution() {
+        let code = indoc! {"
+            alias MyInt = I32
+            alias MyInt2 = MyInt
+            type A = MyInt2
+            fn f1(x: A) {}
+            fn f2(x: MyInt2) {}
+        "};
+        let expected_hir_display = indoc! {"
+            type A = I32
+
+            fn f1(x: A) -> Void {
+                return Void
+            }
+
+            fn f2(x: I32) -> Void {
+                return Void
+            }
+        "};
+        check_by_display(code, expected_hir_display);
+    }
+
+    #[test]
+    fn test_uniqueness_errors() {
+        let code = indoc! {"
+            fn f() {}
+            fn f() {}
+            type A = I32
+            type A = I64
+            alias B = I32
+            alias B = I64
+        "};
+        check_errors(
+            code,
+            &[
+                "NameAlreadyDefined",
+                "NameAlreadyDefined",
+                "NameAlreadyDefined",
+            ],
+        );
+
+        let code = indoc! {"
+            type C = I32
+            alias C = I32
+            fn C() {}
+        "};
+        check_errors(code, &["NameAlreadyDefined", "NameAlreadyDefined"]);
     }
 }

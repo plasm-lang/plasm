@@ -4,6 +4,7 @@ pub enum Keyword {
     Let,
     Return,
     Type,
+    Alias,
     Struct,
 }
 
