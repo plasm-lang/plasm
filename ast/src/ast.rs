@@ -26,12 +26,23 @@ impl AST {
     pub fn add_type_definition(&mut self, ty_def: TypeDefinition) {
         self.items.push(Item::TypeDefinition(ty_def));
     }
+
+    pub fn add_alias(&mut self, alias: Alias) {
+        self.items.push(Item::Alias(alias));
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum Item {
     Function(Function),
     TypeDefinition(TypeDefinition),
+    Alias(Alias),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Alias {
+    pub name: S<String>,
+    pub ty: S<Type>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]

@@ -1,11 +1,11 @@
 use std::fmt::{Display, Formatter, Result};
 
 use super::ast::{
-    AST, Argument, BinaryExpr, CallArgument, Expr, ExternalFunction, FieldAccess,
-    Function, FunctionCall, FunctionSignature, IndexAccess, InternalFunction, Item,
-    Literal, MethodCall, Place, Statement, StructField, StructLiteralExpr,
-    StructLiteralField, StructType, TupleLiteralExpr, TupleType, Type,
-    TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
+    AST, Alias, Argument, BinaryExpr, CallArgument, Expr, ExternalFunction,
+    FieldAccess, Function, FunctionCall, FunctionSignature, IndexAccess,
+    InternalFunction, Item, Literal, MethodCall, Place, Statement, StructField,
+    StructLiteralExpr, StructLiteralField, StructType, TupleLiteralExpr, TupleType,
+    Type, TypeDefinition, UnaryExpr, UnaryOp, VariableDeclaration,
 };
 
 impl Display for AST {
@@ -26,7 +26,14 @@ impl Display for Item {
         match self {
             Item::Function(func) => write!(f, "{func}"),
             Item::TypeDefinition(ty_def) => write!(f, "{ty_def}"),
+            Item::Alias(alias) => write!(f, "{alias}"),
         }
+    }
+}
+
+impl Display for Alias {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        writeln!(f, "alias {} = {}", self.name, self.ty)
     }
 }
 

@@ -170,6 +170,7 @@ impl<I: Iterator<Item = (usize, char)>> TokenIter<I> {
             "let" => Token::Keyword(Keyword::Let),
             "return" => Token::Keyword(Keyword::Return),
             "type" => Token::Keyword(Keyword::Type),
+            "alias" => Token::Keyword(Keyword::Alias),
             "struct" => Token::Keyword(Keyword::Struct),
             _ => Token::Identifier(self.accumulated.clone()),
         };
@@ -457,6 +458,7 @@ mod tests {
                     Keyword::Let => assert_eq!(str_by_span, "let"),
                     Keyword::Return => assert_eq!(str_by_span, "return"),
                     Keyword::Type => assert_eq!(str_by_span, "type"),
+                    Keyword::Alias => assert_eq!(str_by_span, "alias"),
                     Keyword::Struct => assert_eq!(str_by_span, "struct"),
                 },
                 Token::Identifier(id) => assert_eq!(id, str_by_span),

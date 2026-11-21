@@ -6,7 +6,7 @@ use tokenizer::{Bracket, Keyword, Number, SpecialSymbol, Token};
 use utils::bin_op::BinaryOp;
 
 use super::ast::{
-    AST, Argument, BinaryExpr, Block, CallArgument, Expr, ExternalFunction,
+    AST, Alias, Argument, BinaryExpr, Block, CallArgument, Expr, ExternalFunction,
     FieldAccess, Function, FunctionCall, FunctionSignature, IndexAccess,
     InternalFunction, Literal, MethodCall, Place, Statement, StructField,
     StructLiteralExpr, StructLiteralField, StructType, TupleLiteralExpr, TupleType,
@@ -20,7 +20,7 @@ const IDENTIFIER: &str = "identifier";
 const IDENTIFIER_OR_NUMBER: &str = "identifier or number";
 const IDENTIFIER_WITH_ROUND_OR_DOT: &str = "identifier with `(` or `.`";
 const NUMBER: &str = "number";
-const FUNCTION_OR_TYPE: &str = "function or type definition";
+const FUNCTION_OR_TYPE_OR_ALIAS: &str = "function, type definition, or alias";
 const TYPE: &str = "type";
 const STRUCT_FIELD_OR_CURLY: &str = "struct field or `}`";
 const COMMA_OR_CURLY: &str = "`,` or `}`";
@@ -254,6 +254,16 @@ where
                         }
                     }
                 }
+                Token::Keyword(Keyword::Alias) => {
+                    match self.parse_alias() {
+                        Ok(alias) => ast.add_alias(alias),
+                        Err(err) => {
+                            errors.push(err);
+                            self.iter.last(); // Skip to the last token to fill lines table.
+                            break;
+                        }
+                    }
+                }
                 _ => {
                     let Some((token, span)) = self.take_next() else {
                         continue;
@@ -261,7 +271,7 @@ where
                     errors.push(self.unexpected_token(
                         token,
                         span,
-                        FUNCTION_OR_TYPE,
+                        FUNCTION_OR_TYPE_OR_ALIAS,
                     ));
                     self.iter.last(); // Skip to the last token to fill lines table.
                     break;
@@ -350,6 +360,18 @@ where
         let tuple_type = TupleType(types);
         let span = start_span.join(self.last_span);
         Ok(S::new(tuple_type, span))
+    }
+
+    fn parse_alias(&mut self) -> Result<Alias, S<ParseError>> {
+        self.expect(Token::Keyword(Keyword::Alias))?;
+        let (name, name_span) = self.expect_ident()?;
+        self.expect(Token::SpecialSymbol(SpecialSymbol::Equals))?;
+        let ty = self.parse_type()?;
+        let alias = Alias {
+            name: S::new(name, name_span),
+            ty,
+        };
+        Ok(alias)
     }
 
     fn parse_function_arg(&mut self) -> Result<S<Argument>, S<ParseError>> {
@@ -1648,6 +1670,21 @@ mod tests {
                     let first = tuple.0
                     let second = tuple.1
                 }
+            "},
+        );
+    }
+
+    #[test]
+    fn test_alias() {
+        parse_and_check_by_display(
+            indoc! {"
+                alias MyInt = I32
+                alias MyInt2 = MyInt
+            "},
+            indoc! {"
+                alias MyInt = I32
+
+                alias MyInt2 = MyInt
             "},
         );
     }
